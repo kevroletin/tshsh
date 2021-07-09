@@ -11,8 +11,9 @@
 
 module Matcher
   ( mkMatcher,
-    step,
+    matcherStep,
     _testMatcher,
+    Matcher
   )
 where
 
@@ -111,8 +112,8 @@ mch_reset m = m & mch_pos .~ 0
 -- Invariants:
 -- - accepted matcher should be not full
 -- - returned matcher is not full
-step :: (Eq a, CanUnbox a) => Matcher a -> a -> (Bool, Matcher a)
-step !m0 !inpChr =
+matcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> (Bool, Matcher a)
+matcherStep !m0 !inpChr =
   if mch_nextCharUnsafe m0 == inpChr
     then
       let m = mch_forwardUnsafe m0
@@ -124,7 +125,7 @@ step !m0 !inpChr =
         then (False, m0)
         else
           let Just fallbackPos = m0 ^? mch_jumpTable . ix (m0 ^. mch_pos)
-           in step (m0 & mch_pos .~ fallbackPos) inpChr
+           in matcherStep (m0 & mch_pos .~ fallbackPos) inpChr
 
 indices' :: forall a. (CanUnbox a, Eq a) => [a] -> [a] -> [Int]
 indices' pat hay = go (mkMatcher pat) ([0 ..] `zip` hay)
@@ -134,7 +135,7 @@ indices' pat hay = go (mkMatcher pat) ([0 ..] `zip` hay)
     go :: Matcher a -> [(Int, a)] -> [Int]
     go _ [] = []
     go !m ((i, ch) : xs) =
-      case step m ch of
+      case matcherStep m ch of
         (True, m') -> 1 + i - len : go m' xs
         (False, m') -> go m' xs
 

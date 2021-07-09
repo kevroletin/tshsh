@@ -45,6 +45,8 @@ import System.Posix.Terminal
 import System.Process
 import Prelude (String)
 
+import Matcher
+
 logFile :: Handle
 logFile = unsafePerformIO $ do
   f <- openFile "log.txt" AppendMode
@@ -97,7 +99,7 @@ nextPuppet Puppet2 = Puppet1
 
 data Puppet = Puppet
   { _pup_prompt :: BS.ByteString,
-    _pup_parser :: BS.ByteString -> Result BS.ByteString,
+    _pup_parser :: Matcher Word8,
     _pup_lastOutput :: Maybe BS.ByteString,
     _pup_inputH :: Handle,
     _pup_readThread :: ThreadId,
@@ -123,11 +125,9 @@ readLoop from act = do
   _ <- tryIO loop
   pure ()
 
--- TODO: this is a slow parser
-mkPupParser :: BS.ByteString -> (BS.ByteString -> Result BS.ByteString)
-mkPupParser prompt = parse parser
-  where
-    parser = BS.pack <$> manyTill anyWord8 (string prompt)
+mkPupParser :: BS.ByteString -> Matcher Word8
+mkPupParser prompt =
+  mkMatcher (BS.unpack prompt)
 
 forkPuppet ::
   PuppetIdx ->
@@ -214,23 +214,24 @@ muxBody st@MuxState {..} (PuppetOutput puppetIdx str0) = do
   if puppetIdx == _mux_currentPuppetIdx
     then do
       BS.hPut stdout str0
+
       -- TODO: do we want to do parsing in a main loop? maybe do it asynchronously?
-      let pup = st ^. currentPuppet
-      let loop !parser !str = do
-            log ("Feed ", str)
-            case parser str of
-              Partial cont -> pure cont
-              Fail i ctx e -> do
-                log ("Fail", ctx, e)
-                pure (mkPupParser (_pup_prompt pup))
-              Done i r -> do
-                log ("Success: ", r)
-                loop (mkPupParser (_pup_prompt pup)) i
-      loop (_pup_parser pup) str0
-      pure ()
+      -- TODO: make a proper interface in Matcher
+      let go (act, m) c =
+            let (b, m') = matcherStep m c
+            in if b then ( do act
+                              log ("Match ", st ^. currentPuppet . pup_prompt)
+                         , m' )
+                    else ( do act
+                         , m' )
+      log str0
+      let (act, m) = BS.foldl' go (pure (), st ^. currentPuppet . pup_parser) str0
+      act
+      let st' = st & currentPuppet . pup_parser .~ m
+
+      pure st'
     else -- TODO: what to do with background puppet output? just ignore fore now
-      pure ()
-  pure st
+      pure st
 muxBody st@MuxState {..} WindowResize = do
   let pup@Puppet {..} = st ^. currentPuppet
   Just (Window h w :: Window Int) <- size
