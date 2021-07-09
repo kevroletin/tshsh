@@ -1,37 +1,67 @@
-{-# LANGUAGE LambdaCase, ScopedTypeVariables, RecordWildCards, OverloadedStrings, BangPatterns, StrictData #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StrictData #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
-import Control.Exception.Safe
 import Control.Concurrent
+import Control.Concurrent.STM
+import Control.Exception.Safe (tryIO)
+import Control.Lens
 import Control.Monad
-import System.IO
-import System.Process
-import System.Posix.Terminal
-import System.Posix
+import Data.Attoparsec.ByteString
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as C
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as CL
+import Data.String.Conversions
+import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Data.Text.IO as TIO
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
+import qualified Data.Text.Lazy.IO as TLIO
 import Foreign
 import Foreign.C
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
+import Protolude hiding (hPutStrLn, log, tryIO)
+import System.Console.Terminal.Size
+import System.IO (BufferMode (..), hFlush, hGetBufSome, hPutStrLn, hSetBuffering)
+import System.IO.Unsafe
+import System.Posix
 import System.Posix.Signals
 import System.Posix.Signals.Exts
-import System.Console.Terminal.Size
-import Control.Concurrent.STM
+import System.Posix.Terminal
+import System.Process
+import Prelude (String)
 
-import Data.String.Conversions
-import qualified Data.Text as T
-import Data.Text (Text)
-import qualified Data.Text.Lazy as TL
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Char8 as C
-import qualified Data.ByteString.Lazy.Char8 as CL
-import qualified Data.Text.IO as TIO
-import qualified Data.Text.Lazy.IO as TLIO
-import qualified Data.Text.Encoding as TE
-import qualified Data.Text.Lazy.Encoding as TLE
+logFile :: Handle
+logFile = unsafePerformIO $ do
+  f <- openFile "log.txt" AppendMode
+  hSetBuffering f LineBuffering
+  pure f
 
-import Data.Attoparsec.ByteString
+muxLogFile :: Handle
+muxLogFile = unsafePerformIO $ do
+  f <- openFile "mux-log.txt" AppendMode
+  hSetBuffering f LineBuffering
+  pure f
+
+log :: Show a => a -> IO ()
+log x = hPutStrLn logFile (show x)
+
+muxLog :: Show a => a -> IO ()
+muxLog x = hPutStrLn muxLogFile (show x)
 
 bufSize = 1024
 
@@ -48,10 +78,14 @@ newPuppet cmd args = do
   masterH <- fdToHandle master
   slaveH <- fdToHandle slave
 
-  (_, _, _, p) <- createProcess (proc cmd args) { std_in = UseHandle slaveH,
-                                                  std_out = UseHandle slaveH,
-                                                  std_err = UseHandle slaveH,
-                                                  new_session = True }
+  (_, _, _, p) <-
+    createProcess
+      (proc cmd args)
+        { std_in = UseHandle slaveH,
+          std_out = UseHandle slaveH,
+          std_err = UseHandle slaveH,
+          new_session = True
+        }
 
   pts <- getSlaveTerminalName master
   pure (p, masterH, pts)
@@ -61,120 +95,163 @@ data PuppetIdx = Puppet1 | Puppet2 deriving (Eq, Ord, Show, Enum)
 nextPuppet Puppet1 = Puppet2
 nextPuppet Puppet2 = Puppet1
 
-data Puppet = Puppet { pup_prompt :: BS.ByteString,
-                       pup_parser :: Result BS.ByteString,
-                       pup_lastOutput :: Maybe BS.ByteString,
-                       pup_inputH :: Handle,
-                       pup_readThread :: ThreadId,
-                       pup_process :: ProcessHandle,
-                       pup_pid :: ProcessID,
-                       pup_pts :: FilePath,
-                       pup_mkCdCmd :: Text -> Text
-                     }
+data Puppet = Puppet
+  { _pup_prompt :: BS.ByteString,
+    _pup_parser :: BS.ByteString -> Result BS.ByteString,
+    _pup_lastOutput :: Maybe BS.ByteString,
+    _pup_inputH :: Handle,
+    _pup_readThread :: ThreadId,
+    _pup_process :: ProcessHandle,
+    _pup_pid :: ProcessID,
+    _pup_pts :: FilePath,
+    _pup_mkCdCmd :: Text -> Text
+  }
 
+$(makeLenses 'Puppet)
 
 readLoop :: Handle -> (BS.ByteString -> IO ()) -> IO ()
 readLoop from act = do
-    buf <- mallocBytes bufSize
-    let loop = do
-          hGetBufSome from buf bufSize >>= \case
-            n | n > 0 -> do str <- BS.packCStringLen (buf, n)
-                            act str
-                            loop
-            _ -> pure ()
-    -- ignore io errors
-    _ <- tryIO loop
-    pure ()
+  buf <- mallocBytes bufSize
+  let loop = do
+        hGetBufSome from buf bufSize >>= \case
+          n | n > 0 -> do
+            str <- BS.packCStringLen (buf, n)
+            act str
+            loop
+          _ -> pure ()
+  -- ignore io errors
+  _ <- tryIO loop
+  pure ()
 
-forkPuppet :: PuppetIdx
-           -> TChan MuxCmd
-           -> C.ByteString
-           -> (Text -> Text)
-           -> FilePath
-           -> [String]
-           -> IO Puppet
+-- TODO: this is a slow parser
+mkPupParser :: BS.ByteString -> (BS.ByteString -> Result BS.ByteString)
+mkPupParser prompt = parse parser
+  where
+    parser = BS.pack <$> manyTill anyWord8 (string prompt)
+
+forkPuppet ::
+  PuppetIdx ->
+  TChan MuxCmd ->
+  BS.ByteString ->
+  (Text -> Text) ->
+  FilePath ->
+  [String] ->
+  IO Puppet
 forkPuppet idx chan prompt cdCmd cmd args = do
   (master, slave) <- openPseudoTerminal
   masterH <- fdToHandle master
   slaveH <- fdToHandle slave
   pts <- getSlaveTerminalName master
 
-  (_, _, _, p) <- createProcess (proc cmd args) { std_in = UseHandle slaveH,
-                                                  std_out = UseHandle slaveH,
-                                                  std_err = UseHandle slaveH,
-                                                  new_session = True }
+  (_, _, _, p) <-
+    createProcess
+      (proc cmd args)
+        { std_in = UseHandle slaveH,
+          std_out = UseHandle slaveH,
+          std_err = UseHandle slaveH,
+          new_session = True
+        }
   (Just pid) <- getPid p
   print pid
 
   readThread <- forkIO $ readLoop masterH $ \str -> atomically . writeTChan chan $ (PuppetOutput idx str)
 
-  -- TODO: this is a slow parser
-  let parser :: Parser BS.ByteString = BS.pack <$> manyTill anyWord8 (string prompt)
-  pure $ Puppet { pup_prompt = prompt,
-                  pup_parser = Partial (parse parser),
-                  pup_lastOutput = Nothing,
-                  pup_inputH = masterH,
-                  pup_readThread = readThread,
-                  pup_process = p,
-                  pup_pid = pid,
-                  pup_pts = pts,
-                  pup_mkCdCmd = cdCmd
-                }
+  pure $
+    Puppet
+      { _pup_prompt = prompt,
+        _pup_parser = mkPupParser prompt,
+        _pup_lastOutput = Nothing,
+        _pup_inputH = masterH,
+        _pup_readThread = readThread,
+        _pup_process = p,
+        _pup_pid = pid,
+        _pup_pts = pts,
+        _pup_mkCdCmd = cdCmd
+      }
 
-data MuxCmd = TermInput (BS.ByteString)              -- TODO: We can break Unicode Here :(
-            | PuppetOutput PuppetIdx (BS.ByteString)
-            | WindowResize
-            | SwitchPuppet
-            deriving (Show)
+data MuxCmd
+  = TermInput (BS.ByteString) -- TODO: We can break Unicode Here :(
+  | PuppetOutput PuppetIdx (BS.ByteString)
+  | WindowResize
+  | SwitchPuppet
+  deriving (Show)
 
-data MuxState = MuxState { mux_puppets :: (Puppet, Puppet),
-                           mux_currentPuppetIdx :: PuppetIdx
-                         }
+data MuxState = MuxState
+  { _mux_puppets :: (Puppet, Puppet),
+    _mux_currentPuppetIdx :: PuppetIdx
+  }
 
-currentPuppet (MuxState (a, _) Puppet1) = a
-currentPuppet (MuxState (_, b) Puppet2) = b
+$(makeLenses 'MuxState)
 
-getPuppetsInOrder :: MuxState -> (Puppet, Puppet)
-getPuppetsInOrder MuxState{..} =
-  if mux_currentPuppetIdx == Puppet1
-    then mux_puppets
-    else let !(a, b) = mux_puppets in (b, a)
+currentPuppet :: Lens' MuxState Puppet
+currentPuppet f (MuxState (a, b) idx) =
+  case idx of
+    Puppet1 -> (\a' -> MuxState (a', b) idx) <$> f a
+    Puppet2 -> (\b' -> MuxState (a, b') idx) <$> f b
+
+backgroundPuppet :: Lens' MuxState Puppet
+backgroundPuppet f (MuxState (a, b) idx) =
+  case idx of
+    Puppet2 -> (\a' -> MuxState (a', b) idx) <$> f a
+    Puppet1 -> (\b' -> MuxState (a, b') idx) <$> f b
+
+sortedPuppets :: Lens' MuxState (Puppet, Puppet)
+sortedPuppets f (MuxState (a, b) idx) =
+  case idx of
+    Puppet1 -> (\(a', b') -> MuxState (a', b') idx) <$> f (a, b)
+    Puppet2 -> (\(a', b') -> MuxState (b', a') idx) <$> f (b, a)
 
 getProcessCwd :: ProcessID -> IO Text
 getProcessCwd pid =
   T.strip . T.pack <$> readProcess "readlink" ["/proc/" <> show pid <> "/cwd"] []
 
 muxBody :: MuxState -> MuxCmd -> IO MuxState
-muxBody st@MuxState{..} (TermInput str) = do
-  let pup@Puppet{..} = currentPuppet st
-  BS.hPut pup_inputH str
+muxBody st@MuxState {..} (TermInput str) = do
+  let pup@Puppet {..} = st ^. currentPuppet
+  BS.hPut _pup_inputH str
   pure st
-muxBody st@MuxState{..} (PuppetOutput puppetIdx str) = do
-  if puppetIdx == mux_currentPuppetIdx
-    then BS.hPut stdout str
-     -- TODO: what to do with background puppet output? just ignore fore now
-    else pure()
+muxBody st@MuxState {..} (PuppetOutput puppetIdx str0) = do
+  if puppetIdx == _mux_currentPuppetIdx
+    then do
+      BS.hPut stdout str0
+      -- TODO: do we want to do parsing in a main loop? maybe do it asynchronously?
+      let pup = st ^. currentPuppet
+      let loop !parser !str = do
+            log ("Feed ", str)
+            case parser str of
+              Partial cont -> pure cont
+              Fail i ctx e -> do
+                log ("Fail", ctx, e)
+                pure (mkPupParser (_pup_prompt pup))
+              Done i r -> do
+                log ("Success: ", r)
+                loop (mkPupParser (_pup_prompt pup)) i
+      loop (_pup_parser pup) str0
+      pure ()
+    else -- TODO: what to do with background puppet output? just ignore fore now
+      pure ()
   pure st
-muxBody st@MuxState{..} WindowResize = do
-  let pup@Puppet{..} = currentPuppet st
+muxBody st@MuxState {..} WindowResize = do
+  let pup@Puppet {..} = st ^. currentPuppet
   Just (Window h w :: Window Int) <- size
   -- TODO: link c code
-  _ <- system ("stty -F " <> pup_pts <> " cols " <> show w <> " rows " <> show h)
-  signalProcess windowChange pup_pid
+  _ <- system ("stty -F " <> _pup_pts <> " cols " <> show w <> " rows " <> show h)
+  signalProcess windowChange _pup_pid
 
   pure st
-muxBody st0@MuxState{..} SwitchPuppet = do
-  let st = st0 { mux_currentPuppetIdx = nextPuppet mux_currentPuppetIdx }
+muxBody st0@MuxState {..} SwitchPuppet = do
+  let st = st0 & mux_currentPuppetIdx %~ nextPuppet
 
-  let (currP, prevP) = getPuppetsInOrder st
+  -- let (currP, prevP) = getPuppetsInOrder st
+  let (currP, prevP) = st ^. sortedPuppets
 
-  signalProcess keyboardSignal (pup_pid currP)
-  currCwd <- getProcessCwd (pup_pid currP)
-  prevCwd <- getProcessCwd (pup_pid prevP)
+  signalProcess keyboardSignal (_pup_pid currP)
+  currCwd <- getProcessCwd (_pup_pid currP)
+  prevCwd <- getProcessCwd (_pup_pid prevP)
   when (currCwd /= prevCwd) $ do
-    BS.hPut (pup_inputH currP) (cs $ pup_mkCdCmd currP prevCwd <> "\n")
+    BS.hPut (_pup_inputH currP) (cs $ _pup_mkCdCmd currP prevCwd <> "\n")
 
-  -- print mux_currentPuppetIdx
+  -- print _mux_currentPuppetIdx
   -- TODO: we should parse Unicode, otherwise we can break it on switch
   -- TODO: redraw last prompt
 
@@ -200,7 +277,6 @@ muxBody st0@MuxState{..} SwitchPuppet = do
 --       + `ps` shows all user processes (tmux doesn't have this drawback)
 main :: IO ()
 main = do
-
   setRaw FD.stdin True
   setEcho FD.stdin False
 
@@ -209,47 +285,33 @@ main = do
   atomically $ writeTChan muxChan WindowResize
 
   -- pup1 <- forkPuppet Puppet1 muxChan "sh-4.4$" (\dir -> ":cd " <> dir) "shh" []
-  pup1 <- forkPuppet Puppet1 muxChan "sh-4.4$" (\dir -> "import os; os.chdir(\"" <> dir <> "\")") "python" []
-  pup2 <- forkPuppet Puppet2 muxChan "sh-4.4$" (\dir -> "cd '" <> dir <> "'") "zsh" []
+  pup1 <- forkPuppet Puppet1 muxChan ">>>" (\dir -> "import os; os.chdir(\"" <> dir <> "\")") "python" []
+  pup2 <- forkPuppet Puppet2 muxChan "⚡" (\dir -> "cd '" <> dir <> "'") "zsh" []
   -- pup2 <- forkPuppet Puppet2 muxChan "$  tshsh" "zsh" []
 
-  let mux = MuxState { mux_puppets = (pup1, pup2),
-                       mux_currentPuppetIdx = Puppet1
-                     }
+  let mux =
+        MuxState
+          { _mux_puppets = (pup1, pup2),
+            _mux_currentPuppetIdx = Puppet1
+          }
 
-  muxThread <- forkIO $ do let loop !st = do
-                                  cmd <- atomically (readTChan muxChan)
-                                  -- print cmd
-                                  newSt <- muxBody st cmd
-                                  loop newSt
-                           loop mux
+  muxThread <- forkIO $ do
+    let loop !st = do
+          cmd <- atomically (readTChan muxChan)
+          muxLog cmd
+          newSt <- muxBody st cmd
+          loop newSt
+    loop mux
 
   installHandler windowChange (Catch (atomically $ writeTChan muxChan WindowResize)) Nothing
 
   -- switch to the other puppet here
   let suspendSig = atomically $ writeTChan muxChan SwitchPuppet
   installHandler keyboardStop (Catch suspendSig) Nothing
-  -- let onChildStatusChange (SignalInfo pid _ info) = do
-  --       putStrLn ("--- SIGCHILD ---: " <> show pid)
-        -- interruptProcessGroupOf (pup_process pup1)
-        -- interruptProcessGroupOf (pup_process pup2)
-        -- case info of
-        --   NoSignalSpecificInfo -> pure ()
-        --   (SigChldInfo pid uid status) -> print ("pind: " <> show pid <> ": " <> show status)
-            -- case status of
-            --   Exited ExitCode
-            --   Terminated Signal Bool
-            --   Stopped Signal
-  -- installHandler processStatusChanged (CatchInfo onChildStatusChange) Nothing
 
   readThread <- forkIO $ readLoop stdin $ \str -> atomically . writeTChan muxChan $ (TermInput str)
 
-
-  -- pipe <- openFile "/home/behemoth/Scratch/haskell/tshsh/test.pipe" ReadMode
-  -- _ <- forkIO $ forever $ do copyLoop pipe stdout id
-  --                            threadDelay 1000
-
-  waitForProcess (pup_process pup1)
-  waitForProcess (pup_process pup2)
+  waitForProcess (_pup_process pup1)
+  waitForProcess (_pup_process pup2)
 
   pure ()
