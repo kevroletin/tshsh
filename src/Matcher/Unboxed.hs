@@ -9,11 +9,15 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Matcher
+module Matcher.Unboxed
   ( mkMatcher,
     matcherStep,
-    _testMatcher,
-    Matcher
+    Matcher,
+    mch_pattern,
+    mch_jumpTable,
+    mch_pos,
+    mch_maxPos,
+    StepResult (..),
   )
 where
 
@@ -21,7 +25,6 @@ import Control.Lens
 import qualified Data.Array.Unboxed as U
 import qualified Data.Text as T
 import Protolude
-import Test.QuickCheck
 import Prelude (String)
 
 takeEnd :: Int -> [a] -> [a]
@@ -112,40 +115,22 @@ mch_reset m = m & mch_pos .~ 0
 -- Invariants:
 -- - accepted matcher should be not full
 -- - returned matcher is not full
-matcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> (Bool, Matcher a)
+
+data StepResult a
+  = StepMatch (Matcher a)
+  | StepNoMatch (Matcher a)
+
+matcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> StepResult a
 matcherStep !m0 !inpChr =
   if mch_nextCharUnsafe m0 == inpChr
     then
       let m = mch_forwardUnsafe m0
        in if mch_isFull m
-            then (True, mch_reset m)
-            else (False, m)
+            then StepMatch (mch_reset m)
+            else StepNoMatch m
     else
       if m0 ^. mch_pos == 0
-        then (False, m0)
+        then StepNoMatch m0
         else
           let Just fallbackPos = m0 ^? mch_jumpTable . ix (m0 ^. mch_pos)
            in matcherStep (m0 & mch_pos .~ fallbackPos) inpChr
-
-indices' :: forall a. (CanUnbox a, Eq a) => [a] -> [a] -> [Int]
-indices' pat hay = go (mkMatcher pat) ([0 ..] `zip` hay)
-  where
-    len = length pat
-
-    go :: Matcher a -> [(Int, a)] -> [Int]
-    go _ [] = []
-    go !m ((i, ch) : xs) =
-      case matcherStep m ch of
-        (True, m') -> 1 + i - len : go m' xs
-        (False, m') -> go m' xs
-
-tIndices :: Text -> Text -> [Int]
-tIndices a b = T.length . fst <$> T.breakOnAll a b
-
-prop_sameAsTextImpl :: String -> String -> Property
-prop_sameAsTextImpl a b =
-  not (null a)
-    ==> indices' a b == tIndices (T.pack a) (T.pack b)
-
-_testMatcher :: IO ()
-_testMatcher = quickCheckWith stdArgs {maxSuccess = 5000} prop_sameAsTextImpl

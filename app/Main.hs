@@ -34,6 +34,7 @@ import Foreign
 import Foreign.C
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
+import Matcher.ByteString
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.Terminal.Size
 import System.IO (BufferMode (..), hFlush, hGetBufSome, hPutStrLn, hSetBuffering)
@@ -44,8 +45,6 @@ import System.Posix.Signals.Exts
 import System.Posix.Terminal
 import System.Process
 import Prelude (String)
-
-import Matcher
 
 logFile :: Handle
 logFile = unsafePerformIO $ do
@@ -99,7 +98,7 @@ nextPuppet Puppet2 = Puppet1
 
 data Puppet = Puppet
   { _pup_prompt :: BS.ByteString,
-    _pup_parser :: Matcher Word8,
+    _pup_parser :: Matcher,
     _pup_lastOutput :: Maybe BS.ByteString,
     _pup_inputH :: Handle,
     _pup_readThread :: ThreadId,
@@ -125,10 +124,6 @@ readLoop from act = do
   _ <- tryIO loop
   pure ()
 
-mkPupParser :: BS.ByteString -> Matcher Word8
-mkPupParser prompt =
-  mkMatcher (BS.unpack prompt)
-
 forkPuppet ::
   PuppetIdx ->
   TChan MuxCmd ->
@@ -152,14 +147,15 @@ forkPuppet idx chan prompt cdCmd cmd args = do
           new_session = True
         }
   (Just pid) <- getPid p
-  print pid
+  putStrLn ("Started: " <> show pid :: Text)
 
-  readThread <- forkIO $ readLoop masterH $ \str -> atomically . writeTChan chan $ (PuppetOutput idx str)
+  readThread <- forkIO . readLoop masterH $ \str ->
+    atomically . writeTChan chan $ PuppetOutput idx str
 
   pure $
     Puppet
       { _pup_prompt = prompt,
-        _pup_parser = mkPupParser prompt,
+        _pup_parser = mkMatcher prompt,
         _pup_lastOutput = Nothing,
         _pup_inputH = masterH,
         _pup_readThread = readThread,
@@ -216,20 +212,18 @@ muxBody st@MuxState {..} (PuppetOutput puppetIdx str0) = do
       BS.hPut stdout str0
 
       -- TODO: do we want to do parsing in a main loop? maybe do it asynchronously?
-      -- TODO: make a proper interface in Matcher
-      let go (act, m) c =
-            let (b, m') = matcherStep m c
-            in if b then ( do act
-                              log ("Match ", st ^. currentPuppet . pup_prompt)
-                         , m' )
-                    else ( do act
-                         , m' )
-      log str0
-      let (act, m) = BS.foldl' go (pure (), st ^. currentPuppet . pup_parser) str0
-      act
-      let st' = st & currentPuppet . pup_parser .~ m
+      let loop m str =
+            case matchStr m str of
+              NoMatch m' -> pure m'
+              Match m' _ rest ->
+                if BS.null rest
+                  then pure m'
+                  else do
+                    log "Match!"
+                    loop m' rest
+      m' <- loop (st ^. currentPuppet . pup_parser) str0
 
-      pure st'
+      pure (st & currentPuppet . pup_parser .~ m')
     else -- TODO: what to do with background puppet output? just ignore fore now
       pure st
 muxBody st@MuxState {..} WindowResize = do
@@ -287,7 +281,8 @@ main = do
 
   -- pup1 <- forkPuppet Puppet1 muxChan "sh-4.4$" (\dir -> ":cd " <> dir) "shh" []
   pup1 <- forkPuppet Puppet1 muxChan ">>>" (\dir -> "import os; os.chdir(\"" <> dir <> "\")") "python" []
-  pup2 <- forkPuppet Puppet2 muxChan "⚡" (\dir -> "cd '" <> dir <> "'") "zsh" []
+  -- pup2 <- forkPuppet Puppet2 muxChan "⚡" (\dir -> "cd '" <> dir <> "'") "zsh" []
+  pup2 <- forkPuppet Puppet2 muxChan "\nsh-4.4$" (\dir -> "cd '" <> dir <> "'") "sh" []
   -- pup2 <- forkPuppet Puppet2 muxChan "$  tshsh" "zsh" []
 
   let mux =

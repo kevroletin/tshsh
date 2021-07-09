@@ -1,0 +1,73 @@
+name:                tshsh
+version:             0.1.0.0
+github:              "githubuser/tshsh"
+license:             BSD3
+author:              "Author name here"
+maintainer:          "example@example.com"
+copyright:           "2021 Author name here"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/githubuser/tshsh#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- text
+- bytestring
+- unix
+- protolude
+- process
+- safe-exceptions
+- terminal-size
+- attoparsec
+- stm
+- string-conversions
+
+- shh
+- shh-extras
+- lens
+- lens-regex-pcre
+- pretty-simple
+- lens-aeson
+- raw-strings-qq
+- ansi-terminal
+
+- array
+
+library:
+  source-dirs: src
+
+executables:
+  tshsh-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - tshsh
+
+tests:
+  tshsh-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - tshsh
+    - hspec
+    - hspec-contrib
+    - QuickCheck
+    - HUnit
