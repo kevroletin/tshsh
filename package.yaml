@@ -43,6 +43,10 @@ dependencies:
 
 - array
 
+- mtl
+- free
+- criterion
+
 library:
   source-dirs: src
 
@@ -50,6 +54,15 @@ executables:
   tshsh-exe:
     main:                Main.hs
     source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - tshsh
+  tshsh-bench:
+    main:                Main.hs
+    source-dirs:         bench
     ghc-options:
     - -threaded
     - -rtsopts
