@@ -1,0 +1,84 @@
+	Mon Jul 12 16:31 2021 Time and Allocation Profiling Report  (Final)
+
+	   tshsh-bench +RTS -N -p -RTS tshsh:tshsh-bench Lang.Final.Simple.test_rightCnt
+
+	total time  =        0.07 secs   (250 ticks @ 1000 us, 12 processors)
+	total alloc = 376,251,608 bytes  (excludes profiling overheads)
+
+COST CENTRE     MODULE            SRC                                      %time %alloc
+
+andThen.\       Lang.Final.Simple src/Lang/Final/Simple.hs:(53,5)-(55,33)   22.0   19.1
+stepAllCnt.loop Lang.Final.Simple src/Lang/Final/Simple.hs:(92,7)-(95,21)   16.0    0.0
+andThen_        Lang.Final.Simple src/Lang/Final/Simple.hs:76:1-34          13.2   10.6
+testRightInt.\  Lang.Final.Simple src/Lang/Final/Simple.hs:86:45-60         10.8   25.5
+output.\        Lang.Final.Simple src/Lang/Final/Simple.hs:41:14-31          7.6   10.6
+output          Lang.Final.Simple src/Lang/Final/Simple.hs:(40,1)-(45,22)    7.2    0.0
+waitInput.\     Lang.Final.Simple src/Lang/Final/Simple.hs:37:13-33          5.2    0.0
+test_rightCnt   Lang.Final.Simple src/Lang/Final/Simple.hs:102:1-53          4.0   19.1
+stepAllCnt      Lang.Final.Simple src/Lang/Final/Simple.hs:(90,1)-(96,27)    4.0    8.5
+testRightInt    Lang.Final.Simple src/Lang/Final/Simple.hs:(85,1)-(87,46)    3.6    6.4
+andThen         Lang.Final.Simple src/Lang/Final/Simple.hs:(51,1)-(55,33)    3.6    0.0
+MAIN            MAIN              <built-in>                                 1.6    0.1
+waitInput       Lang.Final.Simple src/Lang/Final/Simple.hs:(35,1)-(37,33)    1.2    0.0
+
+
+                                                                                                          individual      inherited
+COST CENTRE              MODULE                SRC                                     no.     entries  %time %alloc   %time %alloc
+
+MAIN                     MAIN                  <built-in>                              379           0    1.6    0.1   100.0  100.0
+ CAF                     GHC.Conc.Signal       <entire-module>                         496           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.IO.Encoding       <entire-module>                         478           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.IO.Encoding.Iconv <entire-module>                         476           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.IO.Handle.FD      <entire-module>                         468           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.IO.Handle.Text    <entire-module>                         466           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.Event.Thread      <entire-module>                         420           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.Event.Poll        <entire-module>                         397           0    0.0    0.0     0.0    0.0
+ CAF:a_r4xZ              Lang.Final.Simple     <no location info>                      683           0    0.0    0.0     0.0    0.0
+  testRightInt           Lang.Final.Simple     src/Lang/Final/Simple.hs:(85,1)-(87,46) 780           0    0.0    0.0     0.0    0.0
+   waitInput             Lang.Final.Simple     src/Lang/Final/Simple.hs:(35,1)-(37,33) 781           1    0.0    0.0     0.0    0.0
+ CAF:lvl19_r3Dx          Main                  <no location info>                      747           0    0.0    0.0     7.6   17.0
+  main                   Main                  bench/Main.hs:(14,1)-(25,90)            768           0    0.0    0.0     7.6   17.0
+   main.\                Main                  bench/Main.hs:17:46-86                  769           0    0.0    0.0     7.6   17.0
+    test_rightCnt        Lang.Final.Simple     src/Lang/Final/Simple.hs:102:1-53       770           0    0.0    0.0     7.6   17.0
+     testRightInt        Lang.Final.Simple     src/Lang/Final/Simple.hs:(85,1)-(87,46) 772     1000001    3.2    6.4     7.6   17.0
+      andThen_           Lang.Final.Simple     src/Lang/Final/Simple.hs:76:1-34        773     1000000    4.4   10.6     4.4   10.6
+       andThen           Lang.Final.Simple     src/Lang/Final/Simple.hs:(51,1)-(55,33) 774     1000000    0.0    0.0     0.0    0.0
+ CAF:lvl20_r3Dy          Main                  <no location info>                      748           0    0.0    0.0    86.8   63.8
+  main                   Main                  bench/Main.hs:(14,1)-(25,90)            761           0    0.0    0.0    86.8   63.8
+   main.\                Main                  bench/Main.hs:17:46-86                  762           0    0.0    0.0    86.8   63.8
+    test_rightCnt        Lang.Final.Simple     src/Lang/Final/Simple.hs:102:1-53       763           1    0.0    0.0    86.8   63.8
+     stepAllCnt          Lang.Final.Simple     src/Lang/Final/Simple.hs:(90,1)-(96,27) 764     1000001    4.0    8.5    39.2   14.9
+      stepAllCnt.loop    Lang.Final.Simple     src/Lang/Final/Simple.hs:(92,7)-(95,21) 766     2000001   16.0    0.0    35.2    6.4
+       step              Lang.Final.Simple     src/Lang/Final/Simple.hs:32:22-25       767     2000001    0.0    0.0     0.0    0.0
+       testRightInt      Lang.Final.Simple     src/Lang/Final/Simple.hs:(85,1)-(87,46) 790           0    0.0    0.0    19.2    6.4
+        andThen_         Lang.Final.Simple     src/Lang/Final/Simple.hs:76:1-34        791           0    2.0    0.0    16.0    6.4
+         andThen         Lang.Final.Simple     src/Lang/Final/Simple.hs:(51,1)-(55,33) 792           0    1.6    0.0    14.0    6.4
+          andThen.\      Lang.Final.Simple     src/Lang/Final/Simple.hs:(53,5)-(55,33) 793     1000000   12.4    6.4    12.4    6.4
+           step          Lang.Final.Simple     src/Lang/Final/Simple.hs:32:22-25       794     1000000    0.0    0.0     0.0    0.0
+        waitInput        Lang.Final.Simple     src/Lang/Final/Simple.hs:(35,1)-(37,33) 795           0    0.0    0.0     3.2    0.0
+         waitInput.\     Lang.Final.Simple     src/Lang/Final/Simple.hs:37:13-33       796           0    0.0    0.0     3.2    0.0
+          testRightInt.\ Lang.Final.Simple     src/Lang/Final/Simple.hs:86:45-60       797           0    0.0    0.0     3.2    0.0
+           output        Lang.Final.Simple     src/Lang/Final/Simple.hs:(40,1)-(45,22) 798           0    0.0    0.0     3.2    0.0
+            output.\     Lang.Final.Simple     src/Lang/Final/Simple.hs:41:14-31       799           0    3.2    0.0     3.2    0.0
+     testRightInt        Lang.Final.Simple     src/Lang/Final/Simple.hs:(85,1)-(87,46) 775           0    0.4    0.0    47.6   48.9
+      andThen_           Lang.Final.Simple     src/Lang/Final/Simple.hs:76:1-34        776           0    6.8    0.0    18.4   12.8
+       andThen           Lang.Final.Simple     src/Lang/Final/Simple.hs:(51,1)-(55,33) 777     1000000    2.0    0.0    11.6   12.8
+        andThen.\        Lang.Final.Simple     src/Lang/Final/Simple.hs:(53,5)-(55,33) 778     1000000    9.6   12.8     9.6   12.8
+         step            Lang.Final.Simple     src/Lang/Final/Simple.hs:32:22-25       779     1000000    0.0    0.0     0.0    0.0
+      waitInput          Lang.Final.Simple     src/Lang/Final/Simple.hs:(35,1)-(37,33) 782           0    1.2    0.0    28.8   36.1
+       waitInput.\       Lang.Final.Simple     src/Lang/Final/Simple.hs:37:13-33       783     1000000    5.2    0.0    27.6   36.1
+        step             Lang.Final.Simple     src/Lang/Final/Simple.hs:32:22-25       784     1000000    0.0    0.0     0.0    0.0
+        testRightInt.\   Lang.Final.Simple     src/Lang/Final/Simple.hs:86:45-60       785     1000000   10.8   25.5    22.4   36.1
+         output          Lang.Final.Simple     src/Lang/Final/Simple.hs:(40,1)-(45,22) 786     1000000    7.2    0.0    11.6   10.6
+          output.\       Lang.Final.Simple     src/Lang/Final/Simple.hs:41:14-31       787     1000000    4.4   10.6     4.4   10.6
+ CAF:main1               Main                  <no location info>                      756           0    0.0    0.0     0.0    0.0
+  main                   Main                  bench/Main.hs:(14,1)-(25,90)            758           1    0.0    0.0     0.0    0.0
+ CAF:n_rJv               Main                  bench/Main.hs:11:1                      734           0    0.0    0.0     0.0    0.0
+  n                      Main                  bench/Main.hs:11:1-13                   771           1    0.0    0.0     0.0    0.0
+ CAF:nop1                Lang.Final.Simple     <no location info>                      674           0    0.0    0.0     0.0    0.0
+  nop                    Lang.Final.Simple     src/Lang/Final/Simple.hs:77:1-15        788           1    0.0    0.0     0.0    0.0
+   finish                Lang.Final.Simple     src/Lang/Final/Simple.hs:48:1-28        789           1    0.0    0.0     0.0    0.0
+ CAF:test_rightCnt1      Lang.Final.Simple     <no location info>                      684           0    0.0    0.0     4.0   19.1
+  test_rightCnt          Lang.Final.Simple     src/Lang/Final/Simple.hs:102:1-53       765           0    4.0   19.1     4.0   19.1
+ main                    Main                  bench/Main.hs:(14,1)-(25,90)            759           0    0.0    0.0     0.0    0.0
+  main.\                 Main                  bench/Main.hs:17:46-86                  760           1    0.0    0.0     0.0    0.0

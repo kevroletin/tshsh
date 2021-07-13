@@ -42,25 +42,30 @@ interp' i (AndThen b f) = do b' <- interp' i b
                              interp' i (f b')
 
 
-data Res a = Cont (Program Int Int a)
-           | Res a
+data Res i o s = Cont (Maybe o) (Program i o s)
+               | Res s
 
-step :: Int -> Program Int Int a -> Res a
-step !i (WaitInput cont) = Cont (cont i)
-step !i (Output x next) = -- do somth with x
-                         Cont next
-step !i (Finish a) = Res a
-step !i (AndThen a b) =
+step :: Maybe i -> Program i o s -> Res i o s
+step (Just i) (WaitInput cont) = step Nothing (cont i)
+step Nothing (WaitInput cont) = Cont Nothing (WaitInput cont)
+step (Just _) (Output x next) = panic "You should consume all output first"
+step Nothing (Output x next) = Cont (Just x) next
+step (Just _) (Finish a) = panic "You should consume returned value"
+step Nothing (Finish a) = Res a
+step i (AndThen a b) =
   case step i a of
-    Res x -> Cont (b x)
-    Cont c -> Cont (AndThen c b)
+    Res x -> step Nothing (b x)
+    Cont o c -> Cont o (AndThen c b)
 
-stepAll :: Program Int Int a -> a
-stepAll c0 =
-  let loop !c = case step 0 c of
-                  Cont next -> loop next
-                  Res x -> x
-  in loop c0
+stepAllCnt :: forall a. Int -> [Int] -> Program Int Int () -> Int
+stepAllCnt res [] _ = res
+stepAllCnt res0 (x:xs) c0 =
+  let loop !res c =
+        case c of
+          Cont (Just o) next -> loop o (step Nothing next)
+          Cont Nothing next -> stepAllCnt res xs next
+          Res () -> res
+  in loop res0 (step (Just x) c0)
 
 -----------
 -- Tests --
@@ -87,3 +92,9 @@ testRightInt :: Int -> Program Int Int ()
 testRightInt 0 = nop
 testRightInt n = andThen_ (WaitInput (\n -> Output (n+1) nop))
                           (testRightInt (n-1))
+
+test_leftCnt :: Int -> Int
+test_leftCnt n = stepAllCnt 0 [1..] (testLeftInt n)
+
+test_rightCnt :: Int -> Int
+test_rightCnt n = stepAllCnt 0 [1..] (testRightInt n)

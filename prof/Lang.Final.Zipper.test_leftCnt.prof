@@ -1,0 +1,93 @@
+	Mon Jul 12 16:31 2021 Time and Allocation Profiling Report  (Final)
+
+	   tshsh-bench +RTS -N -p -RTS tshsh:tshsh-bench Lang.Final.Zipper.test_leftCnt
+
+	total time  =        0.15 secs   (508 ticks @ 1000 us, 12 processors)
+	total alloc = 928,250,664 bytes  (excludes profiling overheads)
+
+COST CENTRE     MODULE            SRC                                        %time %alloc
+
+andThen.\       Lang.Final.Zipper src/Lang/Final/Zipper.hs:(67,5)-(73,49)     33.3   58.6
+step            Lang.Final.Zipper src/Lang/Final/Zipper.hs:40:22-25           18.7    0.0
+testLeftInt.\   Lang.Final.Zipper src/Lang/Final/Zipper.hs:101:44-59           6.7   11.2
+stepAllCnt.loop Lang.Final.Zipper src/Lang/Final/Zipper.hs:(111,7)-(114,21)    5.9    0.0
+lam             Lang.Final.Zipper src/Lang/Final/Zipper.hs:59:1-50             5.9    0.0
+output.\        Lang.Final.Zipper src/Lang/Final/Zipper.hs:(51,3)-(56,27)      5.3    4.3
+andThen_        Lang.Final.Zipper src/Lang/Final/Zipper.hs:95:1-40             4.9   14.7
+MAIN            MAIN              <built-in>                                   4.3    0.0
+waitInput.\     Lang.Final.Zipper src/Lang/Final/Zipper.hs:(45,3)-(47,38)      3.1    0.0
+stepAllCnt      Lang.Final.Zipper src/Lang/Final/Zipper.hs:(109,1)-(115,27)    3.1    3.4
+testLeftInt     Lang.Final.Zipper src/Lang/Final/Zipper.hs:(99,1)-(101,61)     3.0    0.0
+andThen         Lang.Final.Zipper src/Lang/Final/Zipper.hs:(65,1)-(73,49)      2.2    0.0
+output          Lang.Final.Zipper src/Lang/Final/Zipper.hs:(50,1)-(56,27)      1.4    0.0
+test_leftCnt    Lang.Final.Zipper src/Lang/Final/Zipper.hs:119:1-51            1.2    7.8
+
+
+                                                                                                            individual      inherited
+COST CENTRE              MODULE                SRC                                       no.     entries  %time %alloc   %time %alloc
+
+MAIN                     MAIN                  <built-in>                                379           0    4.3    0.0   100.0  100.0
+ CAF                     GHC.Conc.Signal       <entire-module>                           496           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.IO.Encoding       <entire-module>                           478           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.IO.Encoding.Iconv <entire-module>                           476           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.IO.Handle.FD      <entire-module>                           468           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.IO.Handle.Text    <entire-module>                           466           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.Event.Thread      <entire-module>                           420           0    0.0    0.0     0.0    0.0
+ CAF                     GHC.Event.Poll        <entire-module>                           397           0    0.0    0.0     0.0    0.0
+ CAF:b_r60Q              Lang.Final.Zipper     src/Lang/Final/Zipper.hs:95:12            656           0    0.0    0.0     0.0    0.0
+  testLeftInt            Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(99,1)-(101,61)  795           0    0.0    0.0     0.0    0.0
+   waitInput             Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(44,1)-(47,38)   796           1    0.0    0.0     0.0    0.0
+ CAF:lvl16_r3Du          Main                  <no location info>                        745           0    0.0    0.0     7.3   14.7
+  main                   Main                  bench/Main.hs:(14,1)-(25,90)              766           0    0.0    0.0     7.3   14.7
+   main.\                Main                  bench/Main.hs:20:45-84                    767           0    0.0    0.0     7.3   14.7
+    test_leftCnt         Lang.Final.Zipper     src/Lang/Final/Zipper.hs:119:1-51         768           0    0.0    0.0     7.3   14.7
+     testLeftInt         Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(99,1)-(101,61)  770     1000001    2.4    0.0     7.3   14.7
+      andThen_           Lang.Final.Zipper     src/Lang/Final/Zipper.hs:95:1-40          773     1000000    4.9   14.7     4.9   14.7
+       andThen           Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(65,1)-(73,49)   775     1000000    0.0    0.0     0.0    0.0
+       lam               Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:1-50          774     1000000    0.0    0.0     0.0    0.0
+ CAF:lvl17_r3Dv          Main                  <no location info>                        746           0    0.0    0.0    87.2   77.6
+  main                   Main                  bench/Main.hs:(14,1)-(25,90)              761           0    0.0    0.0    87.2   77.6
+   main.\                Main                  bench/Main.hs:20:45-84                    762           0    0.0    0.0    87.2   77.6
+    test_leftCnt         Lang.Final.Zipper     src/Lang/Final/Zipper.hs:119:1-51         763           1    0.0    0.0    87.2   77.6
+     stepAllCnt          Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(109,1)-(115,27) 764     1000001    3.1    3.4    77.8   53.4
+      stepAllCnt.loop    Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(111,7)-(114,21) 776     2000001    5.9    0.0    74.6   50.0
+       step              Lang.Final.Zipper     src/Lang/Final/Zipper.hs:40:22-25         777     6999996   17.1    0.0    68.7   50.0
+        testLeftInt      Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(99,1)-(101,61)  797           0    0.6    0.0    51.6   50.0
+         andThen_        Lang.Final.Zipper     src/Lang/Final/Zipper.hs:95:1-40          798           0    0.0    0.0    33.5   34.5
+          andThen        Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(65,1)-(73,49)   799     1999997    1.6    0.0    28.9   34.5
+           andThen.\     Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(67,5)-(73,49)   800     2999996   26.0   34.5    27.4   34.5
+            optimize     Lang.Final.Zipper     src/Lang/Final/Zipper.hs:39:22-29         801     2999996    0.0    0.0     0.0    0.0
+            lam          Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:1-50          808           0    1.4    0.0     1.4    0.0
+             lam.\       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:30-50         809      999999    0.0    0.0     0.0    0.0
+          lam            Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:1-50          807           0    4.5    0.0     4.5    0.0
+         waitInput       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(44,1)-(47,38)   802           0    1.0    0.0    17.5   15.5
+          waitInput.\    Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(45,3)-(47,38)   803     1000000    3.1    0.0    16.5   15.5
+           testLeftInt.\ Lang.Final.Zipper     src/Lang/Final/Zipper.hs:101:44-59        804     1000000    6.7   11.2    13.4   15.5
+            output       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(50,1)-(56,27)   805     1000000    1.4    0.0     6.7    4.3
+             output.\    Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(51,3)-(56,27)   806     1000000    5.3    4.3     5.3    4.3
+     testLeftInt         Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(99,1)-(101,61)  778           0    0.0    0.0     9.4   24.1
+      andThen_           Lang.Final.Zipper     src/Lang/Final/Zipper.hs:95:1-40          779           0    0.0    0.0     9.4   24.1
+       andThen           Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(65,1)-(73,49)   780     1999999    0.6    0.0     9.4   24.1
+        andThen.\        Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(67,5)-(73,49)   781     1000001    7.3   24.1     8.9   24.1
+         step            Lang.Final.Zipper     src/Lang/Final/Zipper.hs:40:22-25         783     1000002    1.6    0.0     1.6    0.0
+         optimize        Lang.Final.Zipper     src/Lang/Final/Zipper.hs:39:22-29         782     1000001    0.0    0.0     0.0    0.0
+         lam             Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:1-50          789           0    0.0    0.0     0.0    0.0
+          lam.\          Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:30-50         790           1    0.0    0.0     0.0    0.0
+ CAF:lvl3_r60S           Lang.Final.Zipper     <no location info>                        657           0    0.0    0.0     0.0    0.0
+  testLeftInt            Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(99,1)-(101,61)  791           0    0.0    0.0     0.0    0.0
+   andThen_              Lang.Final.Zipper     src/Lang/Final/Zipper.hs:95:1-40          792           0    0.0    0.0     0.0    0.0
+    lam                  Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:1-50          793           0    0.0    0.0     0.0    0.0
+     lam.\               Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:30-50         794           0    0.0    0.0     0.0    0.0
+ CAF:lvl_r60a            Lang.Final.Zipper     <no location info>                        649           0    0.0    0.0     0.0    0.0
+  finish.\               Lang.Final.Zipper     src/Lang/Final/Zipper.hs:62:31-35         784           1    0.0    0.0     0.0    0.0
+ CAF:main1               Main                  <no location info>                        756           0    0.0    0.0     0.0    0.0
+  main                   Main                  bench/Main.hs:(14,1)-(25,90)              758           1    0.0    0.0     0.0    0.0
+ CAF:n_rJv               Main                  bench/Main.hs:11:1                        734           0    0.0    0.0     0.0    0.0
+  n                      Main                  bench/Main.hs:11:1-13                     769           1    0.0    0.0     0.0    0.0
+ CAF:nop                 Lang.Final.Zipper     src/Lang/Final/Zipper.hs:96:1-3           650           0    0.0    0.0     0.0    0.0
+  nop                    Lang.Final.Zipper     src/Lang/Final/Zipper.hs:96:1-15          771           1    0.0    0.0     0.0    0.0
+   finish                Lang.Final.Zipper     src/Lang/Final/Zipper.hs:62:1-35          772           1    0.0    0.0     0.0    0.0
+ CAF:test_leftCnt1       Lang.Final.Zipper     <no location info>                        659           0    0.0    0.0     1.2    7.8
+  test_leftCnt           Lang.Final.Zipper     src/Lang/Final/Zipper.hs:119:1-51         765           0    1.2    7.8     1.2    7.8
+ main                    Main                  bench/Main.hs:(14,1)-(25,90)              759           0    0.0    0.0     0.0    0.0
+  main.\                 Main                  bench/Main.hs:20:45-84                    760           1    0.0    0.0     0.0    0.0

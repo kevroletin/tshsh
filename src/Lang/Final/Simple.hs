@@ -25,16 +25,6 @@ import qualified Data.Text.IO as T
 import Protolude
 import Prelude ()
 
--- we are modeling
---
--- data Program i o a = WaitInput (i -> Program i o a)
---                    | Output o (Program i o a)
---                    | Finish a
---                    | forall b . AndThen (Program i o b) (b -> Program i o a)
--- data Res a = Cont (Program Int Int a)
---            | Res a
--- step :: Int -> Program Int Int a -> Res a
-
 data Res i o a
   = Cont (Maybe o) (R i o a)
   | Res a
@@ -96,15 +86,17 @@ testRightInt 0 = nop
 testRightInt n = andThen_ (waitInput (\n -> output (n+1) nop))
                           (testRightInt (n-1))
 
-
 stepAllCnt :: Int -> [Int] -> R Int Int () -> Int
 stepAllCnt !res [] _ = res
-stepAllCnt !res (x0:xs) r0 =
-  let loop x r = case step r x of
+stepAllCnt !res0 (x0:xs) r0 =
+  let loop !res x r = case step r x of
         Cont Nothing cont -> stepAllCnt res xs cont
-        Cont (Just o) cont -> stepAllCnt o xs cont
+        Cont (Just o) cont -> loop o Nothing cont
         Res () -> res
-  in loop (Just x0) r0
+  in loop res0 (Just x0) r0
 
-finalSimpl_main :: IO ()
-finalSimpl_main = print $ stepAllCnt 0 [1..] (testRightInt 10000)
+test_leftCnt :: Int -> Int
+test_leftCnt n = stepAllCnt 0 [1..] (testLeftInt n)
+
+test_rightCnt :: Int -> Int
+test_rightCnt n = stepAllCnt 0 [1..] (testRightInt n)

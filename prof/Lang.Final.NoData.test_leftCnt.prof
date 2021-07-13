@@ -1,0 +1,456 @@
+	Mon Jul 12 16:31 2021 Time and Allocation Profiling Report  (Final)
+
+	   tshsh-bench +RTS -N -p -RTS tshsh:tshsh-bench Lang.Final.NoData.test_leftCnt
+
+	total time  =        0.38 secs   (1286 ticks @ 1000 us, 12 processors)
+	total alloc = 1,920,246,392 bytes  (excludes profiling overheads)
+
+COST CENTRE       MODULE            SRC                                         %time %alloc
+
+runR              Lang.Final.NoData src/Lang/Final/NoData.hs:64:25-28            15.4   18.7
+rC.\              Lang.Final.NoData src/Lang/Final/NoData.hs:67:20-24             7.6    0.0
+andThen           Lang.Final.NoData src/Lang/Final/NoData.hs:(104,1)-(111,50)     6.7   18.3
+optimize.\        Lang.Final.NoData src/Lang/Final/NoData.hs:79:45-56             6.5    0.0
+andThen.\.\       Lang.Final.NoData src/Lang/Final/NoData.hs:110:21-44            6.1   11.7
+step.\            Lang.Final.NoData src/Lang/Final/NoData.hs:73:33-40             4.3    1.7
+andThen.\         Lang.Final.NoData src/Lang/Final/NoData.hs:(106,5)-(111,50)     3.8   16.7
+lam               Lang.Final.NoData src/Lang/Final/NoData.hs:97:1-53              3.6    1.7
+lam.\             Lang.Final.NoData src/Lang/Final/NoData.hs:97:32-53             3.2    0.0
+stepC             Lang.Final.NoData src/Lang/Final/NoData.hs:70:1-38              3.0    0.0
+output.\          Lang.Final.NoData src/Lang/Final/NoData.hs:(89,3)-(94,27)       2.8    2.1
+andThen_          Lang.Final.NoData src/Lang/Final/NoData.hs:133:1-40             2.8    7.1
+stepAllCnt.loop   Lang.Final.NoData src/Lang/Final/NoData.hs:(149,7)-(154,20)     2.7    6.7
+rC                Lang.Final.NoData src/Lang/Final/NoData.hs:67:1-24              2.6    0.0
+contC.\           Lang.Final.NoData src/Lang/Final/NoData.hs:37:21-25             2.6    0.0
+testLeftInt.\     Lang.Final.NoData src/Lang/Final/NoData.hs:139:44-59            2.1    3.7
+stepC.\           Lang.Final.NoData src/Lang/Final/NoData.hs:70:33-38             2.1    0.0
+MAIN              MAIN              <built-in>                                    1.7    0.0
+step              Lang.Final.NoData src/Lang/Final/NoData.hs:73:1-40              1.7    0.0
+output            Lang.Final.NoData src/Lang/Final/NoData.hs:(88,1)-(94,27)       1.7    2.9
+optC              Lang.Final.NoData src/Lang/Final/NoData.hs:52:1-24              1.6    0.0
+waitInput         Lang.Final.NoData src/Lang/Final/NoData.hs:(82,1)-(85,38)       1.5    0.0
+stepAllCnt.loop.\ Lang.Final.NoData src/Lang/Final/NoData.hs:(151,12)-(153,45)    1.5    0.0
+optimizeC         Lang.Final.NoData src/Lang/Final/NoData.hs:76:1-50              1.5    0.0
+contC             Lang.Final.NoData src/Lang/Final/NoData.hs:37:1-25              1.4    0.0
+optimizeC.\       Lang.Final.NoData src/Lang/Final/NoData.hs:76:41-50             1.3    0.0
+stepAllCnt        Lang.Final.NoData src/Lang/Final/NoData.hs:(147,1)-(155,27)     1.1    1.7
+nop               Lang.Final.NoData src/Lang/Final/NoData.hs:134:1-15             1.1    0.0
+test_leftCnt      Lang.Final.NoData src/Lang/Final/NoData.hs:158:1-51             0.9    3.7
+testLeftInt       Lang.Final.NoData src/Lang/Final/NoData.hs:(137,1)-(139,61)     0.9    3.3
+
+
+                                                                                                                           individual      inherited
+COST CENTRE                           MODULE                SRC                                        no.      entries  %time %alloc   %time %alloc
+
+MAIN                                  MAIN                  <built-in>                                  379           0    1.7    0.0   100.0  100.0
+ CAF                                  GHC.Conc.Signal       <entire-module>                             496           0    0.0    0.0     0.0    0.0
+ CAF                                  GHC.IO.Encoding       <entire-module>                             478           0    0.0    0.0     0.0    0.0
+ CAF                                  GHC.IO.Encoding.Iconv <entire-module>                             476           0    0.0    0.0     0.0    0.0
+ CAF                                  GHC.IO.Handle.FD      <entire-module>                             468           0    0.0    0.0     0.0    0.0
+ CAF                                  GHC.IO.Handle.Text    <entire-module>                             466           0    0.0    0.0     0.0    0.0
+ CAF                                  GHC.Event.Thread      <entire-module>                             420           0    0.0    0.0     0.0    0.0
+ CAF                                  GHC.Event.Poll        <entire-module>                             397           0    0.0    0.0     0.0    0.0
+ CAF:lvl28_r3DG                       Main                  <no location info>                          753           0    0.0    0.0     7.0   12.5
+  main                                Main                  bench/Main.hs:(14,1)-(25,90)                770           0    0.0    0.0     7.0   12.5
+   main.\                             Main                  bench/Main.hs:18:45-84                      771           0    0.0    0.0     7.0   12.5
+    test_leftCnt                      Lang.Final.NoData     src/Lang/Final/NoData.hs:158:1-51           772           0    0.0    0.0     7.0   12.5
+     testLeftInt                      Lang.Final.NoData     src/Lang/Final/NoData.hs:(137,1)-(139,61)   774     1000001    0.9    3.3     7.0   12.5
+      andThen_                        Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40           775     1000000    1.8    4.2     6.1    9.2
+       andThen                        Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)   776     1000000    0.5    3.3     0.5    3.3
+        rC                            Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            777     1000000    0.0    0.0     0.0    0.0
+       lam                            Lang.Final.NoData     src/Lang/Final/NoData.hs:97:1-53            885     1000000    1.6    1.7     3.9    1.7
+        lam.\                         Lang.Final.NoData     src/Lang/Final/NoData.hs:97:32-53           909     1000000    2.3    0.0     2.3    0.0
+         contC                        Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25            910     1000000    0.0    0.0     0.0    0.0
+        rC                            Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            886     1000000    0.0    0.0     0.0    0.0
+ CAF:lvl29_r3DH                       Main                  <no location info>                          754           0    0.0    0.0    90.4   83.7
+  main                                Main                  bench/Main.hs:(14,1)-(25,90)                761           0    0.0    0.0    90.4   83.7
+   main.\                             Main                  bench/Main.hs:18:45-84                      762           0    0.0    0.0    90.4   83.7
+    test_leftCnt                      Lang.Final.NoData     src/Lang/Final/NoData.hs:158:1-51           763           1    0.0    0.0    90.4   83.7
+     stepAllCnt                       Lang.Final.NoData     src/Lang/Final/NoData.hs:(147,1)-(155,27)   764     1000000    1.1    1.7    61.0   51.2
+      stepAllCnt.loop                 Lang.Final.NoData     src/Lang/Final/NoData.hs:(149,7)-(154,20)   766     1999999    2.7    6.7    60.0   49.6
+       step                           Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40            767     5999994    1.4    0.0    57.2   42.9
+        stepC                         Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38            768     6999993    2.3    0.0    55.8   42.9
+         runR                         Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           769     9999989    8.5   10.0    53.5   42.9
+          andThen.\.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:110:21-44         1029      999999    3.3    5.8    12.1   14.2
+           andThen                    Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)  1035      999999    1.5    3.3     6.6    8.3
+            rC                        Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24           1036      999999    0.4    0.0     5.1    5.0
+             rC.\                     Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24          1037      999999    0.7    0.0     4.7    5.0
+              stepC.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1038      999999    0.1    0.0     2.7    5.0
+               step.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1039      999999    0.5    0.8     2.6    5.0
+                andThen.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)  1040      999999    1.1    4.2     2.1    4.2
+                 optimize             Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56           1041      999999    0.1    0.0     0.5    0.0
+                  optimizeC           Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50           1042      999999    0.5    0.0     0.5    0.0
+                 nop                  Lang.Final.NoData     src/Lang/Final/NoData.hs:134:1-15          1052           0    0.5    0.0     0.5    0.0
+                  finish              Lang.Final.NoData     src/Lang/Final/NoData.hs:100:1-38          1053           0    0.0    0.0     0.0    0.0
+              finish.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:100:33-38         1054           0    0.0    0.0     1.3    0.0
+               resC                   Lang.Final.NoData     src/Lang/Final/NoData.hs:40:1-20           1055           0    0.2    0.0     1.3    0.0
+                resC.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:40:18-20          1056      999999    0.9    0.0     1.2    0.0
+                 andThen.\.\          Lang.Final.NoData     src/Lang/Final/NoData.hs:111:16-48         1057      999999    0.3    0.0     0.3    0.0
+           contC                      Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25           1030      999999    0.4    0.0     2.2    0.0
+            contC.\                   Lang.Final.NoData     src/Lang/Final/NoData.hs:37:21-25          1097      999998    1.2    0.0     1.8    0.0
+             stepAllCnt.loop.\        Lang.Final.NoData     src/Lang/Final/NoData.hs:(151,12)-(153,45) 1098      999998    0.6    0.0     0.6    0.0
+          testLeftInt.\               Lang.Final.NoData     src/Lang/Final/NoData.hs:139:44-59         1008      999999    2.1    3.7     7.2    8.7
+           output                     Lang.Final.NoData     src/Lang/Final/NoData.hs:(88,1)-(94,27)    1009      999999    1.7    2.9     5.1    5.0
+            rC                        Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24           1010      999999    0.3    0.0     2.1    0.0
+             rC.\                     Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24          1011      999999    0.2    0.0     1.8    0.0
+              stepC.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1012      999999    0.1    0.0     1.6    0.0
+               step.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1013      999999    0.9    0.0     1.6    0.0
+                output.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:(89,3)-(94,27)    1014      999999    0.7    0.0     0.7    0.0
+            output.\                  Lang.Final.NoData     src/Lang/Final/NoData.hs:(89,3)-(94,27)    1015           0    1.2    2.1     1.2    2.1
+             contC                    Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25           1016      999999    0.0    0.0     0.0    0.0
+          nop                         Lang.Final.NoData     src/Lang/Final/NoData.hs:134:1-15          1043           0    0.6    0.0     5.2    0.0
+           finish                     Lang.Final.NoData     src/Lang/Final/NoData.hs:100:1-38          1044           0    0.5    0.0     4.6    0.0
+            rC                        Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24           1045           0    0.4    0.0     4.0    0.0
+             rC.\                     Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24          1046     1999998    1.1    0.0     3.7    0.0
+              optimizeC.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:76:41-50          1047      999999    0.3    0.0     1.6    0.0
+               optimize.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:79:45-56          1048      999999    1.3    0.0     1.3    0.0
+                noOptC                Lang.Final.NoData     src/Lang/Final/NoData.hs:55:1-14           1049      999999    0.0    0.0     0.0    0.0
+                testLeftInt           Lang.Final.NoData     src/Lang/Final/NoData.hs:(137,1)-(139,61)  1081           0    0.0    0.0     0.0    0.0
+                 andThen_             Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40          1082           0    0.0    0.0     0.0    0.0
+                  lam                 Lang.Final.NoData     src/Lang/Final/NoData.hs:97:1-53           1083           0    0.0    0.0     0.0    0.0
+                   lam.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:97:32-53          1119           0    0.0    0.0     0.0    0.0
+                 contC                Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25           1099           0    0.0    0.0     0.0    0.0
+                  contC.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:37:21-25          1100           0    0.0    0.0     0.0    0.0
+                   andThen_           Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40          1101           0    0.0    0.0     0.0    0.0
+                    optC              Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24           1102           0    0.0    0.0     0.0    0.0
+                     optC.\           Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24          1103           0    0.0    0.0     0.0    0.0
+                      andThen         Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)  1104           0    0.0    0.0     0.0    0.0
+                       stepC.\        Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1105           0    0.0    0.0     0.0    0.0
+                        step.\        Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1106           0    0.0    0.0     0.0    0.0
+                         andThen.\    Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)  1107           0    0.0    0.0     0.0    0.0
+                          andThen.\.\ Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49          1108           0    0.0    0.0     0.0    0.0
+              stepC.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1050      999999    0.5    0.0     0.9    0.0
+               step.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1051      999999    0.4    0.0     0.4    0.0
+          optimizeC.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:76:41-50          1084           0    0.0    0.0     1.6    0.0
+           optimize.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:79:45-56          1085           0    1.6    0.0     1.6    0.0
+            testLeftInt               Lang.Final.NoData     src/Lang/Final/NoData.hs:(137,1)-(139,61)  1086           0    0.0    0.0     0.0    0.0
+             contC                    Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25           1087           0    0.0    0.0     0.0    0.0
+              contC.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:37:21-25          1088           0    0.0    0.0     0.0    0.0
+               andThen_               Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40          1089           0    0.0    0.0     0.0    0.0
+                optC                  Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24           1090           0    0.0    0.0     0.0    0.0
+                 optC.\               Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24          1091           0    0.0    0.0     0.0    0.0
+                  andThen             Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)  1092           0    0.0    0.0     0.0    0.0
+                   andThen.\          Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)  1115           0    0.0    0.0     0.0    0.0
+                    andThen.\.\       Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49          1116           0    0.0    0.0     0.0    0.0
+                   stepC.\            Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1093           0    0.0    0.0     0.0    0.0
+                    step.\            Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1094           0    0.0    0.0     0.0    0.0
+                     andThen.\        Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)  1095           0    0.0    0.0     0.0    0.0
+                      andThen.\.\     Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49          1096           0    0.0    0.0     0.0    0.0
+          testLeftInt                 Lang.Final.NoData     src/Lang/Final/NoData.hs:(137,1)-(139,61)   982           0    0.0    0.0    18.9   10.0
+           andThen_                   Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40          1058           0    0.0    0.0     4.0    5.0
+            lam                       Lang.Final.NoData     src/Lang/Final/NoData.hs:97:1-53           1079           0    0.0    0.0     0.2    0.0
+             lam.\                    Lang.Final.NoData     src/Lang/Final/NoData.hs:97:32-53          1080           0    0.2    0.0     0.2    0.0
+            optC                      Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24           1059           0    0.0    0.0     3.7    5.0
+             optC.\                   Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24          1060           0    0.0    0.0     3.7    5.0
+              andThen                 Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)  1061           0    0.8    0.8     3.7    5.0
+               andThen.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)  1066      999998    0.9    4.2     1.3    4.2
+                optimize              Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56           1067      999998    0.2    0.0     0.5    0.0
+                 optimizeC            Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50           1068      999998    0.3    0.0     0.3    0.0
+               rC                     Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24           1062           0    0.2    0.0     1.6    0.0
+                rC.\                  Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24          1063      999998    1.0    0.0     1.5    0.0
+                 stepC.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1064      999998    0.2    0.0     0.5    0.0
+                  andThen.\.\.\       Lang.Final.NoData     src/Lang/Final/NoData.hs:111:35-48         1065      999998    0.3    0.0     0.3    0.0
+           contC                      Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25            983           0    0.4    0.0     6.1    5.0
+            contC.\                   Lang.Final.NoData     src/Lang/Final/NoData.hs:37:21-25           984      999999    0.3    0.0     5.8    5.0
+             andThen_                 Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40           985           0    0.0    0.0     5.4    5.0
+              optC                    Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24            986           0    0.0    0.0     5.4    5.0
+               optC.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24           987           0    0.0    0.0     5.4    5.0
+                andThen               Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)   988           0    0.7    0.8     5.4    5.0
+                 andThen.\            Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   993      999999    1.2    4.2     2.6    4.2
+                  optimize            Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56            994      999999    0.0    0.0     0.5    0.0
+                   optimizeC          Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50            995      999999    0.5    0.0     0.5    0.0
+                  andThen.\.\         Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49          1117           0    0.0    0.0     0.0    0.0
+                  testLeftInt.\       Lang.Final.NoData     src/Lang/Final/NoData.hs:139:44-59         1017           0    0.0    0.0     0.9    0.0
+                   output             Lang.Final.NoData     src/Lang/Final/NoData.hs:(88,1)-(94,27)    1018           0    0.0    0.0     0.9    0.0
+                    output.\          Lang.Final.NoData     src/Lang/Final/NoData.hs:(89,3)-(94,27)    1024           0    0.4    0.0     0.4    0.0
+                    rC                Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24           1019           0    0.0    0.0     0.5    0.0
+                     rC.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24          1020           0    0.0    0.0     0.5    0.0
+                      stepC.\         Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1021           0    0.0    0.0     0.5    0.0
+                       step.\         Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1022           0    0.0    0.0     0.5    0.0
+                        output.\      Lang.Final.NoData     src/Lang/Final/NoData.hs:(89,3)-(94,27)    1023           0    0.5    0.0     0.5    0.0
+                 rC                   Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            989           0    0.5    0.0     2.2    0.0
+                  rC.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           990      999999    1.2    0.0     1.7    0.0
+                   stepC.\            Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38           991      999999    0.2    0.0     0.5    0.0
+                    step.\            Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40           992      999999    0.4    0.0     0.4    0.0
+                 stepC.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1025           0    0.0    0.0     0.0    0.0
+                  step.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1026           0    0.0    0.0     0.0    0.0
+                   andThen.\          Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)  1027           0    0.0    0.0     0.0    0.0
+                    andThen.\.\       Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49          1028           0    0.0    0.0     0.0    0.0
+           waitInput                  Lang.Final.NoData     src/Lang/Final/NoData.hs:(82,1)-(85,38)     999           0    1.5    0.0     8.8    0.0
+            waitInput.\               Lang.Final.NoData     src/Lang/Final/NoData.hs:(83,3)-(85,38)    1007      999999    0.5    0.0     0.5    0.0
+            rC                        Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24           1000           0    0.4    0.0     6.8    0.0
+             rC.\                     Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24          1001     1999998    1.4    0.0     6.4    0.0
+              optimizeC.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:76:41-50          1002      999999    0.4    0.0     4.1    0.0
+               optimize.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:79:45-56          1003      999999    1.7    0.0     3.7    0.0
+                noOptC                Lang.Final.NoData     src/Lang/Final/NoData.hs:55:1-14           1004      999999    0.0    0.0     0.0    0.0
+                andThen.\.\           Lang.Final.NoData     src/Lang/Final/NoData.hs:110:21-44         1031           0    0.5    0.0     2.0    0.0
+                 contC                Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25           1032           0    0.2    0.0     1.6    0.0
+                  contC.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:37:21-25          1033      999999    0.5    0.0     1.4    0.0
+                   stepAllCnt.loop.\  Lang.Final.NoData     src/Lang/Final/NoData.hs:(151,12)-(153,45) 1034      999999    0.9    0.0     0.9    0.0
+              stepC.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1005      999999    0.5    0.0     0.9    0.0
+               step.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1006      999999    0.3    0.0     0.3    0.0
+       testLeftInt                    Lang.Final.NoData     src/Lang/Final/NoData.hs:(137,1)-(139,61)   954           0    0.0    0.0     0.0    0.0
+        andThen_                      Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40           955           0    0.0    0.0     0.0    0.0
+         andThen                      Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)   956           0    0.0    0.0     0.0    0.0
+          rC                          Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            957           0    0.0    0.0     0.0    0.0
+           rC.\                       Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           958           0    0.0    0.0     0.0    0.0
+            andThen.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   959           0    0.0    0.0     0.0    0.0
+             optimize                 Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56            960           0    0.0    0.0     0.0    0.0
+              optimizeC               Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50            961           0    0.0    0.0     0.0    0.0
+               runR                   Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           962           0    0.0    0.0     0.0    0.0
+                optimizeC.\           Lang.Final.NoData     src/Lang/Final/NoData.hs:76:41-50           963           0    0.0    0.0     0.0    0.0
+                 optimize.\           Lang.Final.NoData     src/Lang/Final/NoData.hs:79:45-56           964           0    0.0    0.0     0.0    0.0
+                  optC                Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24            965           0    0.0    0.0     0.0    0.0
+        contC                         Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25            966           0    0.0    0.0     0.0    0.0
+         contC.\                      Lang.Final.NoData     src/Lang/Final/NoData.hs:37:21-25           967           1    0.0    0.0     0.0    0.0
+          stepAllCnt.loop.\           Lang.Final.NoData     src/Lang/Final/NoData.hs:(151,12)-(153,45)  980           1    0.0    0.0     0.0    0.0
+          andThen_                    Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40           968           0    0.0    0.0     0.0    0.0
+           optC                       Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24            969           0    0.0    0.0     0.0    0.0
+            optC.\                    Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24           970           0    0.0    0.0     0.0    0.0
+             andThen                  Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)   971           0    0.0    0.0     0.0    0.0
+              stepC.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38           972           0    0.0    0.0     0.0    0.0
+               step.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40           973           0    0.0    0.0     0.0    0.0
+                andThen.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   974           0    0.0    0.0     0.0    0.0
+                 andThen.\.\          Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49           975           0    0.0    0.0     0.0    0.0
+                  step                Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40            976           0    0.0    0.0     0.0    0.0
+                   stepC              Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38            977           0    0.0    0.0     0.0    0.0
+                    runR              Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           978           0    0.0    0.0     0.0    0.0
+                     andThen.\.\      Lang.Final.NoData     src/Lang/Final/NoData.hs:110:21-44          979           0    0.0    0.0     0.0    0.0
+     testLeftInt                      Lang.Final.NoData     src/Lang/Final/NoData.hs:(137,1)-(139,61)   778           0    0.1    0.0    29.3   32.5
+      contC                           Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25            914      999999    0.5    0.0     4.0    9.2
+       contC.\                        Lang.Final.NoData     src/Lang/Final/NoData.hs:37:21-25           915     1000001    0.5    0.0     3.5    9.2
+        stepAllCnt                    Lang.Final.NoData     src/Lang/Final/NoData.hs:(147,1)-(155,27)  1120           1    0.0    0.0     0.0    0.0
+         stepAllCnt.loop              Lang.Final.NoData     src/Lang/Final/NoData.hs:(149,7)-(154,20)  1121           2    0.0    0.0     0.0    0.0
+          step                        Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40           1123           2    0.0    0.0     0.0    0.0
+           stepC                      Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38           1124           2    0.0    0.0     0.0    0.0
+            runR                      Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28          1125           2    0.0    0.0     0.0    0.0
+             nop                      Lang.Final.NoData     src/Lang/Final/NoData.hs:134:1-15          1164           0    0.0    0.0     0.0    0.0
+              finish                  Lang.Final.NoData     src/Lang/Final/NoData.hs:100:1-38          1165           0    0.0    0.0     0.0    0.0
+               rC                     Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24           1166           0    0.0    0.0     0.0    0.0
+                rC.\                  Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24          1167           1    0.0    0.0     0.0    0.0
+                 stepC.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1168           1    0.0    0.0     0.0    0.0
+                  step.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1169           1    0.0    0.0     0.0    0.0
+                 finish.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:100:33-38         1170           0    0.0    0.0     0.0    0.0
+                  resC                Lang.Final.NoData     src/Lang/Final/NoData.hs:40:1-20           1171           0    0.0    0.0     0.0    0.0
+                   resC.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:40:18-20          1172           1    0.0    0.0     0.0    0.0
+                    stepAllCnt.loop.\ Lang.Final.NoData     src/Lang/Final/NoData.hs:154:17-19         1173           1    0.0    0.0     0.0    0.0
+          stepAllCnt.loop.\           Lang.Final.NoData     src/Lang/Final/NoData.hs:(151,12)-(153,45) 1122           2    0.0    0.0     0.0    0.0
+          waitInput                   Lang.Final.NoData     src/Lang/Final/NoData.hs:(82,1)-(85,38)    1151           0    0.0    0.0     0.0    0.0
+           waitInput.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:(83,3)-(85,38)    1152           0    0.0    0.0     0.0    0.0
+            step                      Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40           1153           0    0.0    0.0     0.0    0.0
+             stepC                    Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38           1154           0    0.0    0.0     0.0    0.0
+              runR                    Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28          1155           0    0.0    0.0     0.0    0.0
+               testLeftInt.\          Lang.Final.NoData     src/Lang/Final/NoData.hs:139:44-59         1156           0    0.0    0.0     0.0    0.0
+                output                Lang.Final.NoData     src/Lang/Final/NoData.hs:(88,1)-(94,27)    1157           0    0.0    0.0     0.0    0.0
+                 output.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:(89,3)-(94,27)    1163           0    0.0    0.0     0.0    0.0
+                 rC                   Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24           1158           0    0.0    0.0     0.0    0.0
+                  rC.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24          1159           0    0.0    0.0     0.0    0.0
+                   stepC.\            Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1160           0    0.0    0.0     0.0    0.0
+                    step.\            Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1161           0    0.0    0.0     0.0    0.0
+                     output.\         Lang.Final.NoData     src/Lang/Final/NoData.hs:(89,3)-(94,27)    1162           0    0.0    0.0     0.0    0.0
+        andThen_                      Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40           916           0    0.0    0.0     3.0    9.2
+         optC                         Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24            917           0    0.0    0.0     3.0    9.2
+          optC.\                      Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24           918           0    0.0    0.0     3.0    9.2
+           andThen                    Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)   919      999999    0.4    3.3     3.0    9.2
+            rC                        Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            981      999999    0.0    0.0     0.0    0.0
+            andThen.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)  1109           0    0.0    0.0     0.0    0.0
+             andThen.\.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49          1110           0    0.0    0.0     0.0    0.0
+              step                    Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40           1111           0    0.0    0.0     0.0    0.0
+               stepC                  Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38           1112           0    0.0    0.0     0.0    0.0
+                runR                  Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28          1113           0    0.0    0.0     0.0    0.0
+                 andThen.\.\          Lang.Final.NoData     src/Lang/Final/NoData.hs:110:21-44         1114           1    0.0    0.0     0.0    0.0
+            stepC.\                   Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38           920           0    0.0    0.0     2.6    5.8
+             step.\                   Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40           921           0    0.0    0.0     2.6    5.8
+              andThen.\               Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   922           0    0.0    0.0     2.6    5.8
+               andThen.\.\            Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49           923           0    0.0    0.0     2.6    5.8
+                step                  Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40            924           0    0.0    0.0     2.6    5.8
+                 stepC                Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38            925           0    0.0    0.0     2.6    5.8
+                  runR                Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           926           0    0.3    0.0     2.6    5.8
+                   andThen.\.\        Lang.Final.NoData     src/Lang/Final/NoData.hs:110:21-44          927      999998    2.3    5.8     2.3    5.8
+      andThen_                        Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40           779           0    1.0    2.9    25.3   23.3
+       optC                           Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24            800      999999    0.2    0.0    11.8   20.4
+        optC.\                        Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24           803           0    0.5    0.0    11.6   20.4
+         andThen                      Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)   804     1999998    2.8    6.7    11.0   20.4
+          rC                          Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            810     1999998    0.0    0.0     0.0    0.0
+          stepC.\                     Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38           813     1000001    0.2    0.0     8.2   13.7
+           step.\                     Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40           814     1000000    0.9    0.8     8.1   13.7
+            andThen.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   815      999999    0.7    4.2     7.2   12.9
+             optimize                 Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56            816      999999    0.4    0.0     1.3    1.2
+              optimizeC               Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50            817      999999    0.2    0.0     0.9    1.2
+               runR                   Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           818      999999    0.8    1.2     0.8    1.2
+             andThen.\.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49           831      999998    0.4    0.0     5.1    7.5
+              step                    Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40            832      999998    0.3    0.0     4.7    7.5
+               stepC                  Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38            833      999998    0.6    0.0     4.4    7.5
+                runR                  Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           834      999998    3.6    7.5     3.8    7.5
+                 rC                   Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            835           0    0.1    0.0     0.2    0.0
+                  rC.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           836      999998    0.2    0.0     0.2    0.0
+             step                     Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40            857           1    0.0    0.0     0.0    0.0
+              stepC                   Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38            858           1    0.0    0.0     0.0    0.0
+               runR                   Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           859           1    0.0    0.0     0.0    0.0
+                nop                   Lang.Final.NoData     src/Lang/Final/NoData.hs:134:1-15           860           0    0.0    0.0     0.0    0.0
+                 finish               Lang.Final.NoData     src/Lang/Final/NoData.hs:100:1-38           861           0    0.0    0.0     0.0    0.0
+                  rC                  Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            862           0    0.0    0.0     0.0    0.0
+                   rC.\               Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           863           1    0.0    0.0     0.0    0.0
+             nop                      Lang.Final.NoData     src/Lang/Final/NoData.hs:134:1-15           868           0    0.0    0.0     0.0    0.0
+              finish                  Lang.Final.NoData     src/Lang/Final/NoData.hs:100:1-38           869           0    0.0    0.0     0.0    0.0
+               rC                     Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            870           0    0.0    0.0     0.0    0.0
+                rC.\                  Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           871           1    0.0    0.0     0.0    0.0
+                 finish.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:100:33-38          872           0    0.0    0.0     0.0    0.0
+                  resC                Lang.Final.NoData     src/Lang/Final/NoData.hs:40:1-20            873           0    0.0    0.0     0.0    0.0
+                   resC.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:40:18-20           874           1    0.0    0.0     0.0    0.0
+                    andThen.\.\       Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49           875           0    0.0    0.0     0.0    0.0
+                     step             Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40            876           0    0.0    0.0     0.0    0.0
+                      stepC           Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38            877           1    0.0    0.0     0.0    0.0
+                       runR           Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           878           1    0.0    0.0     0.0    0.0
+                        andThen.\.\   Lang.Final.NoData     src/Lang/Final/NoData.hs:111:16-48          879           1    0.0    0.0     0.0    0.0
+           andThen.\.\.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:111:35-48          880           1    0.0    0.0     0.0    0.0
+            andThen.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   881           1    0.0    0.0     0.0    0.0
+             optimize                 Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56            882           1    0.0    0.0     0.0    0.0
+              optimizeC               Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50            883           1    0.0    0.0     0.0    0.0
+               runR                   Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           884           1    0.0    0.0     0.0    0.0
+             step                     Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40            902           1    0.0    0.0     0.0    0.0
+              stepC                   Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38            903           1    0.0    0.0     0.0    0.0
+               runR                   Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           904           1    0.0    0.0     0.0    0.0
+             lam                      Lang.Final.NoData     src/Lang/Final/NoData.hs:97:1-53            912           0    0.0    0.0     0.0    0.0
+              lam.\                   Lang.Final.NoData     src/Lang/Final/NoData.hs:97:32-53           913           0    0.0    0.0     0.0    0.0
+          andThen.\                   Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   805           0    0.0    0.0     0.0    0.0
+           andThen.\.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:108:9-49           806           1    0.0    0.0     0.0    0.0
+            step                      Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40            807           1    0.0    0.0     0.0    0.0
+             stepC                    Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38            808           1    0.0    0.0     0.0    0.0
+              runR                    Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           809           1    0.0    0.0     0.0    0.0
+               rC                     Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            811           0    0.0    0.0     0.0    0.0
+                rC.\                  Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           812           1    0.0    0.0     0.0    0.0
+       andThen                        Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)   780           0    0.1    0.0     3.8    0.0
+        andThen.\                     Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   790           1    0.0    0.0     0.0    0.0
+         optimize                     Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56            791           1    0.0    0.0     0.0    0.0
+          optimizeC                   Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50            792           1    0.0    0.0     0.0    0.0
+           runR                       Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           793           1    0.0    0.0     0.0    0.0
+        rC                            Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            781           0    0.2    0.0     0.8    0.0
+         rC.\                         Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           782     1000000    0.6    0.0     0.6    0.0
+          andThen.\                   Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   794           0    0.0    0.0     0.0    0.0
+           optimize                   Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56            795           0    0.0    0.0     0.0    0.0
+            optimizeC                 Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50            796           0    0.0    0.0     0.0    0.0
+             runR                     Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           797           0    0.0    0.0     0.0    0.0
+              optimizeC.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:76:41-50           798           1    0.0    0.0     0.0    0.0
+               optimize.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:79:45-56           799           1    0.0    0.0     0.0    0.0
+                optC                  Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24            801           0    0.0    0.0     0.0    0.0
+                 optC.\               Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24           802           1    0.0    0.0     0.0    0.0
+                 stepC.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38           952           0    0.0    0.0     0.0    0.0
+                  step.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40           953           0    0.0    0.0     0.0    0.0
+          optC                        Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24            819           0    0.0    0.0     0.0    0.0
+           optC.\                     Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24           820           0    0.0    0.0     0.0    0.0
+          stepAllCnt                  Lang.Final.NoData     src/Lang/Final/NoData.hs:(147,1)-(155,27)   783           0    0.0    0.0     0.0    0.0
+           stepAllCnt.loop            Lang.Final.NoData     src/Lang/Final/NoData.hs:(149,7)-(154,20)   784           0    0.0    0.0     0.0    0.0
+            step                      Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40            785           0    0.0    0.0     0.0    0.0
+             stepC                    Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38            786           0    0.0    0.0     0.0    0.0
+              runR                    Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           787           0    0.0    0.0     0.0    0.0
+               stepC.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38           788           1    0.0    0.0     0.0    0.0
+                step.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40           789           1    0.0    0.0     0.0    0.0
+        stepC.\                       Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38           821           0    0.0    0.0     3.0    0.0
+         step.\                       Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40           822           0    0.0    0.0     3.0    0.0
+          andThen.\                   Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   823           0    0.0    0.0     3.0    0.0
+           optimize                   Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56            824           0    0.0    0.0     3.0    0.0
+            optimizeC                 Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50            825           0    0.0    0.0     3.0    0.0
+             runR                     Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           826           0    0.5    0.0     3.0    0.0
+              optimizeC.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:76:41-50           827      999998    0.4    0.0     2.4    0.0
+               optimize.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:79:45-56           828      999998    0.6    0.0     2.0    0.0
+                optC                  Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24            829           0    1.4    0.0     1.4    0.0
+                 optC.\               Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24           830      999998    0.0    0.0     0.0    0.0
+                 andThen.\.\.\        Lang.Final.NoData     src/Lang/Final/NoData.hs:111:35-48          951           0    0.0    0.0     0.0    0.0
+                 nop                  Lang.Final.NoData     src/Lang/Final/NoData.hs:134:1-15           940           0    0.0    0.0     0.0    0.0
+                  finish              Lang.Final.NoData     src/Lang/Final/NoData.hs:100:1-38           941           0    0.0    0.0     0.0    0.0
+                   rC                 Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            942           0    0.0    0.0     0.0    0.0
+                    rC.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           943           0    0.0    0.0     0.0    0.0
+       lam                            Lang.Final.NoData     src/Lang/Final/NoData.hs:97:1-53            887           0    1.9    0.0     8.6    0.0
+        lam.\                         Lang.Final.NoData     src/Lang/Final/NoData.hs:97:32-53           911           0    0.7    0.0     0.7    0.0
+        rC                            Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            888           0    0.3    0.0     6.0    0.0
+         rC.\                         Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           889     1999999    1.3    0.0     5.7    0.0
+          optC                        Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24            890           0    0.0    0.0     0.0    0.0
+           optC.\                     Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24           891           0    0.0    0.0     0.0    0.0
+            andThen                   Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)   892           0    0.0    0.0     0.0    0.0
+             stepC.\                  Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38           893           1    0.0    0.0     0.0    0.0
+              step.\                  Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40           908           1    0.0    0.0     0.0    0.0
+              andThen.\.\.\           Lang.Final.NoData     src/Lang/Final/NoData.hs:111:35-48          894           0    0.0    0.0     0.0    0.0
+               andThen.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   895           0    0.0    0.0     0.0    0.0
+                optimize              Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56            896           0    0.0    0.0     0.0    0.0
+                 optimizeC            Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50            897           0    0.0    0.0     0.0    0.0
+                  runR                Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           898           0    0.0    0.0     0.0    0.0
+                   optimizeC.\        Lang.Final.NoData     src/Lang/Final/NoData.hs:76:41-50           899           1    0.0    0.0     0.0    0.0
+                    optimize.\        Lang.Final.NoData     src/Lang/Final/NoData.hs:79:45-56           900           1    0.0    0.0     0.0    0.0
+                     noOptC           Lang.Final.NoData     src/Lang/Final/NoData.hs:55:1-14            901           1    0.0    0.0     0.0    0.0
+                step                  Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40            905           0    0.0    0.0     0.0    0.0
+                 stepC                Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38            906           0    0.0    0.0     0.0    0.0
+                  runR                Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           907           0    0.0    0.0     0.0    0.0
+          stepAllCnt                  Lang.Final.NoData     src/Lang/Final/NoData.hs:(147,1)-(155,27)  1069           0    0.0    0.0     4.4    0.0
+           stepAllCnt.loop            Lang.Final.NoData     src/Lang/Final/NoData.hs:(149,7)-(154,20)  1070           0    0.0    0.0     4.4    0.0
+            step                      Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40           1071           0    0.0    0.0     4.4    0.0
+             stepC                    Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38           1072           0    0.0    0.0     4.4    0.0
+              runR                    Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28          1073           0    1.7    0.0     4.4    0.0
+               stepC.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1077      999999    0.4    0.0     1.2    0.0
+                step.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1078      999998    0.9    0.0     0.9    0.0
+                andThen.\.\.\         Lang.Final.NoData     src/Lang/Final/NoData.hs:111:35-48         1118           1    0.0    0.0     0.0    0.0
+               optimizeC.\            Lang.Final.NoData     src/Lang/Final/NoData.hs:76:41-50          1074      999998    0.2    0.0     1.4    0.0
+                optimize.\            Lang.Final.NoData     src/Lang/Final/NoData.hs:79:45-56          1075      999998    1.2    0.0     1.2    0.0
+                 noOptC               Lang.Final.NoData     src/Lang/Final/NoData.hs:55:1-14           1076      999998    0.0    0.0     0.0    0.0
+      nop                             Lang.Final.NoData     src/Lang/Final/NoData.hs:134:1-15           840           0    0.0    0.0     0.0    0.0
+       finish                         Lang.Final.NoData     src/Lang/Final/NoData.hs:100:1-38           841           0    0.0    0.0     0.0    0.0
+        rC                            Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            842           0    0.0    0.0     0.0    0.0
+         rC.\                         Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           843           1    0.0    0.0     0.0    0.0
+          andThen_                    Lang.Final.NoData     src/Lang/Final/NoData.hs:133:1-40           844           0    0.0    0.0     0.0    0.0
+           lam                        Lang.Final.NoData     src/Lang/Final/NoData.hs:97:1-53            928           0    0.0    0.0     0.0    0.0
+           optC                       Lang.Final.NoData     src/Lang/Final/NoData.hs:52:1-24            845           0    0.0    0.0     0.0    0.0
+            optC.\                    Lang.Final.NoData     src/Lang/Final/NoData.hs:52:20-24           846           0    0.0    0.0     0.0    0.0
+             andThen                  Lang.Final.NoData     src/Lang/Final/NoData.hs:(104,1)-(111,50)   847           0    0.0    0.0     0.0    0.0
+              stepC.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38           848           0    0.0    0.0     0.0    0.0
+               step.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40           849           0    0.0    0.0     0.0    0.0
+                andThen.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:(106,5)-(111,50)   850           0    0.0    0.0     0.0    0.0
+                 optimize             Lang.Final.NoData     src/Lang/Final/NoData.hs:79:1-56            851           0    0.0    0.0     0.0    0.0
+                  optimizeC           Lang.Final.NoData     src/Lang/Final/NoData.hs:76:1-50            852           0    0.0    0.0     0.0    0.0
+                   runR               Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28           853           0    0.0    0.0     0.0    0.0
+                    optimizeC.\       Lang.Final.NoData     src/Lang/Final/NoData.hs:76:41-50           854           1    0.0    0.0     0.0    0.0
+                     optimize.\       Lang.Final.NoData     src/Lang/Final/NoData.hs:79:45-56           855           1    0.0    0.0     0.0    0.0
+                      noOptC          Lang.Final.NoData     src/Lang/Final/NoData.hs:55:1-14            856           1    0.0    0.0     0.0    0.0
+      waitInput                       Lang.Final.NoData     src/Lang/Final/NoData.hs:(82,1)-(85,38)    1126           0    0.0    0.0     0.0    0.0
+       waitInput.\                    Lang.Final.NoData     src/Lang/Final/NoData.hs:(83,3)-(85,38)    1138           1    0.0    0.0     0.0    0.0
+        step                          Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40           1139           1    0.0    0.0     0.0    0.0
+         stepC                        Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38           1140           1    0.0    0.0     0.0    0.0
+          runR                        Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28          1141           1    0.0    0.0     0.0    0.0
+           testLeftInt.\              Lang.Final.NoData     src/Lang/Final/NoData.hs:139:44-59         1142           1    0.0    0.0     0.0    0.0
+            output                    Lang.Final.NoData     src/Lang/Final/NoData.hs:(88,1)-(94,27)    1143           1    0.0    0.0     0.0    0.0
+             rC                       Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24           1144           1    0.0    0.0     0.0    0.0
+              rC.\                    Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24          1145           1    0.0    0.0     0.0    0.0
+               stepC.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1146           1    0.0    0.0     0.0    0.0
+                step.\                Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1147           1    0.0    0.0     0.0    0.0
+                 output.\             Lang.Final.NoData     src/Lang/Final/NoData.hs:(89,3)-(94,27)    1148           1    0.0    0.0     0.0    0.0
+             output.\                 Lang.Final.NoData     src/Lang/Final/NoData.hs:(89,3)-(94,27)    1149           0    0.0    0.0     0.0    0.0
+              contC                   Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25           1150           1    0.0    0.0     0.0    0.0
+       rC                             Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24           1127           0    0.0    0.0     0.0    0.0
+        rC.\                          Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24          1128           1    0.0    0.0     0.0    0.0
+         contC                        Lang.Final.NoData     src/Lang/Final/NoData.hs:37:1-25           1129           0    0.0    0.0     0.0    0.0
+          contC.\                     Lang.Final.NoData     src/Lang/Final/NoData.hs:37:21-25          1130           0    0.0    0.0     0.0    0.0
+           stepAllCnt                 Lang.Final.NoData     src/Lang/Final/NoData.hs:(147,1)-(155,27)  1131           0    0.0    0.0     0.0    0.0
+            stepAllCnt.loop           Lang.Final.NoData     src/Lang/Final/NoData.hs:(149,7)-(154,20)  1132           0    0.0    0.0     0.0    0.0
+             step                     Lang.Final.NoData     src/Lang/Final/NoData.hs:73:1-40           1133           0    0.0    0.0     0.0    0.0
+              stepC                   Lang.Final.NoData     src/Lang/Final/NoData.hs:70:1-38           1134           0    0.0    0.0     0.0    0.0
+               runR                   Lang.Final.NoData     src/Lang/Final/NoData.hs:64:25-28          1135           0    0.0    0.0     0.0    0.0
+                stepC.\               Lang.Final.NoData     src/Lang/Final/NoData.hs:70:33-38          1136           1    0.0    0.0     0.0    0.0
+                 step.\               Lang.Final.NoData     src/Lang/Final/NoData.hs:73:33-40          1137           1    0.0    0.0     0.0    0.0
+ CAF:lvl5_r5QQ                        Lang.Final.NoData     <no location info>                          695           0    0.0    0.0     0.0    0.0
+  testLeftInt                         Lang.Final.NoData     src/Lang/Final/NoData.hs:(137,1)-(139,61)   996           0    0.0    0.0     0.0    0.0
+   waitInput                          Lang.Final.NoData     src/Lang/Final/NoData.hs:(82,1)-(85,38)     997           1    0.0    0.0     0.0    0.0
+    rC                                Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            998           1    0.0    0.0     0.0    0.0
+ CAF:main1                            Main                  <no location info>                          756           0    0.0    0.0     0.0    0.0
+  main                                Main                  bench/Main.hs:(14,1)-(25,90)                758           1    0.0    0.0     0.0    0.0
+ CAF:n_rJv                            Main                  bench/Main.hs:11:1                          734           0    0.0    0.0     0.0    0.0
+  n                                   Main                  bench/Main.hs:11:1-13                       773           1    0.0    0.0     0.0    0.0
+ CAF:nop1                             Lang.Final.NoData     <no location info>                          689           0    0.0    0.0     0.0    0.0
+  nop                                 Lang.Final.NoData     src/Lang/Final/NoData.hs:134:1-15           837           1    0.0    0.0     0.0    0.0
+   finish                             Lang.Final.NoData     src/Lang/Final/NoData.hs:100:1-38           838           1    0.0    0.0     0.0    0.0
+    rC                                Lang.Final.NoData     src/Lang/Final/NoData.hs:67:1-24            839           1    0.0    0.0     0.0    0.0
+     rC.\                             Lang.Final.NoData     src/Lang/Final/NoData.hs:67:20-24           865           0    0.0    0.0     0.0    0.0
+      finish.\                        Lang.Final.NoData     src/Lang/Final/NoData.hs:100:33-38          866           1    0.0    0.0     0.0    0.0
+       resC                           Lang.Final.NoData     src/Lang/Final/NoData.hs:40:1-20            867           1    0.0    0.0     0.0    0.0
+ CAF:test_leftCnt1                    Lang.Final.NoData     <no location info>                          696           0    0.0    0.0     0.9    3.7
+  test_leftCnt                        Lang.Final.NoData     src/Lang/Final/NoData.hs:158:1-51           765           0    0.9    3.7     0.9    3.7
+ main                                 Main                  bench/Main.hs:(14,1)-(25,90)                759           0    0.0    0.0     0.0    0.0
+  main.\                              Main                  bench/Main.hs:18:45-84                      760           1    0.0    0.0     0.0    0.0

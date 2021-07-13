@@ -1,0 +1,57 @@
+	Mon Jul 12 16:31 2021 Time and Allocation Profiling Report  (Final)
+
+	   tshsh-bench +RTS -N -p -RTS tshsh:tshsh-bench Lang.Initial.Zipper.test_rightCnt
+
+	total time  =        0.05 secs   (180 ticks @ 1000 us, 12 processors)
+	total alloc = 352,254,360 bytes  (excludes profiling overheads)
+
+COST CENTRE     MODULE              SRC                                          %time %alloc
+
+step            Lang.Initial.Zipper src/Lang/Initial/Zipper.hs:(76,1)-(91,43)     45.6   36.3
+stepAllCnt.loop Lang.Initial.Zipper src/Lang/Initial/Zipper.hs:(112,7)-(118,22)   19.4    0.0
+testRightInt    Lang.Initial.Zipper src/Lang/Initial/Zipper.hs:(133,1)-(135,46)   12.8   22.7
+test_rightCnt   Lang.Initial.Zipper src/Lang/Initial/Zipper.hs:141:1-53            7.8   20.4
+stepAllCnt      Lang.Initial.Zipper src/Lang/Initial/Zipper.hs:(110,1)-(119,26)    7.2    9.1
+testRightInt.\  Lang.Initial.Zipper src/Lang/Initial/Zipper.hs:134:45-60           6.7   11.4
+
+
+                                                                                                             individual      inherited
+COST CENTRE             MODULE                SRC                                         no.     entries  %time %alloc   %time %alloc
+
+MAIN                    MAIN                  <built-in>                                  379           0    0.6    0.1   100.0  100.0
+ CAF                    GHC.Conc.Signal       <entire-module>                             496           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.IO.Encoding       <entire-module>                             478           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.IO.Encoding.Iconv <entire-module>                             476           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.IO.Handle.FD      <entire-module>                             468           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.IO.Handle.Text    <entire-module>                             466           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.Event.Thread      <entire-module>                             420           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.Event.Poll        <entire-module>                             397           0    0.0    0.0     0.0    0.0
+ CAF:lvl1_r3Df          Main                  <no location info>                          735           0    0.0    0.0     8.3   22.7
+  main                  Main                  bench/Main.hs:(14,1)-(25,90)                768           0    0.0    0.0     8.3   22.7
+   main.\               Main                  bench/Main.hs:23:48-90                      769           0    0.0    0.0     8.3   22.7
+    test_rightCnt       Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:141:1-53         770           0    0.0    0.0     8.3   22.7
+     testRightInt       Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:(133,1)-(135,46) 772     1000001    8.3   22.7     8.3   22.7
+      andThen_          Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:125:1-40         773     1000000    0.0    0.0     0.0    0.0
+ CAF:lvl26_r7py         Lang.Initial.Zipper   <no location info>                          636           0    0.0    0.0     0.0    0.0
+  testRightInt          Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:(133,1)-(135,46) 774           0    0.0    0.0     0.0    0.0
+   andThen_             Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:125:1-40         775           0    0.0    0.0     0.0    0.0
+ CAF:lvl2_r3Dg          Main                  <no location info>                          736           0    0.0    0.0    83.3   56.8
+  main                  Main                  bench/Main.hs:(14,1)-(25,90)                761           0    0.0    0.0    83.3   56.8
+   main.\               Main                  bench/Main.hs:23:48-90                      762           0    0.0    0.0    83.3   56.8
+    test_rightCnt       Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:141:1-53         763           1    0.0    0.0    83.3   56.8
+     stepAllCnt         Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:(110,1)-(119,26) 764     1000001    7.2    9.1    81.7   56.8
+      stepAllCnt.loop   Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:(112,7)-(118,22) 766     2000001   19.4    0.0    74.4   47.7
+       step             Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:(76,1)-(91,43)   767     6000001   45.6   36.3    55.0   47.7
+        testRightInt    Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:(133,1)-(135,46) 777           0    2.8    0.0     9.4   11.4
+         testRightInt.\ Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:134:45-60        778     1000000    6.7   11.4     6.7   11.4
+     testRightInt       Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:(133,1)-(135,46) 780           0    1.7    0.0     1.7    0.0
+ CAF:main1              Main                  <no location info>                          756           0    0.0    0.0     0.0    0.0
+  main                  Main                  bench/Main.hs:(14,1)-(25,90)                758           1    0.0    0.0     0.0    0.0
+ CAF:n_rJv              Main                  bench/Main.hs:11:1                          734           0    0.0    0.0     0.0    0.0
+  n                     Main                  bench/Main.hs:11:1-13                       771           1    0.0    0.0     0.0    0.0
+ CAF:nop                Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:122:1-3          624           0    0.0    0.0     0.0    0.0
+  nop                   Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:122:1-15         779           1    0.0    0.0     0.0    0.0
+ CAF:test_rightCnt1     Lang.Initial.Zipper   <no location info>                          637           0    0.0    0.0     7.8   20.4
+  test_rightCnt         Lang.Initial.Zipper   src/Lang/Initial/Zipper.hs:141:1-53         765           0    7.8   20.4     7.8   20.4
+ main                   Main                  bench/Main.hs:(14,1)-(25,90)                759           0    0.0    0.0     0.0    0.0
+  main.\                Main                  bench/Main.hs:23:48-90                      760           1    0.0    0.0     0.0    0.0

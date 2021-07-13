@@ -1,0 +1,91 @@
+	Mon Jul 12 16:31 2021 Time and Allocation Profiling Report  (Final)
+
+	   tshsh-bench +RTS -N -p -RTS tshsh:tshsh-bench Lang.Final.Zipper.test_rightCnt
+
+	total time  =        0.10 secs   (334 ticks @ 1000 us, 12 processors)
+	total alloc = 632,253,152 bytes  (excludes profiling overheads)
+
+COST CENTRE     MODULE            SRC                                        %time %alloc
+
+step            Lang.Final.Zipper src/Lang/Final/Zipper.hs:40:22-25           24.0    0.0
+andThen.\       Lang.Final.Zipper src/Lang/Final/Zipper.hs:(67,5)-(73,49)     19.5   25.3
+testRightInt.\  Lang.Final.Zipper src/Lang/Final/Zipper.hs:105:45-60           8.7   16.4
+andThen_        Lang.Final.Zipper src/Lang/Final/Zipper.hs:95:1-40             8.7   24.0
+stepAllCnt.loop Lang.Final.Zipper src/Lang/Final/Zipper.hs:(111,7)-(114,21)    7.2    0.0
+output.\        Lang.Final.Zipper src/Lang/Final/Zipper.hs:(51,3)-(56,27)      6.3    6.3
+testRightInt    Lang.Final.Zipper src/Lang/Final/Zipper.hs:(104,1)-(106,46)    4.2    7.6
+lam             Lang.Final.Zipper src/Lang/Final/Zipper.hs:59:1-50             4.2    0.0
+lam.\           Lang.Final.Zipper src/Lang/Final/Zipper.hs:59:30-50            3.3    3.8
+waitInput.\     Lang.Final.Zipper src/Lang/Final/Zipper.hs:(45,3)-(47,38)      3.0    0.0
+test_rightCnt   Lang.Final.Zipper src/Lang/Final/Zipper.hs:122:1-53            2.4   11.4
+stepAllCnt      Lang.Final.Zipper src/Lang/Final/Zipper.hs:(109,1)-(115,27)    2.4    5.1
+waitInput       Lang.Final.Zipper src/Lang/Final/Zipper.hs:(44,1)-(47,38)      2.1    0.0
+output          Lang.Final.Zipper src/Lang/Final/Zipper.hs:(50,1)-(56,27)      1.8    0.0
+andThen         Lang.Final.Zipper src/Lang/Final/Zipper.hs:(65,1)-(73,49)      1.8    0.0
+
+
+                                                                                                           individual      inherited
+COST CENTRE             MODULE                SRC                                       no.     entries  %time %alloc   %time %alloc
+
+MAIN                    MAIN                  <built-in>                                379           0    0.6    0.0   100.0  100.0
+ CAF                    GHC.Conc.Signal       <entire-module>                           496           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.IO.Encoding       <entire-module>                           478           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.IO.Encoding.Iconv <entire-module>                           476           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.IO.Handle.FD      <entire-module>                           468           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.IO.Handle.Text    <entire-module>                           466           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.Event.Thread      <entire-module>                           420           0    0.0    0.0     0.0    0.0
+ CAF                    GHC.Event.Poll        <entire-module>                           397           0    0.0    0.0     0.0    0.0
+ CAF:a_r60W             Lang.Final.Zipper     src/Lang/Final/Zipper.hs:95:10            660           0    0.0    0.0     0.0    0.0
+  testRightInt          Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(104,1)-(106,46) 772           0    0.0    0.0     0.0    0.0
+   waitInput            Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(44,1)-(47,38)   773           1    0.0    0.0     0.0    0.0
+ CAF:lvl13_r3Dr         Main                  <no location info>                        743           0    0.0    0.0    15.6   35.4
+  main                  Main                  bench/Main.hs:(14,1)-(25,90)              766           0    0.0    0.0    15.6   35.4
+   main.\               Main                  bench/Main.hs:21:46-86                    767           0    0.0    0.0    15.6   35.4
+    test_rightCnt       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:122:1-53         768           0    0.0    0.0    15.6   35.4
+     testRightInt       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(104,1)-(106,46) 770     1000001    3.6    7.6    15.6   35.4
+      andThen_          Lang.Final.Zipper     src/Lang/Final/Zipper.hs:95:1-40          771     1000000    6.9   24.0    12.0   27.8
+       andThen          Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(65,1)-(73,49)   775     1000000    0.0    0.0     0.0    0.0
+       lam              Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:1-50          774     1000000    1.8    0.0     5.1    3.8
+        lam.\           Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:30-50         803           0    3.3    3.8     3.3    3.8
+ CAF:lvl14_r3Ds         Main                  <no location info>                        744           0    0.0    0.0    81.4   53.1
+  main                  Main                  bench/Main.hs:(14,1)-(25,90)              761           0    0.0    0.0    81.4   53.1
+   main.\               Main                  bench/Main.hs:21:46-86                    762           0    0.0    0.0    81.4   53.1
+    test_rightCnt       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:122:1-53         763           1    0.0    0.0    81.4   53.1
+     stepAllCnt         Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(109,1)-(115,27) 764     1000001    2.4    5.1    36.2    5.1
+      stepAllCnt.loop   Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(111,7)-(114,21) 776     2000001    7.2    0.0    33.8    0.0
+       step             Lang.Final.Zipper     src/Lang/Final/Zipper.hs:40:22-25         777     4000001   16.2    0.0    26.6    0.0
+        testRightInt    Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(104,1)-(106,46) 795           0    0.0    0.0    10.5    0.0
+         andThen_       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:95:1-40          796           0    0.0    0.0    10.5    0.0
+          andThen       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(65,1)-(73,49)   797           0    0.6    0.0    10.5    0.0
+           andThen.\    Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(67,5)-(73,49)   798     1000000    9.9    0.0     9.9    0.0
+            optimize    Lang.Final.Zipper     src/Lang/Final/Zipper.hs:39:22-29         799     1000000    0.0    0.0     0.0    0.0
+     testRightInt       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(104,1)-(106,46) 778           0    0.6    0.0    45.2   48.1
+      andThen_          Lang.Final.Zipper     src/Lang/Final/Zipper.hs:95:1-40          779           0    1.8    0.0    20.4   25.3
+       andThen          Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(65,1)-(73,49)   780     1000000    1.2    0.0    16.2   25.3
+        andThen.\       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(67,5)-(73,49)   781     1000000    9.6   25.3    15.0   25.3
+         optimize       Lang.Final.Zipper     src/Lang/Final/Zipper.hs:39:22-29         782     1000000    0.0    0.0     0.0    0.0
+         step           Lang.Final.Zipper     src/Lang/Final/Zipper.hs:40:22-25         783     1000000    5.4    0.0     5.4    0.0
+       lam              Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:1-50          801           0    2.4    0.0     2.4    0.0
+        lam.\           Lang.Final.Zipper     src/Lang/Final/Zipper.hs:59:30-50         802     1000000    0.0    0.0     0.0    0.0
+      waitInput         Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(44,1)-(47,38)   784           0    2.1    0.0    24.3   22.8
+       waitInput.\      Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(45,3)-(47,38)   785     1000000    3.0    0.0    22.2   22.8
+        step            Lang.Final.Zipper     src/Lang/Final/Zipper.hs:40:22-25         788     1000000    2.4    0.0     6.3    0.0
+         testRightInt.\ Lang.Final.Zipper     src/Lang/Final/Zipper.hs:105:45-60        789           0    0.6    0.0     3.9    0.0
+          output        Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(50,1)-(56,27)   790           0    1.5    0.0     3.3    0.0
+           output.\     Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(51,3)-(56,27)   791     1000000    1.8    0.0     1.8    0.0
+        testRightInt.\  Lang.Final.Zipper     src/Lang/Final/Zipper.hs:105:45-60        786     1000000    8.1   16.4    12.9   22.8
+         output         Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(50,1)-(56,27)   787     1000000    0.3    0.0     4.8    6.3
+          output.\      Lang.Final.Zipper     src/Lang/Final/Zipper.hs:(51,3)-(56,27)   792           0    4.5    6.3     4.5    6.3
+ CAF:lvl_r60a           Lang.Final.Zipper     <no location info>                        649           0    0.0    0.0     0.0    0.0
+  finish.\              Lang.Final.Zipper     src/Lang/Final/Zipper.hs:62:31-35         800           1    0.0    0.0     0.0    0.0
+ CAF:main1              Main                  <no location info>                        756           0    0.0    0.0     0.0    0.0
+  main                  Main                  bench/Main.hs:(14,1)-(25,90)              758           1    0.0    0.0     0.0    0.0
+ CAF:n_rJv              Main                  bench/Main.hs:11:1                        734           0    0.0    0.0     0.0    0.0
+  n                     Main                  bench/Main.hs:11:1-13                     769           1    0.0    0.0     0.0    0.0
+ CAF:nop                Lang.Final.Zipper     src/Lang/Final/Zipper.hs:96:1-3           650           0    0.0    0.0     0.0    0.0
+  nop                   Lang.Final.Zipper     src/Lang/Final/Zipper.hs:96:1-15          793           1    0.0    0.0     0.0    0.0
+   finish               Lang.Final.Zipper     src/Lang/Final/Zipper.hs:62:1-35          794           1    0.0    0.0     0.0    0.0
+ CAF:test_rightCnt1     Lang.Final.Zipper     <no location info>                        661           0    0.0    0.0     2.4   11.4
+  test_rightCnt         Lang.Final.Zipper     src/Lang/Final/Zipper.hs:122:1-53         765           0    2.4   11.4     2.4   11.4
+ main                   Main                  bench/Main.hs:(14,1)-(25,90)              759           0    0.0    0.0     0.0    0.0
+  main.\                Main                  bench/Main.hs:21:46-86                    760           1    0.0    0.0     0.0    0.0

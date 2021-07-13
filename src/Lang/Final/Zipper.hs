@@ -114,6 +114,13 @@ stepAllCnt !res0 (x0:xs) r0 =
         Res () -> res
   in loop res0 r0 (Just x0)
 
+
+test_leftCnt :: Int -> Int
+test_leftCnt n = stepAllCnt 0 [1..] (testLeftInt n)
+
+test_rightCnt :: Int -> Int
+test_rightCnt n = stepAllCnt 0 [1..] (testRightInt n)
+
 main :: IO ()
 main = print $ stepAllCnt 0 [1..] (testRightInt 1000)
 -- main = stepAllIO [1..] test
