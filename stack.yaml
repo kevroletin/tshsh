@@ -25,7 +25,7 @@ packages:
 extra-deps:
   - shh-0.7.1.0@sha256:c2c9d1c7c6580d802565aa2b5c5ffdbd04815edc0b2e33059161e9cd67cf64eb,2375
   - shh-extras-0.1.0.1@sha256:04673f0fe8a87fc9b2092d9480c5da487cf6aa242716346b0b78810b2215d2e9,1055
-
+  - hspec-expectations-lens-0.4.0@sha256:881f177fbf1c09202cbe96273ee0689ce3e218f95d4a9b543eaf339d2b4b36d2,1459
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
