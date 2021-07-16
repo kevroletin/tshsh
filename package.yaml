@@ -45,6 +45,7 @@ dependencies:
 - random
 - mtl
 - hspec-expectations-lens
+- profunctors
 
 default-extensions:
 - BangPatterns
@@ -101,3 +102,4 @@ tests:
     - hspec-contrib
     - QuickCheck
     - HUnit
+    - containers

@@ -1,85 +1,123 @@
-module Lang.Coroutine.Folds where
+{-# LANGUAGE BangPatterns #-}
 
-import Protolude
+-- |
+-- Helpers for executing Lang.Coroutine.Program programs
+--
+-- One difficulty with executing our DSL programs is that all program's outputs
+-- must be consumed before feeding inputs. For safety feedInput* functions try
+-- consume program outputs first, then feed the input and then consume output
+-- again. Unsafe versions of feedInput* doesn't consume output as a first step
+-- and hence might throw an exception.
+--
+-- Executing a program requires providing inputs and handling outputs. Both can be
+-- provided using pure functions or effectful functions. Effectful functions have
+-- M suffix.
+--
+-- Pure functions
+--
+-- Inputs are provides as a list of values (or a single value).
+--
+-- Outputs can be consumed in a fold-like style using an accumulator and a transition
+-- function (like this: (s > a -> s) -> a). Or they can be accumulated into a list.
+-- Functions which use the first style are called fold*, the second is for accum*
+-- (e.g. foldOutputs/accumOutputs).
+--
+-- Effectful functions
+--
+-- Inputs are provides be effectful "getter" function (or as a single value).
+-- Outputs are fed into effectful "consumer" function.
+module Lang.Coroutine.Folds
+  ( foldProgram,
+    accumProgram,
+    foldOutputs,
+    accumOutputs,
+    feedInputFoldOutputs,
+    feedInputAccumOutputs,
+    evalProgramM,
+    eatOutputsM,
+    feedInputM,
+  )
+where
+
 import Lang.Coroutine.Program
+import Protolude
 
--- TODO: come up with consistent naming
-foldProgram :: (s -> o -> s) -> s -> [i] -> Program i o () r -> (s, Maybe r)
+foldProgram :: (s -> o -> s) -> s -> [i] -> Program i o () r -> (s, Either Text r)
 foldProgram f0 res0 xs0 c0 =
-  let feedInputAccumOut _ !res []     _ = (res, Nothing)
-      feedInputAccumOut f !res (x:xs) c = loop f res xs (step (Just x) () c)
+  let feedInputAccumOutUnsafe _ !res [] _ = (res, Left "foldProgram: end of input")
+      feedInputAccumOutUnsafe f !res (x : xs) c = loop f res xs (step (Just x) () c)
 
       loop f !res xs = \case
-        Cont Nothing cont -> feedInputAccumOut f res xs cont
-        Cont (Just o) cont -> loop f (f res o) xs (step Nothing () cont)
-        Res o -> (res, Just o)
+        ContO Nothing cont -> feedInputAccumOutUnsafe f res xs cont
+        ContO (Just o) cont -> loop f (f res o) xs (step Nothing () cont)
+        ResO o -> (res, o)
+   in loop f0 res0 xs0 (step Nothing () c0)
 
-  in loop f0 res0 xs0 (step Nothing () c0)
+accumProgram :: forall i o r. [i] -> Program i o () r -> ([o], Either Text r)
+accumProgram is c = (reverse xs, r) where (xs, r) = foldProgram (\s o -> o : s) [] is c
 
-accumFoldProgram :: forall i o r . [i] -> Program i o () r -> ([o], Maybe r)
-accumFoldProgram is c = (reverse xs, r) where (xs, r) = foldProgram (\s o -> o : s) [] is c
-
-eatResOutputs :: (s -> o -> s) -> s -> Res i o r -> (s, Either r (Program i o () r))
-eatResOutputs f res0 r =
+foldResOutputs :: (s -> o -> s) -> s -> ResO i o r -> (s, Res i o r)
+foldResOutputs f res0 r =
   let loop !res = \case
-        Cont Nothing cont -> (res, Right cont)
-        Cont (Just o) cont -> loop (f res o) (step Nothing () cont)
-        Res o -> (res, Left o)
+        ContO Nothing cont -> (res, Cont cont)
+        ContO (Just o) cont -> loop (f res o) (step Nothing () cont)
+        ResO o -> (res, Res o)
+   in loop res0 r
 
-  in loop res0 r
+foldOutputs :: (s -> o -> s) -> s -> Program i o () r -> (s, Res i o r)
+foldOutputs a b c = foldResOutputs a b (step Nothing () c)
 
-eatOutputs :: (s -> o -> s) -> s -> Program i o () r -> (s, Either r (Program i o () r))
-eatOutputs a b c = eatResOutputs a b (step Nothing () c)
+accumOutputs :: forall i o r. Program i o () r -> ([o], Res i o r)
+accumOutputs c = (reverse xs, r) where (xs, r) = foldOutputs (\s o -> o : s) [] c
 
-accumOutputs :: forall i o r . Program i o () r -> ([o], Either r (Program i o () r))
-accumOutputs c = (reverse xs, r) where (xs, r) = eatOutputs (\s o -> o : s) [] c
+feedInputFoldOutUnsafe :: (s -> o -> s) -> s -> i -> Program i o () r -> (s, Res i o r)
+feedInputFoldOutUnsafe a b i c = foldResOutputs a b (step (Just i) () c)
 
-feedInputEatOut :: (s -> o -> s) -> s -> i -> Program i o () r -> (s, Either r (Program i o () r))
-feedInputEatOut a b i c = eatResOutputs a b (step (Just i) () c)
+feedInputAccumOutUnsafe :: i -> Program i o () r -> ([o], Res i o r)
+feedInputAccumOutUnsafe i c = (reverse xs, r) where (xs, r) = feedInputFoldOutUnsafe (\s o -> o : s) [] i c
 
-feedInputAccumOut :: i -> Program i o () r -> ([o], Either r (Program i o () r))
-feedInputAccumOut i c = (reverse xs, r) where (xs, r) = feedInputEatOut (\s o -> o : s) [] i c
+feedInputFoldOutputs :: (s -> o -> s) -> s -> i -> Program i o () r -> (s, Res i o r)
+feedInputFoldOutputs f s i c =
+  case foldOutputs f s c of
+    (s', Cont c') -> feedInputFoldOutUnsafe f s' i c'
+    (s', Res o) -> (s', Res o)
 
-feedInputEatOutSafe :: (s -> o -> s) -> s -> i -> Program i o () r -> (s, Either r (Program i o () r))
-feedInputEatOutSafe f s i c =
-  case eatOutputs f s c of
-    (s', Left r) -> (s', Left r)
-    (s', Right c') -> feedInputEatOut f s' i c'
+feedInputAccumOutputs :: i -> Program i o () r -> ([o], Res i o r)
+feedInputAccumOutputs i c = (reverse xs, r) where (xs, r) = feedInputFoldOutputs (\s o -> o : s) [] i c
 
-feedInputAccumOutSafe :: i -> Program i o () r -> ([o], Either r (Program i o () r))
-feedInputAccumOutSafe i c = (reverse xs, r) where (xs, r) = feedInputEatOutSafe (\s o -> o : s) [] i c
+evalProgramM :: Monad m => (o -> m ()) -> m i -> Program i o () r -> m (Either Text r)
+evalProgramM onOut getIn c0 =
+  let feedInputAccumOutUnsafe c = do
+        i <- getIn
+        foldOutputs (step (Just i) () c)
 
-foldProgramM :: Monad m => (o -> m ()) -> m i -> Program i o () r -> m r
-foldProgramM onOut getIn c0 =
-  let feedInputAccumOut c = do i <- getIn
-                               eatOutputs (step (Just i) () c)
+      foldOutputs = \case
+        ContO Nothing cont -> feedInputAccumOutUnsafe cont
+        ContO (Just o) cont -> do
+          res' <- onOut o
+          foldOutputs (step Nothing () cont)
+        ResO o -> pure o
+   in foldOutputs (step Nothing () c0)
 
-      eatOutputs = \case
-        Cont Nothing cont -> feedInputAccumOut cont
-        Cont (Just o) cont -> do res' <- onOut o
-                                 eatOutputs (step Nothing () cont)
-        Res o -> pure o
-
-  in eatOutputs (step Nothing () c0)
-
-eatResOutputsM :: Monad m => (o -> m ()) -> Res i o r -> m (Either r (Program i o () r))
+eatResOutputsM :: Monad m => (o -> m ()) -> ResO i o r -> m (Res i o r)
 eatResOutputsM f r = do
   let loop = \case
-        Cont Nothing cont -> pure (Right cont)
-        Cont (Just o) cont -> do res' <- f o
-                                 loop (step Nothing () cont)
-        Res o -> pure (Left o)
+        ContO Nothing cont -> pure (Cont cont)
+        ContO (Just o) cont -> do
+          res' <- f o
+          loop (step Nothing () cont)
+        ResO o -> pure (Res o)
 
   loop r
 
-eatOutputsM :: Monad m => (o -> m ()) -> Program i o () r -> m (Either r (Program i o () r))
+eatOutputsM :: Monad m => (o -> m ()) -> Program i o () r -> m (Res i o r)
 eatOutputsM f c = eatResOutputsM f (step Nothing () c)
 
-feedInputM :: Monad m => (o -> m ()) -> i -> Program i o () r -> m (Either r (Program i o () r))
-feedInputM f i c = eatResOutputsM f (step (Just i) () c)
+feedInputUnsafeM :: Monad m => (o -> m ()) -> i -> Program i o () r -> m (Res i o r)
+feedInputUnsafeM f i c = eatResOutputsM f (step (Just i) () c)
 
-feedInputSafeM :: Monad m => (o -> m ()) -> i -> Program i o () r -> m (Either r (Program i o () r))
-feedInputSafeM f i c = do
+feedInputM :: Monad m => (o -> m ()) -> i -> Program i o () r -> m (Res i o r)
+feedInputM f i c = do
   eatOutputsM f c >>= \case
-    Left r -> pure (Left r)
-    Right c' -> feedInputM f i c'
+    Cont c' -> feedInputUnsafeM f i c'
+    Res o -> pure (Res o)
