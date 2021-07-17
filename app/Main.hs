@@ -17,53 +17,43 @@ import Control.Concurrent.STM
 import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
-import Data.Attoparsec.ByteString
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as C
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Lazy.Char8 as CL
 import Data.String.Conversions
-import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
-import qualified Data.Text.IO as TIO
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TLE
-import qualified Data.Text.Lazy.IO as TLIO
 import Foreign
-import Foreign.C
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
 import Matcher.ByteString
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.Terminal.Size
-import System.IO (BufferMode (..), hFlush, hGetBufSome, hPutStrLn, hSetBuffering)
+import System.IO (BufferMode (..), hGetBufSome, hPrint, hSetBuffering)
 import System.IO.Unsafe
 import System.Posix
-import System.Posix.Signals
 import System.Posix.Signals.Exts
-import System.Posix.Terminal
 import System.Process
 import Prelude (String)
 
 logFile :: Handle
+{-# NOINLINE logFile #-}
 logFile = unsafePerformIO $ do
   f <- openFile "log.txt" AppendMode
   hSetBuffering f LineBuffering
   pure f
 
 muxLogFile :: Handle
+{-# NOINLINE muxLogFile #-}
 muxLogFile = unsafePerformIO $ do
   f <- openFile "mux-log.txt" AppendMode
   hSetBuffering f LineBuffering
   pure f
 
 log :: Show a => a -> IO ()
-log x = hPutStrLn logFile (show x)
+log = hPrint logFile
 
 muxLog :: Show a => a -> IO ()
-muxLog x = hPutStrLn muxLogFile (show x)
+muxLog = hPrint muxLogFile
 
+bufSize :: Int
 bufSize = 1024
 
 -- makeRaw
@@ -73,7 +63,7 @@ bufSize = 1024
 -- termios_p->c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
 -- termios_p->c_cflag &= ~(CSIZE | PARENB);
 -- termios_p->c_cflag |= CS8;
-
+newPuppet :: FilePath -> [String] -> IO (ProcessHandle, Handle, FilePath)
 newPuppet cmd args = do
   (master, slave) <- openPseudoTerminal
   masterH <- fdToHandle master
@@ -93,6 +83,7 @@ newPuppet cmd args = do
 
 data PuppetIdx = Puppet1 | Puppet2 deriving (Eq, Ord, Show, Enum)
 
+nextPuppet :: PuppetIdx -> PuppetIdx
 nextPuppet Puppet1 = Puppet2
 nextPuppet Puppet2 = Puppet1
 
@@ -111,10 +102,10 @@ data Puppet = Puppet
 $(makeLenses 'Puppet)
 
 readLoop :: Handle -> (BS.ByteString -> IO ()) -> IO ()
-readLoop from act = do
+readLoop fromH act = do
   buf <- mallocBytes bufSize
-  let loop = do
-        hGetBufSome from buf bufSize >>= \case
+  let loop =
+        hGetBufSome fromH buf bufSize >>= \case
           n | n > 0 -> do
             str <- BS.packCStringLen (buf, n)
             act str
@@ -166,8 +157,8 @@ forkPuppet idx chan prompt cdCmd cmd args = do
       }
 
 data MuxCmd
-  = TermInput (BS.ByteString) -- TODO: We can break Unicode Here :(
-  | PuppetOutput PuppetIdx (BS.ByteString)
+  = TermInput BS.ByteString -- TODO: We can break Unicode Here :(
+  | PuppetOutput PuppetIdx BS.ByteString
   | WindowResize
   | SwitchPuppet
   deriving (Show)
@@ -202,11 +193,11 @@ getProcessCwd pid =
   T.strip . T.pack <$> readProcess "readlink" ["/proc/" <> show pid <> "/cwd"] []
 
 muxBody :: MuxState -> MuxCmd -> IO MuxState
-muxBody st@MuxState {..} (TermInput str) = do
-  let pup@Puppet {..} = st ^. currentPuppet
+muxBody st (TermInput str) = do
+  let Puppet {..} = st ^. currentPuppet
   BS.hPut _pup_inputH str
   pure st
-muxBody st@MuxState {..} (PuppetOutput puppetIdx str0) = do
+muxBody st@MuxState {..} (PuppetOutput puppetIdx str0) =
   if puppetIdx == _mux_currentPuppetIdx
     then do
       BS.hPut stdout str0
@@ -219,22 +210,22 @@ muxBody st@MuxState {..} (PuppetOutput puppetIdx str0) = do
                 if BS.null rest
                   then pure m'
                   else do
-                    log "Match!"
+                    log ("Match!" :: Text)
                     loop m' rest
       m' <- loop (st ^. currentPuppet . pup_parser) str0
 
       pure (st & currentPuppet . pup_parser .~ m')
     else -- TODO: what to do with background puppet output? just ignore fore now
       pure st
-muxBody st@MuxState {..} WindowResize = do
-  let pup@Puppet {..} = st ^. currentPuppet
+muxBody st WindowResize = do
+  let Puppet {..} = st ^. currentPuppet
   Just (Window h w :: Window Int) <- size
   -- TODO: link c code
   _ <- system ("stty -F " <> _pup_pts <> " cols " <> show w <> " rows " <> show h)
   signalProcess windowChange _pup_pid
 
   pure st
-muxBody st0@MuxState {..} SwitchPuppet = do
+muxBody st0 SwitchPuppet = do
   let st = st0 & mux_currentPuppetIdx %~ nextPuppet
 
   -- let (currP, prevP) = getPuppetsInOrder st
@@ -243,7 +234,7 @@ muxBody st0@MuxState {..} SwitchPuppet = do
   signalProcess keyboardSignal (_pup_pid currP)
   currCwd <- getProcessCwd (_pup_pid currP)
   prevCwd <- getProcessCwd (_pup_pid prevP)
-  when (currCwd /= prevCwd) $ do
+  when (currCwd /= prevCwd) $
     BS.hPut (_pup_inputH currP) (cs $ _pup_mkCdCmd currP prevCwd <> "\n")
 
   -- print _mux_currentPuppetIdx
@@ -291,7 +282,7 @@ main = do
             _mux_currentPuppetIdx = Puppet1
           }
 
-  muxThread <- forkIO $ do
+  _muxThread <- forkIO $ do
     let loop !st = do
           cmd <- atomically (readTChan muxChan)
           muxLog cmd
@@ -299,15 +290,15 @@ main = do
           loop newSt
     loop mux
 
-  installHandler windowChange (Catch (atomically $ writeTChan muxChan WindowResize)) Nothing
+  _ <- installHandler windowChange (Catch (atomically $ writeTChan muxChan WindowResize)) Nothing
 
   -- switch to the other puppet here
   let suspendSig = atomically $ writeTChan muxChan SwitchPuppet
-  installHandler keyboardStop (Catch suspendSig) Nothing
+  _ <- installHandler keyboardStop (Catch suspendSig) Nothing
 
-  readThread <- forkIO $ readLoop stdin $ \str -> atomically . writeTChan muxChan $ (TermInput str)
+  _readThread <- forkIO $ readLoop stdin $ \str -> atomically . writeTChan muxChan $ TermInput str
 
-  waitForProcess (_pup_process pup1)
-  waitForProcess (_pup_process pup2)
+  _ <- waitForProcess (_pup_process pup1)
+  _ <- waitForProcess (_pup_process pup2)
 
   pure ()

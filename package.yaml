@@ -78,6 +78,7 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -Wall
     dependencies:
     - tshsh
   bench-exe:
@@ -88,6 +89,7 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     - -O2
+    - -Wall
     dependencies:
     - tshsh
 
@@ -99,6 +101,7 @@ tests:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -Wall
     dependencies:
     - tshsh
     - hspec
