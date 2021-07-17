@@ -22,7 +22,8 @@
 -- Functor laws:
 -- @'fmap' 'id' =eval= 'id'@
 -- @'fmap' (f . g) =eval= 'fmap' f . 'fmap' g@
--- Applicative, Monad laws etc..
+--
+-- Similarly for Applicative, Monad laws.
 --
 -- TODO: check monad Laws
 --
@@ -67,6 +68,14 @@ data Program i o s (m :: * -> *) t where
     Program i o b m t ->
     Program i o s m t
 
+-- TODO: x this show instance
+instance (Show o) => Show (Program i o a m r) where
+  show (WaitInput) = "WaitInput"
+  show (Lam _) = "Lam"
+  show (Output o) = "Output " <> Protolude.show o
+  show (Finish _) = "Finish "
+  show (AndThen a b) = "(AndThen " <> Protolude.show a <> " " <> Protolude.show b <> ")"
+
 instance Functor (Program i o () m) where
   fmap f p = p `AndThen` Lam (Finish . Right . f)
 
@@ -97,12 +106,14 @@ type Program' i o m t = Program i o () m t
 data ResO i o m r
   = ContO (Maybe o) (Program i o () m r)
   | ResO (Either Error r)
+  deriving (Show)
 
 $(makePrisms 'ResO)
 
 data Res i o m r
   = Cont (Program i o () m r)
   | Res (Either Error r)
+  deriving (Show)
 
 $(makePrisms 'Res)
 

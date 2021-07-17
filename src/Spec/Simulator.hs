@@ -97,8 +97,6 @@ setCwd :: Shell -> Text -> ProgramCont' (Shell, Input) (Shell, Text)
 setCwd shell cwd cont =
   runCmdNoOut shell ("cd '" <> cwd <> "'\n") cont
 
-andThen a b = AndThen a (Lam b)
-
 syncEnv :: Program (Shell, Input) (Shell, Text) () ()
 syncEnv = getEnv Shell_1 $ \env ->
   getCwd Shell_1 $ \cwd ->

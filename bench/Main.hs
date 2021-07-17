@@ -1,16 +1,7 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NumericUnderscores #-}
-
-import Control.Monad
-import Control.Monad.Except
 import Gauge.Main
-import qualified Lang.Coroutine.Test as Test
 import Protolude
 import qualified Spec.Simulator as S
 import qualified Spec.SimulatorM as SM
-import System.Environment
-import System.Random
-import Prelude
 
 main :: IO ()
 main =

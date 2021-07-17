@@ -105,6 +105,7 @@ tests:
     dependencies:
     - tshsh
     - hspec
+    - hspec-core
     - hspec-contrib
     - QuickCheck
     - HUnit
