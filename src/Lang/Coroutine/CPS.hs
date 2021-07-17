@@ -33,7 +33,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Lang.Coroutine.Program
+module Lang.Coroutine.CPS
   ( Program (..),
     Program',
     ProgramCont,

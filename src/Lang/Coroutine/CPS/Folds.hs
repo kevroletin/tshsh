@@ -26,7 +26,7 @@
 --
 -- Inputs are provides be effectful "getter" function (or as a single value).
 -- Outputs are fed into effectful "consumer" function.
-module Lang.Coroutine.Folds
+module Lang.Coroutine.CPS.Folds
   ( foldProgram,
     accumProgram,
     foldOutputs,
@@ -39,7 +39,7 @@ module Lang.Coroutine.Folds
   )
 where
 
-import Lang.Coroutine.Program
+import Lang.Coroutine.CPS
 import Protolude
 
 foldProgram :: (s -> o -> s) -> s -> [i] -> Program i o () r -> (s, Either Text r)

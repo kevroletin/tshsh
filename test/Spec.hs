@@ -7,11 +7,12 @@ import Control.Exception (evaluate)
 import Control.Lens
 import Data.Text (Text)
 import qualified Data.Text as T
-import Lang.Coroutine.Folds
-import Lang.Coroutine.Program
+import Lang.Coroutine.CPS
+import Lang.Coroutine.CPS.Folds
 import Matcher.Text
 import Protolude
 import qualified Spec.Simulator
+import qualified Spec.SimulatorM
 import System.IO
 import Test.Hspec
 import Test.Hspec.Expectations.Lens
@@ -153,5 +154,6 @@ main = hspec $ do
                 " $ "
               ]
       Spec.Simulator.simulateEnvSync `shouldBe` Right res
+      Spec.SimulatorM.simulateEnvSync `shouldBe` Right res
 
 -- TODO: feeding input without consuming output throws errors

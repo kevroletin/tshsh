@@ -1,15 +1,15 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Spec.Simulator where
+module Spec.SimulatorM where
 
 import Control.Lens
 import qualified Control.Lens as Lens
 import Control.Monad
 import qualified Data.Map as M
 import qualified Data.Text as T
-import Lang.Coroutine.Folds
-import Lang.Coroutine.Program
+import Lang.Coroutine.MonadT.Folds
+import Lang.Coroutine.MonadT
 import Protolude hiding ((>>), (>>=))
 
 data Shell = Shell_1 | Shell_2
@@ -30,81 +30,80 @@ parseEnv str = traverse parseLine (T.lines str)
             then Left ("parseEvn: missing = " <> str)
             else Right (a, T.drop 1 b)
 
-finishOnErr :: Either Text s -> ProgramCont i o s
-finishOnErr (Left err) _ = Finish (Left err)
-finishOnErr (Right a) c = c a
+finishOnErr :: Either Text t -> Program i o () m t
+finishOnErr = Finish
 
-inputFromShell :: Shell -> ProgramCont (Shell, i) o i
-inputFromShell shell cont =
-  WaitInput $ \(s, i) ->
-    if s == shell
-      then cont i
-      else inputFromShell shell cont
+inputFromShell :: Shell -> Program (Shell, i) o () m i
+inputFromShell shell = do
+  let loop = do (s, i) <- WaitInput
+                if s == shell
+                  then Finish (Right i)
+                  else loop
+  loop
 
-getEnv :: Shell -> ProgramCont (Shell, Input) (Shell, Text) [(Text, Text)]
-getEnv shell cont =
-  runCmd shell "env\n" $ \i ->
-    finishOnErr
-      (parseEnv i)
-      cont
+getEnv :: Shell -> Program (Shell, Input) (Shell, Text) () m [(Text, Text)]
+getEnv shell = do
+  i <- runCmd shell "env\n"
+  finishOnErr (parseEnv i)
 
-getCwd :: Shell -> ProgramCont (Shell, Input) (Shell, Text) Text
-getCwd shell cont =
-  runCmd shell "pwd\n" (cont . T.strip)
+getCwd :: Shell -> Program (Shell, Input) (Shell, Text) () m Text
+getCwd shell =
+  T.strip <$> runCmd shell "pwd\n"
 
 stripAnsiEscapes :: Text -> Text
 stripAnsiEscapes x = x
 
-accumUntillPrompt :: Shell -> ProgramCont (Shell, Input) o Text
-accumUntillPrompt shell cont = loop []
-  where
-    loop res =
-      inputFromShell shell $ \case
-        Prompt -> cont (T.concat . reverse $ res)
-        TextInput x -> loop (x : res)
+accumUntillPrompt :: Shell -> Program (Shell, Input) o () m Text
+accumUntillPrompt shell = do
+  let loop res =
+        inputFromShell shell >>= \case
+           Prompt -> pure (T.concat . reverse $ res)
+           TextInput x -> loop (x : res)
+  loop []
 
-expect :: Shell -> Text -> ProgramCont' (Shell, Input) o
-expect shell exp cont =
-  accumUntillPrompt shell $ \str ->
-    if stripAnsiEscapes str == exp
-      then cont
-      else Finish . Left $ "expectation failed: " <> str <> " /= " <> exp
+expect :: Shell -> Text -> Program (Shell, Input) o () m ()
+expect shell exp = do
+  str <- accumUntillPrompt shell
+  if stripAnsiEscapes str == exp
+    then pure ()
+    else Finish . Left $ "expectation failed: " <> str <> " /= " <> exp
 
-runCmdNoOut :: Shell -> Text -> ProgramCont' (Shell, Input) (Shell, Text)
-runCmdNoOut shell cmd cont =
-  Output (shell, cmd) $
-    expect shell (cmd) cont
+runCmdNoOut :: Shell -> Text -> Program (Shell, Input) (Shell, Text) () m ()
+runCmdNoOut shell cmd = do
+  Output (shell, cmd)
+  expect shell (cmd)
 
-runCmd :: Shell -> Text -> ProgramCont (Shell, Input) (Shell, Text) Text
-runCmd shell cmd cont =
-  Output (shell, cmd) $
-    accumUntillPrompt shell $ \str ->
-      let (a, b) = T.breakOn "\n" str
-       in if T.null a
-            then Finish . Left $ "expectation failed: empty output"
-            else
-              if a <> "\n" == cmd
-                then (cont (T.drop 1 b))
-                else Finish . Left $ ("expectation failed: " <> a <> "\n /= " <> cmd)
+runCmd :: Shell -> Text -> Program (Shell, Input) (Shell, Text) () m Text
+runCmd shell cmd = do
+  Output (shell, cmd)
+  str <- accumUntillPrompt shell
+  let (a, b) = T.breakOn "\n" str
+  if T.null a
+    then Finish . Left $ "expectation failed: empty output"
+    else
+      if a <> "\n" == cmd
+        then pure (T.drop 1 b)
+        else Finish . Left $ ("expectation failed: " <> a <> "\n /= " <> cmd)
 
-setEnv :: Shell -> [(Text, Text)] -> ProgramCont' (Shell, Input) (Shell, Text)
-setEnv _ [] cont = cont
-setEnv shell ((a, b) : es) cont =
-  runCmdNoOut shell ("export " <> a <> "=" <> b <> "\n") $
-    setEnv shell es cont
+setEnv :: Shell -> [(Text, Text)] -> Program (Shell, Input) (Shell, Text) () m ()
+setEnv _ [] = pure ()
+setEnv shell ((a, b) : es) = do
+  runCmdNoOut shell ("export " <> a <> "=" <> b <> "\n")
+  setEnv shell es
 
-setCwd :: Shell -> Text -> ProgramCont' (Shell, Input) (Shell, Text)
-setCwd shell cwd cont =
-  runCmdNoOut shell ("cd '" <> cwd <> "'\n") cont
+setCwd :: Shell -> Text -> Program (Shell, Input) (Shell, Text) () m ()
+setCwd shell cwd =
+  runCmdNoOut shell ("cd '" <> cwd <> "'\n")
 
 andThen a b = AndThen a (Lam b)
 
-syncEnv :: Program (Shell, Input) (Shell, Text) () ()
-syncEnv = getEnv Shell_1 $ \env ->
-  getCwd Shell_1 $ \cwd ->
-    setEnv Shell_2 env $
-      setCwd Shell_2 cwd $
-        Finish (Right ())
+syncEnv :: Program (Shell, Input) (Shell, Text) () m ()
+syncEnv = do
+  env <- getEnv Shell_1
+  cwd <- getCwd Shell_1
+  setEnv Shell_2 env
+  setCwd Shell_2 cwd
+  pure ()
 
 data EvalState = EvalState
   { _pendingInputs :: [(Shell, Input)],
@@ -155,7 +154,7 @@ simulateEnvSync =
 -- Input "ls\nmain.cpp main.o\n" can be sent as Input "ls\n" : Input "main.cpp main.o\n"
 -- or in other combinations.
 simulate ::
-  Program (Shell, Input) (Shell, Text) () r ->
+  Program (Shell, Input) (Shell, Text) () (StateT EvalState (ExceptT Text Identity)) r ->
   [(Shell, Text, Text)] ->
   Either Text Text
 simulate p resp = getLog $ runProgram p resp
@@ -169,7 +168,7 @@ simulate p resp = getLog $ runProgram p resp
     arrange (a, b, c) = ((a, b), c)
 
     runProgram ::
-      Program (Shell, Input) (Shell, Text) () r ->
+      Program (Shell, Input) (Shell, Text) () (StateT EvalState (ExceptT Text Identity)) r ->
       [(Shell, Text, Text)] ->
       Either Text (Either Text r, EvalState)
     runProgram p resp =

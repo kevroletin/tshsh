@@ -3,8 +3,8 @@
 -- | Usage examples for AndThen and experements with do-notation
 module Lang.Coroutine.Test where
 
-import Lang.Coroutine.Folds
-import Lang.Coroutine.Program
+import Lang.Coroutine.CPS.Folds
+import Lang.Coroutine.CPS
 import Protolude
 import System.Random (randomIO)
 
