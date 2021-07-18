@@ -33,4 +33,5 @@ matchStr_ m orig pos str =
         M.StepMatch m'   -> Match m' (BS.take (1 + pos - m ^. M.mch_maxPos) orig) t
         M.StepNoMatch m' -> matchStr_ m' orig (pos + 1) t
 
+matchStr :: Matcher -> ByteString -> MatchResult
 matchStr m str = matchStr_ m str 0 str

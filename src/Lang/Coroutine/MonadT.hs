@@ -47,7 +47,6 @@
 module Lang.Coroutine.MonadT where
 
 import Control.Lens
-import Data.Profunctor
 import Protolude
 import Prelude (Show (..))
 
@@ -70,6 +69,7 @@ data Program i o s (m :: * -> *) t where
 
 -- TODO: x this show instance
 instance (Show o) => Show (Program i o a m r) where
+  show (Lift _) = "Lift"
   show (WaitInput) = "WaitInput"
   show (Lam _) = "Lam"
   show (Output o) = "Output " <> Protolude.show o
@@ -132,3 +132,4 @@ step i a (AndThen val fb) =
     ResO (Left err) -> pure $ ResO (Left err)
     ContO x cont -> pure $ ContO x (AndThen cont fb)
 step Nothing _ (Lift m) = ContO Nothing . Finish . Right <$> m
+step (Just _) _ (Lift _) = panic "executing Lift doesn't require any inputs"

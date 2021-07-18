@@ -4,13 +4,12 @@
 module Spec.SimulatorM where
 
 import Control.Lens
-import qualified Control.Lens as Lens
 import Control.Monad
 import qualified Data.Map as M
 import qualified Data.Text as T
 import Lang.Coroutine.MonadT.Folds
 import Lang.Coroutine.MonadT
-import Protolude hiding ((>>), (>>=))
+import Protolude hiding ((>>), (>>=), exp, log)
 
 data Shell = Shell_1 | Shell_2
   deriving (Eq, Ord, Show)
@@ -95,6 +94,7 @@ setCwd :: Shell -> Text -> Program (Shell, Input) (Shell, Text) () m ()
 setCwd shell cwd =
   runCmdNoOut shell ("cd '" <> cwd <> "'\n")
 
+andThen :: Program i o s m b -> (b -> Program i o () m t) -> Program i o s m t
 andThen a b = AndThen a (Lam b)
 
 syncEnv :: Program (Shell, Input) (Shell, Text) () m ()
@@ -157,7 +157,7 @@ simulate ::
   Program (Shell, Input) (Shell, Text) () (StateT EvalState (ExceptT Text Identity)) r ->
   [(Shell, Text, Text)] ->
   Either Text Text
-simulate p resp = getLog $ runProgram p resp
+simulate p0 resp0 = getLog $ runProgram p0 resp0
   where
     getLog :: Either Text (Either Text a, EvalState) -> Either Text Text
     getLog (Left err) = Left err

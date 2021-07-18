@@ -19,7 +19,7 @@ evalProgramM onOut getIn c0 =
       foldOutputs = \case
         ContO Nothing cont -> feedInputAccumOutUnsafe cont
         ContO (Just o) cont -> do
-          res' <- onOut o
+          _ <- onOut o
           foldOutputs =<< step Nothing () cont
         ResO o -> pure o
    in foldOutputs =<< step Nothing () c0
@@ -29,7 +29,7 @@ eatResOutputsM f r = do
   let loop = \case
         ContO Nothing cont -> pure (Cont cont)
         ContO (Just o) cont -> do
-          res' <- f o
+          _ <- f o
           loop =<< step Nothing () cont
         ResO o -> pure (Res o)
   loop =<< r

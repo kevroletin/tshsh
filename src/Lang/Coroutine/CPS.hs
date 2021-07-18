@@ -1,26 +1,25 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -Wall #-}
+{-# LANGUAGE StrictData #-}
 
 -- An implementation of coroutines. It's features are:
--- + simple implementation (implementation with an interpreter optimization
---   is under 100loc
-module Lang.Coroutine.CPS where
-
--- ( Program st (..),
---   Program',
---   ProgramCont,
---   ProgramCont',
---   ResO (..),
---   _ContO,
---   _ResO,
---   Res (..),
---   _Cont,
---   _Res,
---   step,
--- )
+-- + simple implementation under 100loc
+-- + interprets to a monadic value, provides Lift operation
+-- + built-in state
+module Lang.Coroutine.CPS
+  ( Program (..),
+    ProgramCont,
+    ProgramCont',
+    ResO (..),
+    _ContO,
+    _ResO,
+    Res (..),
+    _Cont,
+    _Res,
+    step,
+  )
+ where
 
 import Protolude
 import Control.Lens

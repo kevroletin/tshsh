@@ -23,9 +23,7 @@ where
 
 import Control.Lens
 import qualified Data.Array.Unboxed as U
-import qualified Data.Text as T
 import Protolude
-import Prelude (String)
 
 takeEnd :: Int -> [a] -> [a]
 takeEnd i xs0

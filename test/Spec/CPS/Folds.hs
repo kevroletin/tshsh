@@ -34,21 +34,21 @@ module Spec.CPS.Folds
     accumOutputs,
     feedInputFoldOutputs,
     feedInputAccumOutputs,
+    feedInputAccumOutputsUnsafe
   )
 where
 
 import Lang.Coroutine.CPS
-import Data.Bifunctor (first)
 import Protolude
 
 foldProgram :: forall s st i o r m. Monad m => (s -> o -> s) -> s -> [i] -> (st, Program st i o m r) -> m (s, Res st i o m r)
 foldProgram f res0 xs0 c0 =
   let
-      feedInputAccumOutUnsafe !res [] c = pure (res, Cont c)
-      feedInputAccumOutUnsafe !res (x : xs) c = loop res xs =<< step (Just x) c
+      feedInput' !res [] c = pure (res, Cont c)
+      feedInput' !res (x : xs) c = loop res xs =<< step (Just x) c
 
       loop !res xs = \case
-        ContO Nothing cont -> feedInputAccumOutUnsafe res xs cont
+        ContO Nothing cont -> feedInput' res xs cont
         ContO (Just o) cont -> loop (f res o) xs =<< step Nothing cont
         (ResO r) -> pure (res, Res r)
    in loop res0 xs0 =<< step Nothing c0
@@ -80,8 +80,8 @@ feedInputFoldOutUnsafe ::
   m (s, Res st i o m r)
 feedInputFoldOutUnsafe a b i c = foldResOutputs a b =<< step (Just i) c
 
-feedInputAccumOutUnsafe :: forall st i o r m. Monad m => i -> (st, Program st i o m r) -> m ([o], Res st i o m r)
-feedInputAccumOutUnsafe i c = first reverse <$> feedInputFoldOutUnsafe (\s o -> o : s) [] i c
+feedInputAccumOutputsUnsafe :: forall st i o r m. Monad m => i -> (st, Program st i o m r) -> m ([o], Res st i o m r)
+feedInputAccumOutputsUnsafe i c = first reverse <$> feedInputFoldOutUnsafe (\s o -> o : s) [] i c
 
 feedInputFoldOutputs :: forall s st i o r m. Monad m => (s -> o -> s) -> s -> i -> (st, Program st i o m r) -> m (s, Res st i o m r)
 feedInputFoldOutputs f s i c =

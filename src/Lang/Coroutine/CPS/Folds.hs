@@ -10,7 +10,6 @@ module Lang.Coroutine.CPS.Folds
 where
 
 import Lang.Coroutine.CPS
-import Data.Bifunctor (first)
 import Protolude
 
 evalProgramM :: forall st i o m r. Monad m => (o -> m ()) -> m i -> (st, Program st i o m r) -> m (st, Either Text r)
@@ -22,7 +21,7 @@ evalProgramM onOut getIn c0 =
       foldOutputs = \case
         ContO Nothing stCont -> feedInputAccumOutUnsafe stCont
         ContO (Just o) stCont -> do
-          res' <- onOut o
+          _ <- onOut o
           foldOutputs =<< step Nothing stCont
         ResO o -> pure o
    in foldOutputs =<< step Nothing c0
@@ -32,7 +31,7 @@ eatResOutputsM f r = do
   let loop = \case
         ContO Nothing cont -> pure (Cont cont)
         ContO (Just o) cont -> do
-          res' <- f o
+          _ <- f o
           loop =<< step Nothing cont
         ResO o -> pure (Res o)
 

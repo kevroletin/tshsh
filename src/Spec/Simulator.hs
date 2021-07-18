@@ -4,13 +4,12 @@
 module Spec.Simulator where
 
 import Control.Lens
-import qualified Control.Lens as Lens
 import Control.Monad
 import qualified Data.Map as M
 import qualified Data.Text as T
 import Lang.Coroutine.CPS.Folds
 import Lang.Coroutine.CPS
-import Protolude hiding ((>>), (>>=))
+import Protolude hiding ((>>), (>>=), exp, log)
 
 data Shell = Shell_1 | Shell_2
   deriving (Eq, Ord, Show)
@@ -156,7 +155,7 @@ simulate ::
   (st, Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) r) ->
   [(Shell, Text, Text)] ->
   Either Text Text
-simulate p resp = getLog $ runProgram p resp
+simulate p0 resp0 = getLog $ runProgram p0 resp0
   where
     getLog :: Either Text ((st, Either Text a), EvalState) -> Either Text Text
     getLog (Left err) = Left err
