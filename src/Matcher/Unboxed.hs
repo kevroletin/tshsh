@@ -12,12 +12,18 @@
 module Matcher.Unboxed
   ( mkMatcher,
     matcherStep,
+    bufferedMatcherStep,
     Matcher,
     mch_pattern,
     mch_jumpTable,
     mch_pos,
     mch_maxPos,
     StepResult (..),
+    _StepMatch,
+    _StepNoMatch,
+    BuffStepResult (..),
+    _BuffStepMatch,
+    _BuffStepNoMatch,
   )
 where
 
@@ -118,6 +124,8 @@ data StepResult a
   = StepMatch (Matcher a)
   | StepNoMatch (Matcher a)
 
+$(makePrisms 'StepNoMatch)
+
 matcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> StepResult a
 matcherStep !m0 !inpChr =
   if mch_nextCharUnsafe m0 == inpChr
@@ -132,3 +140,37 @@ matcherStep !m0 !inpChr =
         else
           let Just fallbackPos = m0 ^? mch_jumpTable . ix (m0 ^. mch_pos)
            in matcherStep (m0 & mch_pos .~ fallbackPos) inpChr
+
+data BuffStepResult a
+  = BuffStepMatch (Matcher a)
+  | BuffStepNoMatch (Matcher a)
+
+$(makePrisms 'BuffStepNoMatch)
+
+deriving instance Eq (BuffStepResult Char)
+
+deriving instance Show (BuffStepResult Char)
+
+deriving instance Eq (BuffStepResult Word8)
+
+deriving instance Show (BuffStepResult Word8)
+
+bufferedMatcherStep_ :: (Eq a, CanUnbox a) => Int -> Matcher a -> a -> ([a], BuffStepResult a)
+bufferedMatcherStep_ skipped !m0 !inpChr =
+  if mch_nextCharUnsafe m0 == inpChr
+    then
+      let m = mch_forwardUnsafe m0
+       in if mch_isFull m
+            then (U.elems (m0 ^. mch_pattern), BuffStepMatch (mch_reset m))
+            else ([], BuffStepNoMatch m)
+    else
+      if m0 ^. mch_pos == 0
+        then ((take skipped . U.elems $ m0 ^. mch_pattern) ++ [inpChr], BuffStepNoMatch m0)
+        else
+          let Just fallbackPos = m0 ^? mch_jumpTable . ix (m0 ^. mch_pos)
+              dPos = (m0 ^. mch_pos) - fallbackPos
+           in bufferedMatcherStep_ (skipped + dPos) (m0 & mch_pos .~ fallbackPos) inpChr
+
+-- output characters as long as we understand that it's not part of a match
+bufferedMatcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> ([a], BuffStepResult a)
+bufferedMatcherStep = bufferedMatcherStep_ 0
