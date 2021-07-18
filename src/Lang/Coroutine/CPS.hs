@@ -2,76 +2,85 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
-
 {-# OPTIONS_GHC -Wall #-}
 
 -- An implementation of coroutines. It's features are:
 -- + simple implementation (implementation with an interpreter optimization
 --   is under 100loc
-module Lang.Coroutine.CPS
-  -- ( Program st (..),
-  --   Program',
-  --   ProgramCont,
-  --   ProgramCont',
-  --   ResO (..),
-  --   _ContO,
-  --   _ResO,
-  --   Res (..),
-  --   _Cont,
-  --   _Res,
-  --   step,
-  -- )
-where
+module Lang.Coroutine.CPS where
+
+-- ( Program st (..),
+--   Program',
+--   ProgramCont,
+--   ProgramCont',
+--   ResO (..),
+--   _ContO,
+--   _ResO,
+--   Res (..),
+--   _Cont,
+--   _Res,
+--   step,
+-- )
 
 import Protolude
+import Control.Lens
+import Prelude (Show(..))
 
 type Error = Text
 
 -- i, o - input/output types for yield
 -- t - returned value (when program is successfully finished)
 --     (andThen a (andThen b c)) optimization
-data Program st i o t where
-  GetState :: (st -> Program st i o t) -> Program st i o t
-  PutState :: st -> Program st i o t -> Program st i o t
-  WaitInput :: (i -> Program st i o t) -> Program st i o t
-  Output :: o -> Program st i o t -> Program st i o t
-  Finish :: Either Error t -> Program st i o t
+data Program st i o m t where
+  Lift :: m a -> (a -> Program st i o m t) -> Program st i o m t
+  GetState :: (st -> Program st i o m t) -> Program st i o m t
+  PutState :: st -> Program st i o m t -> Program st i o m t
+  WaitInput :: (i -> Program st i o m t) -> Program st i o m t
+  Output :: o -> Program st i o m t -> Program st i o m t
+  Finish :: Either Error t -> Program st i o m t
 
--- type ProgramCont i o s = forall t. (s -> Program st i o t) -> Program st i o t
+type ProgramCont st i o s m = forall t. (s -> Program st i o m t) -> Program st i o m t
+type ProgramCont' st i o m = forall t. Program st i o m t -> Program st i o m t
 
--- type ProgramCont' i o = forall t. Program st i o t -> Program st i o t
-
-data ResO st i o r
-  = ContO (Maybe o) (st, Program st i o r)
+data ResO st i o m r
+  = ContO (Maybe o) (st, Program st i o m r)
   | ResO (st, Either Error r)
 
--- $(makePrisms 'ResO)
+$(makePrisms 'ResO)
 
--- data Res st i o r
---   = Cont (st, Program st i o r)
---   | Res (st, Either Error r)
+data Res st i o m r
+  = Cont (st, Program st i o m r)
+  | Res (st, Either Error r)
 
--- $(makePrisms 'Res)
+$(makePrisms 'Res)
 
--- -- TODO: fix this show instance
--- instance (Show o) => Show (Program st i o a r) where
---   show (WaitInput _) = "WaitInput"
---   show (Lam _) = "Lam"
---   show (Output o _) = "Output " <> Protolude.show o
---   show (Finish _) = "Finish "
+-- TODO: fix this show instance
+instance (Show o) => Show (Program st i o m r) where
+  show (Lift _ _) = "Lift"
+  show (GetState _) = "GetState"
+  show (PutState _ _) = "PutState"
+  show (WaitInput _) = "WaitInput"
+  show (Output o _) = "Output " <> Protolude.show o
+  show (Finish _) = "Finish "
 
--- deriving instance (Show i, Show o, Show r) => Show (ResO i o r)
+deriving instance (Show st, Show i, Show o, Show r) => Show (ResO st i o m r)
 
--- deriving instance (Show i, Show o, Show r) => Show (Res i o r)
+deriving instance (Show st, Show i, Show o, Show r) => Show (Res st i o m r)
 
-step :: forall st i o r. Maybe i -> (st, Program st i o r) -> ResO st i o r
-
+step ::
+  forall st i o m r.
+  Monad m =>
+  Maybe i ->
+  (st, Program st i o m r) ->
+  m (ResO st i o m r)
+step i (st, Lift ma cont) = do
+  a <- ma
+  step i (st, cont a)
 step i (st, GetState cont) = step i (st, cont st)
 step i (_, PutState st cont) = step i (st, cont)
-
 step (Just i) (st, WaitInput cont) = step Nothing (st, cont i)
-step Nothing x@(_, WaitInput _) = ContO Nothing x
-step Nothing (st, Output x next) = ContO (Just x) (st, next)
+step Nothing x@(_, WaitInput _) = pure $ ContO Nothing x
+step Nothing (st, Output x next) = pure $ ContO (Just x) (st, next)
 step (Just _) (_st, Output _ _) = panic "Consume all the outputs first"
-step Nothing (st, Finish a) = ResO (st, a)
+step Nothing (st, Finish a) = pure $ ResO (st, a)
 step (Just _) (_st, Finish _) = panic "Consume all the outputs before reading a result"

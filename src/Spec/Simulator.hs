@@ -30,32 +30,32 @@ parseEnv str = traverse parseLine (T.lines str)
             then Left ("parseEvn: missing = " <> str)
             else Right (a, T.drop 1 b)
 
-finishOnErr :: Either Text s -> ProgramCont i o s
+finishOnErr :: Either Text s -> ProgramCont st i o s m
 finishOnErr (Left err) _ = Finish (Left err)
 finishOnErr (Right a) c = c a
 
-inputFromShell :: Shell -> ProgramCont (Shell, i) o i
+inputFromShell :: Shell -> ProgramCont st (Shell, i) o i m
 inputFromShell shell cont =
   WaitInput $ \(s, i) ->
     if s == shell
       then cont i
       else inputFromShell shell cont
 
-getEnv :: Shell -> ProgramCont (Shell, Input) (Shell, Text) [(Text, Text)]
+getEnv :: Shell -> ProgramCont st (Shell, Input) (Shell, Text) [(Text, Text)] m
 getEnv shell cont =
   runCmd shell "env\n" $ \i ->
     finishOnErr
       (parseEnv i)
       cont
 
-getCwd :: Shell -> ProgramCont (Shell, Input) (Shell, Text) Text
+getCwd :: Shell -> ProgramCont st (Shell, Input) (Shell, Text) Text m
 getCwd shell cont =
   runCmd shell "pwd\n" (cont . T.strip)
 
 stripAnsiEscapes :: Text -> Text
 stripAnsiEscapes x = x
 
-accumUntillPrompt :: Shell -> ProgramCont (Shell, Input) o Text
+accumUntillPrompt :: Shell -> ProgramCont st (Shell, Input) o Text m
 accumUntillPrompt shell cont = loop []
   where
     loop res =
@@ -63,19 +63,19 @@ accumUntillPrompt shell cont = loop []
         Prompt -> cont (T.concat . reverse $ res)
         TextInput x -> loop (x : res)
 
-expect :: Shell -> Text -> ProgramCont' (Shell, Input) o
+expect :: Shell -> Text -> ProgramCont' st (Shell, Input) o m
 expect shell exp cont =
   accumUntillPrompt shell $ \str ->
     if stripAnsiEscapes str == exp
       then cont
       else Finish . Left $ "expectation failed: " <> str <> " /= " <> exp
 
-runCmdNoOut :: Shell -> Text -> ProgramCont' (Shell, Input) (Shell, Text)
+runCmdNoOut :: Shell -> Text -> ProgramCont' st (Shell, Input) (Shell, Text) m
 runCmdNoOut shell cmd cont =
   Output (shell, cmd) $
     expect shell (cmd) cont
 
-runCmd :: Shell -> Text -> ProgramCont (Shell, Input) (Shell, Text) Text
+runCmd :: Shell -> Text -> ProgramCont st (Shell, Input) (Shell, Text) Text m
 runCmd shell cmd cont =
   Output (shell, cmd) $
     accumUntillPrompt shell $ \str ->
@@ -87,17 +87,17 @@ runCmd shell cmd cont =
                 then (cont (T.drop 1 b))
                 else Finish . Left $ ("expectation failed: " <> a <> "\n /= " <> cmd)
 
-setEnv :: Shell -> [(Text, Text)] -> ProgramCont' (Shell, Input) (Shell, Text)
+setEnv :: Shell -> [(Text, Text)] -> ProgramCont' st (Shell, Input) (Shell, Text) m
 setEnv _ [] cont = cont
 setEnv shell ((a, b) : es) cont =
   runCmdNoOut shell ("export " <> a <> "=" <> b <> "\n") $
     setEnv shell es cont
 
-setCwd :: Shell -> Text -> ProgramCont' (Shell, Input) (Shell, Text)
+setCwd :: Shell -> Text -> ProgramCont' st (Shell, Input) (Shell, Text) m
 setCwd shell cwd cont =
   runCmdNoOut shell ("cd '" <> cwd <> "'\n") cont
 
-syncEnv :: Program (Shell, Input) (Shell, Text) () ()
+syncEnv :: Program st (Shell, Input) (Shell, Text) m ()
 syncEnv = getEnv Shell_1 $ \env ->
   getCwd Shell_1 $ \cwd ->
     setEnv Shell_2 env $
@@ -130,7 +130,7 @@ main = either print putStrLn simulateEnvSync
 simulateEnvSync :: Either Text Text
 simulateEnvSync =
   simulate
-    syncEnv
+    ((), syncEnv)
     [ (Shell_1, "env\n", "a=1\nb=2\n"),
       (Shell_1, "pwd\n", "/root\n"),
       (Shell_2, "export a=1\n", ""),
@@ -153,23 +153,23 @@ simulateEnvSync =
 -- Input "ls\nmain.cpp main.o\n" can be sent as Input "ls\n" : Input "main.cpp main.o\n"
 -- or in other combinations.
 simulate ::
-  Program (Shell, Input) (Shell, Text) () r ->
+  (st, Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) r) ->
   [(Shell, Text, Text)] ->
   Either Text Text
 simulate p resp = getLog $ runProgram p resp
   where
-    getLog :: Either Text (Either Text a, EvalState) -> Either Text Text
+    getLog :: Either Text ((st, Either Text a), EvalState) -> Either Text Text
     getLog (Left err) = Left err
-    getLog (Right (Left err, _)) = Left err
+    getLog (Right ((_, Left err), _)) = Left err
     getLog (Right (_, st)) = Right $ showInputLog (st ^. inputLog)
 
     arrange :: (Shell, Text, Text) -> ((Shell, Text), Text)
     arrange (a, b, c) = ((a, b), c)
 
     runProgram ::
-      Program (Shell, Input) (Shell, Text) () r ->
+      (st, Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) r) ->
       [(Shell, Text, Text)] ->
-      Either Text (Either Text r, EvalState)
+      Either Text ((st, Either Text r), EvalState)
     runProgram p resp =
       runIdentity $
         runExceptT $
