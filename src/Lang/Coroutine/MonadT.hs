@@ -103,33 +103,33 @@ instance MonadState s m => MonadState s (Program i o () m) where
 
 type Program' i o m t = Program i o () m t
 
-data ResO i o m r
-  = ContO (Maybe o) (Program i o () m r)
-  | ResO (Either Error r)
+data ContResOut i o m r
+  = ContOut (Maybe o) (Program i o () m r)
+  | ResOut (Either Error r)
   deriving (Show)
 
-$(makePrisms 'ResO)
+$(makePrisms 'ResOut)
 
-data Res i o m r
+data ContRes i o m r
   = Cont (Program i o () m r)
   | Res (Either Error r)
   deriving (Show)
 
 $(makePrisms 'Res)
 
-step :: forall i o a m r. Monad m => Maybe i -> a -> Program i o a m r -> m (ResO i o m r)
-step (Just i) _ WaitInput = pure $ ResO (Right i)
-step Nothing _ WaitInput  = pure $ ContO Nothing WaitInput
+step :: forall i o a m r. Monad m => Maybe i -> a -> Program i o a m r -> m (ContResOut i o m r)
+step (Just i) _ WaitInput = pure $ ResOut (Right i)
+step Nothing _ WaitInput  = pure $ ContOut Nothing WaitInput
 step i a (Lam val) = step i () (val a)
-step Nothing _ (Output x) = pure $ ContO (Just x) (Finish (Right ()))
+step Nothing _ (Output x) = pure $ ContOut (Just x) (Finish (Right ()))
 step (Just _) _ (Output _) = panic "Consume all the outputs first"
-step Nothing _ (Finish a) = pure $ ResO a
+step Nothing _ (Finish a) = pure $ ResOut a
 step (Just _) _ (Finish _) = panic "Consume all the outputs before reading a result"
 step i x (AndThen (AndThen a b) c) = step i x (AndThen a (AndThen b c))
 step i a (AndThen val fb) =
   step i a val >>= \case
-    ResO (Right b) -> step Nothing b fb
-    ResO (Left err) -> pure $ ResO (Left err)
-    ContO x cont -> pure $ ContO x (AndThen cont fb)
-step Nothing _ (Lift m) = ContO Nothing . Finish . Right <$> m
+    ResOut (Right b) -> step Nothing b fb
+    ResOut (Left err) -> pure $ ResOut (Left err)
+    ContOut x cont -> pure $ ContOut x (AndThen cont fb)
+step Nothing _ (Lift m) = ContOut Nothing . Finish . Right <$> m
 step (Just _) _ (Lift _) = panic "executing Lift doesn't require any inputs"

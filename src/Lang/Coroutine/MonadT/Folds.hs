@@ -17,30 +17,30 @@ evalProgramM onOut getIn c0 =
         foldOutputs =<< step (Just i) () c
 
       foldOutputs = \case
-        ContO Nothing cont -> feedInputAccumOutUnsafe cont
-        ContO (Just o) cont -> do
+        ContOut Nothing cont -> feedInputAccumOutUnsafe cont
+        ContOut (Just o) cont -> do
           _ <- onOut o
           foldOutputs =<< step Nothing () cont
-        ResO o -> pure o
+        ResOut o -> pure o
    in foldOutputs =<< step Nothing () c0
 
-eatResOutputsM :: Monad m => (o -> m ()) -> m (ResO i o m r) -> m (Res i o m r)
+eatResOutputsM :: Monad m => (o -> m ()) -> m (ContResOut i o m r) -> m (ContRes i o m r)
 eatResOutputsM f r = do
   let loop = \case
-        ContO Nothing cont -> pure (Cont cont)
-        ContO (Just o) cont -> do
+        ContOut Nothing cont -> pure (Cont cont)
+        ContOut (Just o) cont -> do
           _ <- f o
           loop =<< step Nothing () cont
-        ResO o -> pure (Res o)
+        ResOut o -> pure (Res o)
   loop =<< r
 
-eatOutputsM :: Monad m => (o -> m ()) -> Program i o () m r -> m (Res i o m r)
+eatOutputsM :: Monad m => (o -> m ()) -> Program i o () m r -> m (ContRes i o m r)
 eatOutputsM f c = eatResOutputsM f (step Nothing () c)
 
-feedInputUnsafeM :: Monad m => (o -> m ()) -> i -> Program i o () m r -> m (Res i o m r)
+feedInputUnsafeM :: Monad m => (o -> m ()) -> i -> Program i o () m r -> m (ContRes i o m r)
 feedInputUnsafeM f i c = eatResOutputsM f (step (Just i) () c)
 
-feedInputM :: Monad m => (o -> m ()) -> i -> Program i o () m r -> m (Res i o m r)
+feedInputM :: Monad m => (o -> m ()) -> i -> Program i o () m r -> m (ContRes i o m r)
 feedInputM f i c = do
   eatOutputsM f c >>= \case
     Cont c' -> feedInputUnsafeM f i c'

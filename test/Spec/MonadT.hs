@@ -15,7 +15,7 @@ import Test.Hspec.Expectations.Lens
 accumOutputs :: forall i o r f.
   Applicative f =>
   Program i o () (StateT [o] Identity) r ->
-  f ([o], Res i o (StateT [o] Identity) r)
+  f ([o], ContRes i o (StateT [o] Identity) r)
 accumOutputs p = do
   let (res, out) =
         runState
@@ -26,7 +26,7 @@ accumOutputs p = do
 feedInputAccumOutputs ::
   i ->
   Program i o () (State [o]) r ->
-  ([o], Res i o (State [o]) r)
+  ([o], ContRes i o (State [o]) r)
 feedInputAccumOutputs i p =
   let (res, out) =
         runState

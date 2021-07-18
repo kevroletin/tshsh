@@ -11,10 +11,10 @@ module Lang.Coroutine.CPS
   ( Program (..),
     ProgramCont,
     ProgramCont',
-    ResO (..),
-    _ContO,
-    _ResO,
-    Res (..),
+    ContResOut (..),
+    _ContOut,
+    _ResOut,
+    ContRes (..),
     _Cont,
     _Res,
     step,
@@ -27,9 +27,10 @@ import Prelude (Show(..))
 
 type Error = Text
 
+-- st - state (for GetState, Put state)
 -- i, o - input/output types for yield
 -- t - returned value (when program is successfully finished)
---     (andThen a (andThen b c)) optimization
+-- m - base Monad for Lift (and for the interpreter 'step')
 data Program st i o m t where
   Lift :: m a -> (a -> Program st i o m t) -> Program st i o m t
   GetState :: (st -> Program st i o m t) -> Program st i o m t
@@ -41,13 +42,13 @@ data Program st i o m t where
 type ProgramCont st i o s m = forall t. (s -> Program st i o m t) -> Program st i o m t
 type ProgramCont' st i o m = forall t. Program st i o m t -> Program st i o m t
 
-data ResO st i o m r
-  = ContO (Maybe o) (st, Program st i o m r)
-  | ResO (st, Either Error r)
+data ContResOut st i o m r
+  = ContOut (Maybe o) (st, Program st i o m r)
+  | ResOut (st, Either Error r)
 
-$(makePrisms 'ResO)
+$(makePrisms 'ResOut)
 
-data Res st i o m r
+data ContRes st i o m r
   = Cont (st, Program st i o m r)
   | Res (st, Either Error r)
 
@@ -62,24 +63,24 @@ instance (Show o) => Show (Program st i o m r) where
   show (Output o _) = "Output " <> Protolude.show o
   show (Finish _) = "Finish "
 
-deriving instance (Show st, Show i, Show o, Show r) => Show (ResO st i o m r)
+deriving instance (Show st, Show i, Show o, Show r) => Show (ContResOut st i o m r)
 
-deriving instance (Show st, Show i, Show o, Show r) => Show (Res st i o m r)
+deriving instance (Show st, Show i, Show o, Show r) => Show (ContRes st i o m r)
 
 step ::
   forall st i o m r.
   Monad m =>
   Maybe i ->
   (st, Program st i o m r) ->
-  m (ResO st i o m r)
+  m (ContResOut st i o m r)
 step i (st, Lift ma cont) = do
   a <- ma
   step i (st, cont a)
 step i (st, GetState cont) = step i (st, cont st)
 step i (_, PutState st cont) = step i (st, cont)
 step (Just i) (st, WaitInput cont) = step Nothing (st, cont i)
-step Nothing x@(_, WaitInput _) = pure $ ContO Nothing x
-step Nothing (st, Output x next) = pure $ ContO (Just x) (st, next)
+step Nothing x@(_, WaitInput _) = pure $ ContOut Nothing x
+step Nothing (st, Output x next) = pure $ ContOut (Just x) (st, next)
 step (Just _) (_st, Output _ _) = panic "Consume all the outputs first"
-step Nothing (st, Finish a) = pure $ ResO (st, a)
+step Nothing (st, Finish a) = pure $ ResOut (st, a)
 step (Just _) (_st, Finish _) = panic "Consume all the outputs before reading a result"
