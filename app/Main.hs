@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE StrictData #-}
 
 module Main where
@@ -5,6 +7,7 @@ module Main where
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception.Safe (tryIO)
+import Control.Lens
 import Control.Monad
 import qualified Data.ByteString as BS
 import Data.String.Conversions
@@ -82,11 +85,12 @@ forkPuppet ::
   PuppetIdx ->
   TChan MuxCmd ->
   BS.ByteString ->
+  Text ->
   (Text -> Text) ->
   FilePath ->
   [String] ->
-  IO Puppet
-forkPuppet idx chan prompt cdCmd cmd args = do
+  IO (Puppet, PuppetState)
+forkPuppet idx chan prompt getCwd cdCmd cmd args = do
   (master, slave) <- openPseudoTerminal
   masterH <- fdToHandle master
   slaveH <- fdToHandle slave
@@ -107,16 +111,22 @@ forkPuppet idx chan prompt cdCmd cmd args = do
     atomically . writeTChan chan $ PuppetOutput idx str
 
   pure $
-    Puppet
-      { _pup_prompt = prompt,
-        _pup_parser = mkMatcher prompt,
-        _pup_inputH = masterH,
-        _pup_readThread = readThread,
-        _pup_process = p,
-        _pup_pid = pid,
-        _pup_pts = pts,
-        _pup_mkCdCmd = cdCmd
-      }
+    ( Puppet
+        { _pup_idx = idx,
+          _pup_prompt = prompt,
+          _pup_inputH = masterH,
+          _pup_process = p,
+          _pup_pid = pid,
+          _pup_pts = pts,
+          _pup_getCwdCmd = getCwd,
+          _pup_mkCdCmd = cdCmd
+        },
+      PuppetState
+        { _ps_idx = idx,
+          _ps_parser = mkMatcher prompt,
+          _ps_readThread = readThread
+        }
+    )
 
 -- https://linux.die.net/man/3/cfmakeraw input is available character by
 -- character, echoing is disabled, and all special processing of terminal input
@@ -135,25 +145,45 @@ main = do
   atomically $ writeTChan muxChan WindowResize
 
   -- pup1 <- forkPuppet Puppet1 muxChan "sh-4.4$" (\dir -> ":cd " <> dir) "shh" []
-  pup1 <- forkPuppet Puppet1 muxChan ">>>" (\dir -> "import os; os.chdir(\"" <> dir <> "\")") "python" []
-  -- pup2 <- forkPuppet Puppet2 muxChan "⚡" (\dir -> "cd '" <> dir <> "'") "zsh" []
-  pup2 <- forkPuppet Puppet2 muxChan "\nsh-4.4$" (\dir -> "cd '" <> dir <> "'") "sh" []
-  -- pup2 <- forkPuppet Puppet2 muxChan "$  tshsh" "zsh" []
+  (pup1, pup1st) <-
+    forkPuppet
+      Puppet1
+      muxChan
+      ">>>"
+      "import os; os.getCwd()"
+      (\dir -> "import os; os.chdir(\"" <> dir <> "\")")
+      "python"
+      []
+
+  (pup2, pup2st) <-
+    forkPuppet
+      Puppet2
+      muxChan
+      "\nsh-4.4$"
+      "pwd"
+      (\dir -> "cd '" <> dir <> "'")
+      "sh"
+      []
 
   let mux =
-        MuxState
-          { _mux_puppets = (pup1, pup2),
-            _mux_currentPuppetIdx = Puppet1,
-            _mux_logger = log
-          }
+        Mux
+          MuxEnv
+            { _menv_puppets = (pup1, pup2),
+              _menv_logger = log
+            }
+          MuxState
+            { _mst_puppetSt = (pup1st, pup2st),
+              _mst_currentPuppetIdx = Puppet1,
+              _mst_currProgram = Nothing
+            }
 
   _muxThread <- forkIO $ do
-    let loop ! st = do
+    let loop !env !st = do
           cmd <- atomically (readTChan muxChan)
           muxLog cmd
-          newSt <- muxBody st cmd
-          loop newSt
-    loop mux
+          newSt <- muxBody env st cmd
+          loop env newSt
+    loop (mux ^. mux_env) (mux ^. mux_st)
 
   _ <- installHandler windowChange (Catch (atomically $ writeTChan muxChan WindowResize)) Nothing
 

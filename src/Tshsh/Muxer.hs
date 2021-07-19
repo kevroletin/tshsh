@@ -1,4 +1,5 @@
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Tshsh.Muxer where
@@ -18,43 +19,77 @@ import System.Process
 import Tshsh.Commands
 import Tshsh.Puppet
 
-data MuxState = MuxState
-  { _mux_puppets :: (Puppet, Puppet),
-    _mux_currentPuppetIdx :: PuppetIdx,
-    _mux_logger :: Text -> IO ()
+import Lang.Coroutine.CPS
+
+type SyncEvnState = ()
+
+data MuxEnv = MuxEnv
+  { _menv_puppets :: (Puppet, Puppet),
+    _menv_logger :: Text -> IO ()
   }
 
+data MuxState = MuxState
+  { _mst_puppetSt :: (PuppetState, PuppetState),
+    _mst_currentPuppetIdx :: PuppetIdx,
+    _mst_currProgram :: Maybe ((), Maybe (Program () (PuppetIdx, BS.ByteString) (PuppetIdx, BS.ByteString) IO ()))
+  }
+
+data Mux = Mux { _mux_env :: MuxEnv, _mux_st :: MuxState }
+
 $(makeLenses 'MuxState)
+$(makeLenses 'MuxEnv)
+$(makeLenses 'Mux)
 
-currentPuppet :: Lens' MuxState Puppet
-currentPuppet f (MuxState (a, b) idx lg) =
-  case idx of
-    Puppet1 -> (\a' -> MuxState (a', b) idx lg) <$> f a
-    Puppet2 -> (\b' -> MuxState (a, b') idx lg) <$> f b
+pupIdx :: PuppetIdx -> Lens' (a, a) a
+pupIdx Puppet1 = _1
+pupIdx Puppet2 = _2
 
-backgroundPuppet :: Lens' MuxState Puppet
-backgroundPuppet f (MuxState (a, b) idx lg) =
-  case idx of
-    Puppet2 -> (\a' -> MuxState (a', b) idx lg) <$> f a
-    Puppet1 -> (\b' -> MuxState (a, b') idx lg) <$> f b
+sortPup :: PuppetIdx -> Lens' (a, a) (a, a)
+sortPup Puppet1 f (a, b) = f (a, b)
+sortPup Puppet2 f (a, b) = (\(a', b') -> (b', a')) <$> f (b, a)
 
-sortedPuppets :: Lens' MuxState (Puppet, Puppet)
-sortedPuppets f (MuxState (a, b) idx lg) =
-  case idx of
-    Puppet1 -> (\(a', b') -> MuxState (a', b') idx lg) <$> f (a, b)
-    Puppet2 -> (\(a', b') -> MuxState (b', a') idx lg) <$> f (b, a)
+mst_currentPuppet :: Lens' MuxState PuppetState
+mst_currentPuppet f m =
+  let idx = m ^. mst_currentPuppetIdx
+      ls = mst_puppetSt . pupIdx idx
+  in (\x -> m & ls .~ x) <$> f (m ^. ls)
+
+mst_backgroundPuppet :: Lens' MuxState PuppetState
+mst_backgroundPuppet f m =
+  let idx = nextPuppet (m ^. mst_currentPuppetIdx)
+      ls = mst_puppetSt . pupIdx idx
+  in (\x -> m & ls .~ x) <$> f (m ^. ls)
+
+mst_sortedPuppets :: Lens' MuxState (PuppetState, PuppetState)
+mst_sortedPuppets f m =
+  let idx = m ^. mst_currentPuppetIdx
+      ls = mst_puppetSt . sortPup idx
+  in (\x -> m & ls .~ x) <$> f (m ^. ls)
 
 getProcessCwd :: ProcessID -> IO Text
 getProcessCwd pid =
   T.strip . T.pack <$> readProcess "readlink" ["/proc/" <> show pid <> "/cwd"] []
 
-muxBody :: MuxState -> MuxCmd -> IO MuxState
-muxBody st (TermInput str) = do
-  let Puppet {..} = st ^. currentPuppet
-  BS.hPut _pup_inputH str
+-- synCwdP :: PuppetIdx -> ((), Maybe (Program () (PuppetIdx, BS.ByteString) (PuppetIdx, BS.ByteString) IO ()))
+-- synCwdP currPup
+
+menv_currentPuppet :: MuxState -> Lens' MuxEnv Puppet
+menv_currentPuppet st f env =
+  let ls = menv_puppets . pupIdx (st ^. mst_currentPuppetIdx)
+  in (\x -> env & ls .~ x) <$> f (env ^. ls)
+
+menv_sortedPuppets :: MuxState -> Lens' MuxEnv (Puppet, Puppet)
+menv_sortedPuppets st f env =
+  let ls = menv_puppets . sortPup (st ^. mst_currentPuppetIdx)
+  in (\x -> env & ls .~ x) <$> f (env ^. ls)
+
+muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
+muxBody env st (TermInput str) = do
+  let h = env ^. menv_currentPuppet st . pup_inputH
+  BS.hPut h str
   pure st
-muxBody st@MuxState {..} (PuppetOutput puppetIdx str0) =
-  if puppetIdx == _mux_currentPuppetIdx
+muxBody env st (PuppetOutput puppetIdx str0) =
+  if puppetIdx == st ^. mst_currentPuppetIdx
     then do
       BS.hPut stdout str0
 
@@ -66,47 +101,37 @@ muxBody st@MuxState {..} (PuppetOutput puppetIdx str0) =
                 if BS.null rest
                   then pure m'
                   else do
-                    _mux_logger "Match!"
+                    (env ^. menv_logger) "Match!"
                     loop m' rest
-      m' <- loop (st ^. currentPuppet . pup_parser) str0
+      m' <- loop (st ^. mst_currentPuppet . ps_parser) str0
 
-      pure (st & currentPuppet . pup_parser .~ m')
+      pure (st & mst_currentPuppet . ps_parser .~ m')
     else -- TODO: what to do with background puppet output? just ignore fore now
       pure st
-muxBody st WindowResize = do
-  let Puppet {..} = st ^. currentPuppet
+muxBody env st WindowResize = do
+  let pup = env ^. menv_currentPuppet st
   Just (Window h w :: Window Int) <- size
   -- TODO: link c code
-  _ <- system ("stty -F " <> _pup_pts <> " cols " <> show w <> " rows " <> show h)
-  signalProcess windowChange _pup_pid
+  _ <- system ("stty -F " <> (pup ^. pup_pts) <> " cols " <> show w <> " rows " <> show h)
+  signalProcess windowChange (pup ^. pup_pid)
 
   pure st
-muxBody st0 SwitchPuppet = do
-  let st = st0 & mux_currentPuppetIdx %~ nextPuppet
+muxBody env st0 SwitchPuppet = do
+  let idx = nextPuppet (st0 ^. mst_currentPuppetIdx)
+  let st = st0 & mst_currentPuppetIdx .~ idx
+               -- & _mst_currProgram ?~ syncCwdP idx
 
-  -- let (currP, prevP) = getPuppetsInOrder st
-  let (currP, prevP) = st ^. sortedPuppets
+  let (currP, prevP) = env ^. menv_sortedPuppets st
 
-  signalProcess keyboardSignal (_pup_pid currP)
-  currCwd <- getProcessCwd (_pup_pid currP)
-  prevCwd <- getProcessCwd (_pup_pid prevP)
+  signalProcess keyboardSignal (currP ^. pup_pid)
+  currCwd <- getProcessCwd (currP ^. pup_pid)
+  prevCwd <- getProcessCwd (prevP ^. pup_pid)
   when (currCwd /= prevCwd) $
-    BS.hPut (_pup_inputH currP) (cs $ _pup_mkCdCmd currP prevCwd <> "\n")
-
-  -- print _mux_currentPuppetIdx
-  -- TODO: we should parse Unicode, otherwise we can break it on switch
-  -- TODO: redraw last prompt
+    BS.hPut (currP ^. pup_inputH) (cs $ (currP ^. pup_mkCdCmd) prevCwd <> "\n")
 
   -- TODO: Trying to dial with bracketed paste mode
   -- ghci doesn't work with bracketed paste mode
   -- for codes see https://cirw.in/blog/bracketed-paste
   BS.hPut stdout ("\x1b[?2004l" :: BS.ByteString)
-  -- probably need to dump everything a pup dumps after initialization
-  -- cause it set's up a terminal.
-  -- We set raw mode on master and don't care about line discipline
-  -- We deal with signals in the other place
-  -- We just ignored flow control for now
-  -- Now the problem that a puppet sets some parameters on it's virtual tty and
-  -- we should set it to the main termina
 
   pure st
