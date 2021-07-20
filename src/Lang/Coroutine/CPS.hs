@@ -39,7 +39,7 @@ data Program st i o m t where
   Output :: o -> Program st i o m t -> Program st i o m t
   Finish :: Either Error t -> Program st i o m t
 
-type ProgramCont st i o s m = forall t. (s -> Program st i o m t) -> Program st i o m t
+type ProgramCont st i o m s = forall t. (s -> Program st i o m t) -> Program st i o m t
 type ProgramCont' st i o m = forall t. Program st i o m t -> Program st i o m t
 
 data ContResOut st i o m r

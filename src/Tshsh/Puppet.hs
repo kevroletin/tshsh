@@ -16,6 +16,7 @@ import Tshsh.Commands
 data Puppet = Puppet
   { _pup_idx :: PuppetIdx,
     _pup_prompt :: BS.ByteString,
+    _pup_promptParser :: Matcher,
     _pup_inputH :: Handle,
     _pup_process :: ProcessHandle,
     _pup_pid :: ProcessID,

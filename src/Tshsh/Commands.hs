@@ -1,4 +1,6 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Tshsh.Commands where
 
@@ -17,3 +19,4 @@ data MuxCmd
   | WindowResize
   | SwitchPuppet
   deriving (Show)
+

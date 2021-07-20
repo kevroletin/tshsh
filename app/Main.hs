@@ -114,6 +114,7 @@ forkPuppet idx chan prompt getCwd cdCmd cmd args = do
     ( Puppet
         { _pup_idx = idx,
           _pup_prompt = prompt,
+          _pup_promptParser = mkMatcher prompt,
           _pup_inputH = masterH,
           _pup_process = p,
           _pup_pid = pid,
@@ -144,13 +145,12 @@ main = do
   -- TODO: set tty size during creation to avoid any races
   atomically $ writeTChan muxChan WindowResize
 
-  -- pup1 <- forkPuppet Puppet1 muxChan "sh-4.4$" (\dir -> ":cd " <> dir) "shh" []
   (pup1, pup1st) <-
     forkPuppet
       Puppet1
       muxChan
       ">>>"
-      "import os; os.getCwd()"
+      "import os; os.getcwd()"
       (\dir -> "import os; os.chdir(\"" <> dir <> "\")")
       "python"
       []
@@ -174,7 +174,7 @@ main = do
           MuxState
             { _mst_puppetSt = (pup1st, pup2st),
               _mst_currentPuppetIdx = Puppet1,
-              _mst_currProgram = Nothing
+              _mst_currentProgram = Nothing
             }
 
   _muxThread <- forkIO $ do

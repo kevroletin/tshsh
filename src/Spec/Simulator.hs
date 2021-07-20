@@ -29,32 +29,32 @@ parseEnv str = traverse parseLine (T.lines str)
             then Left ("parseEvn: missing = " <> str)
             else Right (a, T.drop 1 b)
 
-finishOnErr :: Either Text s -> ProgramCont st i o s m
+finishOnErr :: Either Text s -> ProgramCont st i o m s
 finishOnErr (Left err) _ = Finish (Left err)
 finishOnErr (Right a) c = c a
 
-inputFromShell :: Shell -> ProgramCont st (Shell, i) o i m
+inputFromShell :: Shell -> ProgramCont st (Shell, i) o m i
 inputFromShell shell cont =
   WaitInput $ \(s, i) ->
     if s == shell
       then cont i
       else inputFromShell shell cont
 
-getEnv :: Shell -> ProgramCont st (Shell, Input) (Shell, Text) [(Text, Text)] m
+getEnv :: Shell -> ProgramCont st (Shell, Input) (Shell, Text) m [(Text, Text)]
 getEnv shell cont =
   runCmd shell "env\n" $ \i ->
     finishOnErr
       (parseEnv i)
       cont
 
-getCwd :: Shell -> ProgramCont st (Shell, Input) (Shell, Text) Text m
+getCwd :: Shell -> ProgramCont st (Shell, Input) (Shell, Text) m Text
 getCwd shell cont =
   runCmd shell "pwd\n" (cont . T.strip)
 
 stripAnsiEscapes :: Text -> Text
 stripAnsiEscapes x = x
 
-accumUntillPrompt :: Shell -> ProgramCont st (Shell, Input) o Text m
+accumUntillPrompt :: Shell -> ProgramCont st (Shell, Input) o m Text
 accumUntillPrompt shell cont = loop []
   where
     loop res =
@@ -62,7 +62,7 @@ accumUntillPrompt shell cont = loop []
         Prompt -> cont (T.concat . reverse $ res)
         TextInput x -> loop (x : res)
 
-expect :: Shell -> Text -> ProgramCont' st (Shell, Input) o m
+expect :: Shell -> Text -> ProgramCont' st (Shell, Input) m o
 expect shell exp cont =
   accumUntillPrompt shell $ \str ->
     if stripAnsiEscapes str == exp
@@ -74,7 +74,7 @@ runCmdNoOut shell cmd cont =
   Output (shell, cmd) $
     expect shell (cmd) cont
 
-runCmd :: Shell -> Text -> ProgramCont st (Shell, Input) (Shell, Text) Text m
+runCmd :: Shell -> Text -> ProgramCont st (Shell, Input) (Shell, Text) m Text
 runCmd shell cmd cont =
   Output (shell, cmd) $
     accumUntillPrompt shell $ \str ->
@@ -104,7 +104,8 @@ syncEnv = getEnv Shell_1 $ \env ->
         Finish (Right ())
 
 data EvalState = EvalState
-  { _pendingInputs :: [(Shell, Input)],
+  { _pendingInputs :: [(Shell, Input)]
+  ,
     _responses :: Map (Shell, Text) Text,
     _inputLog :: [(Shell, Input)]
   }
