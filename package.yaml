@@ -48,6 +48,7 @@ dependencies:
 - hspec-expectations-lens
 - profunctors
 - gauge
+- strip-ansi-escape
 
 default-extensions:
 - BangPatterns

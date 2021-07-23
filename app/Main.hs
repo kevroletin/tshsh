@@ -16,7 +16,7 @@ import GHC.IO.Device
 import qualified GHC.IO.FD as FD
 import Matcher.ByteString
 import Protolude hiding (hPutStrLn, log, tryIO)
-import System.IO (BufferMode (..), hGetBufSome, hPrint, hSetBuffering)
+import System.IO (hFlush, BufferMode (..), hGetBufSome, hPrint, hSetBuffering)
 import System.IO.Unsafe
 import System.Posix
 import System.Posix.Signals.Exts
@@ -41,7 +41,8 @@ muxLogFile = unsafePerformIO $ do
   pure f
 
 log :: Show a => a -> IO ()
-log = hPrint logFile
+log str = do hPrint logFile str
+             hFlush logFile
 
 muxLog :: Show a => a -> IO ()
 muxLog = hPrint muxLogFile
@@ -84,13 +85,13 @@ readLoop fromH act = do
 forkPuppet ::
   PuppetIdx ->
   TChan MuxCmd ->
-  BS.ByteString ->
-  Text ->
+  Matcher ->
+  GetCwd ->
   (Text -> Text) ->
   FilePath ->
   [String] ->
   IO (Puppet, PuppetState)
-forkPuppet idx chan prompt getCwd cdCmd cmd args = do
+forkPuppet idx chan matcher getCwd cdCmd cmd args = do
   (master, slave) <- openPseudoTerminal
   masterH <- fdToHandle master
   slaveH <- fdToHandle slave
@@ -110,11 +111,10 @@ forkPuppet idx chan prompt getCwd cdCmd cmd args = do
   readThread <- forkIO . readLoop masterH $ \str ->
     atomically . writeTChan chan $ PuppetOutput idx str
 
-  pure $
+  pure
     ( Puppet
         { _pup_idx = idx,
-          _pup_prompt = prompt,
-          _pup_promptParser = mkMatcher prompt,
+          _pup_promptParser = matcher,
           _pup_inputH = masterH,
           _pup_process = p,
           _pup_pid = pid,
@@ -124,7 +124,7 @@ forkPuppet idx chan prompt getCwd cdCmd cmd args = do
         },
       PuppetState
         { _ps_idx = idx,
-          _ps_parser = mkMatcher prompt,
+          _ps_parser = matcher,
           _ps_readThread = readThread
         }
     )
@@ -149,20 +149,21 @@ main = do
     forkPuppet
       Puppet1
       muxChan
-      ">>>"
-      "import os; os.getcwd()"
-      (\dir -> "import os; os.chdir(\"" <> dir <> "\")")
-      "python"
+      (mkBracketMatcher "\ESC[1;36m\206\187\ESC[0m \ESC[1;32m" "\ESC[0m")
+      (GetCwdCommand "pwd")
+      (\dir -> "cd \"" <> dir <> "\"")
+      "shh"
       []
+
 
   (pup2, pup2st) <-
     forkPuppet
       Puppet2
       muxChan
-      "\nsh-4.4$"
-      "pwd"
-      (\dir -> "cd '" <> dir <> "'")
-      "sh"
+      (mkBracketMatcher "\ESC>\ESC[?2004l" "\ESC[?2004h")
+      GetCwdFromProcess
+      (\dir -> " cd '" <> dir <> "'")
+      "zsh"
       []
 
   let mux =

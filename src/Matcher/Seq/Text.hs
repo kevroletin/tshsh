@@ -1,16 +1,16 @@
-module Matcher.Text
+module Matcher.Seq.Text
   ( mkMatcher,
     M.matcherStep,
     matchStr,
     Matcher,
     MatchResult (..),
-    M.StepResult (..),
   )
 where
 
 import Control.Lens ((^.))
 import qualified Data.Text as T
-import qualified Matcher.Unboxed as M
+import Matcher.Result
+import qualified Matcher.Seq.Unboxed as M
 import Protolude
 
 type Matcher = M.Matcher Char
@@ -33,8 +33,8 @@ matchStr_ m orig pos str =
     Nothing -> NoMatch m
     Just (h, t) ->
       case M.matcherStep m h of
-        M.StepMatch m' -> Match m' (T.take (1 + pos - m ^. M.mch_maxPos) orig) t
-        M.StepNoMatch m' -> matchStr_ m' orig (pos + 1) t
+        StepMatch _ m' -> Match m' (T.take (1 + pos - m ^. M.mch_maxPos) orig) t
+        StepNoMatch m' -> matchStr_ m' orig (pos + 1) t
 
 matchStr :: Matcher -> T.Text -> MatchResult
 matchStr m str = matchStr_ m str 0 str

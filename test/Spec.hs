@@ -4,7 +4,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 import qualified Data.Text as T
-import Matcher.Text
+import Matcher.Seq.Text
 import Protolude
 import qualified Spec.CPS
 import qualified Spec.MonadT

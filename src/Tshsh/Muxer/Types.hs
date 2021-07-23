@@ -2,22 +2,31 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Tshsh.Muxer.Types where
+module Tshsh.Muxer.Types
+  ( MuxEnv (..),
+    menv_puppets,
+    menv_logger,
+    MuxState (..),
+    mst_puppetSt,
+    mst_currentPuppetIdx,
+    mst_currentProgram,
+    Mux (..),
+    mux_env,
+    mux_st,
+    pupIdx,
+    sortPup,
+    mst_currentPuppet,
+    mst_backgroundPuppet,
+    mst_sortedPuppets,
+    menv_currentPuppet,
+    menv_sortedPuppets,
+  )
+where
 
 import Control.Lens
-import Control.Monad
 import qualified Data.ByteString as BS
-import Data.String.Conversions
-import qualified Data.Text as T
-import Foreign
 import Lang.Coroutine.CPS
-import Lang.Coroutine.CPS.Folds
-import Matcher.ByteString
 import Protolude hiding (hPutStrLn, log, tryIO)
-import System.Console.Terminal.Size
-import System.Posix
-import System.Posix.Signals.Exts
-import System.Process
 import Tshsh.Commands
 import Tshsh.Puppet
 
@@ -27,6 +36,7 @@ data MuxEnv = MuxEnv
   }
 
 type SyncCwdProgram = Program () (PuppetIdx, BS.ByteString) (PuppetIdx, BS.ByteString) IO ()
+
 type SyncCwdProgramSt = ((), SyncCwdProgram)
 
 data MuxState = MuxState
