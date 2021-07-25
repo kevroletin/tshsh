@@ -38,7 +38,7 @@ data MuxEnv = MuxEnv
 
 type SyncCwdProgram = Program () (PuppetIdx, BS.ByteString) (PuppetIdx, BS.ByteString) IO ()
 
-type SyncCwdProgramSt = ((), SyncCwdProgram)
+type SyncCwdProgramSt = Pair () SyncCwdProgram
 
 data MuxState = MuxState
   { _mst_puppetSt :: Pair PuppetState PuppetState,

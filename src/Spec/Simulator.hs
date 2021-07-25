@@ -6,10 +6,11 @@ module Spec.Simulator where
 import Control.Lens
 import Control.Monad
 import qualified Data.Map as M
+import Data.Strict.Tuple
 import qualified Data.Text as T
-import Lang.Coroutine.CPS.Folds
 import Lang.Coroutine.CPS
-import Protolude hiding ((>>), (>>=), exp, log)
+import Lang.Coroutine.CPS.Folds
+import Protolude hiding (exp, log, (>>), (>>=))
 
 data Shell = Shell_1 | Shell_2
   deriving (Eq, Ord, Show)
@@ -104,8 +105,7 @@ syncEnv = getEnv Shell_1 $ \env ->
         Finish (Right ())
 
 data EvalState = EvalState
-  { _pendingInputs :: [(Shell, Input)]
-  ,
+  { _pendingInputs :: [(Shell, Input)],
     _responses :: Map (Shell, Text) Text,
     _inputLog :: [(Shell, Input)]
   }
@@ -130,7 +130,7 @@ main = either print putStrLn simulateEnvSync
 simulateEnvSync :: Either Text Text
 simulateEnvSync =
   simulate
-    ((), syncEnv)
+    (() :!: syncEnv)
     [ (Shell_1, "env\n", "a=1\nb=2\n"),
       (Shell_1, "pwd\n", "/root\n"),
       (Shell_2, "export a=1\n", ""),
@@ -153,23 +153,23 @@ simulateEnvSync =
 -- Input "ls\nmain.cpp main.o\n" can be sent as Input "ls\n" : Input "main.cpp main.o\n"
 -- or in other combinations.
 simulate ::
-  (st, Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) r) ->
+  Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) r) ->
   [(Shell, Text, Text)] ->
   Either Text Text
 simulate p0 resp0 = getLog $ runProgram p0 resp0
   where
-    getLog :: Either Text ((st, Either Text a), EvalState) -> Either Text Text
+    getLog :: Either Text (Pair st (Either Text a), EvalState) -> Either Text Text
     getLog (Left err) = Left err
-    getLog (Right ((_, Left err), _)) = Left err
+    getLog (Right (_ :!: Left err, _)) = Left err
     getLog (Right (_, st)) = Right $ showInputLog (st ^. inputLog)
 
     arrange :: (Shell, Text, Text) -> ((Shell, Text), Text)
     arrange (a, b, c) = ((a, b), c)
 
     runProgram ::
-      (st, Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) r) ->
+      Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) r) ->
       [(Shell, Text, Text)] ->
-      Either Text ((st, Either Text r), EvalState)
+      Either Text (Pair st (Either Text r), EvalState)
     runProgram p resp =
       runIdentity $
         runExceptT $

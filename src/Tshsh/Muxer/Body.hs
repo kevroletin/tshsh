@@ -21,6 +21,7 @@ import Tshsh.Commands
 import Tshsh.Muxer.Types
 import Tshsh.Program.SyncCwd
 import Tshsh.Puppet
+import Data.Strict.Tuple
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
 muxBody env st (TermInput str) = do
@@ -75,7 +76,7 @@ muxBody env st0 SwitchPuppet = do
   let idx = nextPuppet (st0 ^. mst_currentPuppetIdx)
   let st =
         st0 & mst_currentPuppetIdx .~ idx
-          & mst_currentProgram ?~ ((), syncCwdP env idx (Finish (Right ())))
+          & mst_currentProgram ?~ (() :!: syncCwdP env idx (Finish (Right ())))
 
   let currP = env ^. menv_currentPuppet st
 

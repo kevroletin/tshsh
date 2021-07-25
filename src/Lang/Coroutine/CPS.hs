@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -- An implementation of coroutines. It's features are:
 -- + simple implementation under 100loc
@@ -19,11 +19,12 @@ module Lang.Coroutine.CPS
     _Res,
     step,
   )
- where
+where
 
-import Protolude
 import Control.Lens
-import Prelude (Show(..))
+import Data.Strict.Tuple
+import Protolude
+import Prelude (Show (..))
 
 type Error = Text
 
@@ -40,17 +41,18 @@ data Program st i o m t where
   Finish :: Either Error t -> Program st i o m t
 
 type ProgramCont st i o m s = forall t. (s -> Program st i o m t) -> Program st i o m t
+
 type ProgramCont' st i o m = forall t. Program st i o m t -> Program st i o m t
 
 data ContResOut st i o m r
-  = ContOut (Maybe o) (st, Program st i o m r)
-  | ResOut (st, Either Error r)
+  = ContOut (Maybe o) (Pair st (Program st i o m r))
+  | ResOut (Pair st (Either Error r))
 
 $(makePrisms 'ResOut)
 
 data ContRes st i o m r
-  = Cont (st, Program st i o m r)
-  | Res (st, Either Error r)
+  = Cont (Pair st (Program st i o m r))
+  | Res (Pair st (Either Error r))
 
 $(makePrisms 'Res)
 
@@ -71,16 +73,16 @@ step ::
   forall st i o m r.
   Monad m =>
   Maybe i ->
-  (st, Program st i o m r) ->
+  Pair st (Program st i o m r) ->
   m (ContResOut st i o m r)
-step i (st, Lift ma cont) = do
+step i (st :!: Lift ma cont) = do
   a <- ma
-  step i (st, cont a)
-step i (st, GetState cont) = step i (st, cont st)
-step i (_, PutState st cont) = step i (st, cont)
-step (Just i) (st, WaitInput cont) = step Nothing (st, cont i)
-step Nothing x@(_, WaitInput _) = pure $ ContOut Nothing x
-step Nothing (st, Output x next) = pure $ ContOut (Just x) (st, next)
-step (Just _) (_st, Output _ _) = panic "Consume all the outputs first"
-step Nothing (st, Finish a) = pure $ ResOut (st, a)
-step (Just _) (_st, Finish _) = panic "Consume all the outputs before reading a result"
+  step i (st :!: cont a)
+step i (st :!: GetState cont) = step i (st :!: cont st)
+step i (_ :!: PutState st cont) = step i (st :!: cont)
+step (Just i) (st :!: WaitInput cont) = step Nothing (st :!: cont i)
+step Nothing x@(_ :!: WaitInput _) = pure $ ContOut Nothing x
+step Nothing (st :!: Output x next) = pure $ ContOut (Just x) (st :!: next)
+step (Just _) (_st :!: Output _ _) = panic "Consume all the outputs first"
+step Nothing (st :!: Finish a) = pure $ ResOut (st :!: a)
+step (Just _) (_st :!: Finish _) = panic "Consume all the outputs before reading a result"

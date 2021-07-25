@@ -9,10 +9,11 @@ module Lang.Coroutine.CPS.Folds
   )
 where
 
+import Data.Strict.Tuple
 import Lang.Coroutine.CPS
 import Protolude
 
-evalProgramM :: forall st i o m r. Monad m => (o -> m ()) -> m i -> (st, Program st i o m r) -> m (st, Either Text r)
+evalProgramM :: forall st i o m r. Monad m => (o -> m ()) -> m i -> Pair st (Program st i o m r) -> m (Pair st (Either Text r))
 evalProgramM onOut getIn c0 =
   let feedInputAccumOutUnsafe c = do
         i <- getIn
@@ -37,13 +38,13 @@ eatResOutputsM f r = do
 
   loop r
 
-eatOutputsM :: forall st i o m r. Monad m => (o -> m ()) -> (st, Program st i o m r) -> m (ContRes st i o m r)
+eatOutputsM :: forall st i o m r. Monad m => (o -> m ()) -> Pair st (Program st i o m r) -> m (ContRes st i o m r)
 eatOutputsM f c = eatResOutputsM f =<< step Nothing c
 
-feedInputUnsafeM :: forall st i o m r. Monad m => (o -> m ()) -> i -> (st, Program st i o m r) -> m (ContRes st i o m r)
+feedInputUnsafeM :: forall st i o m r. Monad m => (o -> m ()) -> i -> Pair st (Program st i o m r) -> m (ContRes st i o m r)
 feedInputUnsafeM f i c = eatResOutputsM f =<< step (Just i) c
 
-feedInputM :: forall st i o m r. Monad m => (o -> m ()) -> i -> (st, Program st i o m r) -> m (ContRes st i o m r)
+feedInputM :: forall st i o m r. Monad m => (o -> m ()) -> i -> Pair st (Program st i o m r) -> m (ContRes st i o m r)
 feedInputM f i c = do
   eatOutputsM f c >>= \case
     Cont c' -> feedInputUnsafeM f i c'
