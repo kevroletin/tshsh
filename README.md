@@ -38,8 +38,8 @@ tshsh doesn't draw any tui.
 
 For simplicity, we'll refer to a GUI terminal as `xterm` or a `terminal`. We'll
 refer to an interactive program spawned and managed by tshsh as `puppets` or
-`shells`. When we say `tty` we refer to a pair of file descriptors in `/dev/*`
-the directory or/and kernel logic which reacts/transform inputs from mentioned
+`shells`. When we say `tty` we refer to a pair of file descriptors in the `/dev/*`
+directory or/and kernel logic which reacts/transform inputs from mentioned
 files.
 
 ## Implementation
@@ -49,7 +49,7 @@ files.
 
 ```
          (1)              (2)
-xterm -> tty -> zshzsh -> pup_tty -> sh
+xterm -> tty -> tshsh -> pup_tty -> sh
           :                :
        raw mode           mode configured by sh
 ```
@@ -81,7 +81,7 @@ a dedicated section for it.
 
 ```
          (1)              (2)
-xterm <- tty <- zshzsh <- pup_tty <- sh
+xterm <- tty <- tshsh <- pup_tty <- sh
   :
   configured by sh
   using ANSI escape seq.

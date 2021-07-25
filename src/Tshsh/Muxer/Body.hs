@@ -47,7 +47,7 @@ muxBody env st (PuppetOutput puppetIdx str0) = do
       then do
         BS.hPut stdout str0
 
-        let loop m str =
+        let loop !m !str =
               case matchStr m str of
                 NoMatch m' -> pure m'
                 Match m' len _ rest -> do
@@ -58,6 +58,8 @@ muxBody env st (PuppetOutput puppetIdx str0) = do
                       loop m' rest
         m' <- loop (st ^. mst_currentPuppet . ps_parser) str0
         pure (st & mst_currentPuppet . ps_parser .~ m')
+
+        -- pure st
       else -- TODO: what to do with background puppet output? just ignore for now
         pure st
   pure (res & mst_currentProgram .~ nextCp)

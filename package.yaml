@@ -49,8 +49,10 @@ dependencies:
 - profunctors
 - gauge
 - strip-ansi-escape
+- bounded-tchan
 
 default-extensions:
+- StrictData
 - BangPatterns
 - DeriveAnyClass
 - DeriveGeneric

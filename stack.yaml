@@ -27,7 +27,7 @@ extra-deps:
   - shh-extras-0.1.0.1@sha256:04673f0fe8a87fc9b2092d9480c5da487cf6aa242716346b0b78810b2215d2e9,1055
   - hspec-expectations-lens-0.4.0@sha256:881f177fbf1c09202cbe96273ee0689ce3e218f95d4a9b543eaf339d2b4b36d2,1459
   - strip-ansi-escape-0.1.0.0@sha256:08f2ed93b16086a837ec46eab7ce8d27cf39d47783caaeb818878ea33c2ff75f,1628
-
+  - bounded-tchan-0.2.3@sha256:c0a1da3fc6a872fa1818888a03a71bef7586174a1d591a96e28296b047d61ab4,914
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

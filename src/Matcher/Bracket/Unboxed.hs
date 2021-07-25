@@ -29,7 +29,7 @@ import Protolude
 data Matcher a = Matcher
   { _bmch_left :: M.Matcher a,
     _bmch_right :: M.Matcher a,
-    _bmch_leftMatchOffset :: Maybe Int
+    _bmch_leftMatchOffset :: {-# UNPACK #-} !Int
   }
 
 $(makeLenses 'Matcher)
@@ -49,7 +49,7 @@ mkMatcher left right =
   Matcher
     { _bmch_left = M.mkMatcher left,
       _bmch_right = M.mkMatcher right,
-      _bmch_leftMatchOffset = Nothing
+      _bmch_leftMatchOffset = -1
     }
 
 matcherReset :: Matcher a -> Matcher a
@@ -57,26 +57,25 @@ matcherReset Matcher {..} =
   Matcher
     { _bmch_left = M.matcherReset _bmch_left,
       _bmch_right = M.matcherReset _bmch_right,
-      _bmch_leftMatchOffset = Nothing
+      _bmch_leftMatchOffset = -1
     }
 
 matcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> StepResult (Matcher a)
 matcherStep m0 a =
-  case m0 ^. bmch_leftMatchOffset of
-    Nothing ->
-      StepNoMatch $
-        case M.matcherStep (m0 ^. bmch_left) a of
-          StepMatch _ lm' ->
-            m0 & bmch_left .~ lm'
-              & bmch_leftMatchOffset ?~ (lm' ^. M.mch_maxPos)
-              & bmch_right %~ M.matcherReset
-          StepNoMatch lm' ->
-            m0 & bmch_left .~ lm'
-    Just offset ->
-      case M.matcherStep (m0 ^. bmch_right) a of
-        StepMatch _ _ -> StepMatch (offset + 1) (matcherReset m0)
-        StepNoMatch mr' ->
-          StepNoMatch
-            ( m0 & bmch_right .~ mr'
-                & bmch_leftMatchOffset . _Just %~ (+ 1)
-            )
+  let offset = m0 ^. bmch_leftMatchOffset
+   in if offset < 0
+        then StepNoMatch $
+          case M.matcherStep (m0 ^. bmch_left) a of
+            StepMatch _ lm' ->
+              m0 & bmch_left .~ lm'
+                & bmch_leftMatchOffset .~ (lm' ^. M.mch_maxPos)
+                & bmch_right %~ M.matcherReset
+            StepNoMatch lm' ->
+              m0 & bmch_left .~ lm'
+        else case M.matcherStep (m0 ^. bmch_right) a of
+          StepMatch _ _ -> StepMatch (offset + 1) (matcherReset m0)
+          StepNoMatch mr' ->
+            StepNoMatch
+              ( m0 & bmch_right .~ mr'
+                  & bmch_leftMatchOffset %~ (+ 1)
+              )

@@ -60,8 +60,8 @@ preprocess str = reverse $ go (prefixesDesc str)
 data Matcher a = Matcher
   { _mch_pattern :: U.UArray Int a,
     _mch_jumpTable :: U.UArray Int Int,
-    _mch_pos :: Int,
-    _mch_maxPos :: Int
+    _mch_pos :: {-# UNPACK #-} !Int,
+    _mch_maxPos :: {-# UNPACK #-} !Int
   }
 
 deriving instance Eq (Matcher Char)

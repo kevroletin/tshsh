@@ -6,6 +6,7 @@ module Main where
 
 import Control.Concurrent
 import Control.Concurrent.STM
+import Control.Concurrent.STM.BTChan
 import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
@@ -69,22 +70,22 @@ newPuppet cmd args = do
   pure (p, masterH, pts)
 
 readLoop :: Handle -> (BS.ByteString -> IO ()) -> IO ()
-readLoop fromH act = do
-  buf <- mallocBytes bufSize
-  let loop =
-        hGetBufSome fromH buf bufSize >>= \case
-          n | n > 0 -> do
-            str <- BS.packCStringLen (buf, n)
-            act str
-            loop
-          _ -> pure ()
-  -- ignore io errors
-  _ <- tryIO loop
-  pure ()
+readLoop fromH act =
+  allocaBytes bufSize $ \buf -> do
+    let loop =
+          hGetBufSome fromH buf bufSize >>= \case
+            n | n > 0 -> do
+              str <- BS.packCStringLen (buf, n)
+              act str
+              loop
+            _ -> pure ()
+    -- ignore io errors
+    _ <- tryIO loop
+    pure ()
 
 forkPuppet ::
   PuppetIdx ->
-  TChan MuxCmd ->
+  BTChan MuxCmd ->
   Matcher ->
   GetCwd ->
   (Text -> Text) ->
@@ -109,7 +110,7 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
   putStrLn ("Started: " <> show pid :: Text)
 
   readThread <- forkIO . readLoop masterH $ \str ->
-    atomically . writeTChan chan $ PuppetOutput idx str
+    atomically . writeBTChan chan $ PuppetOutput idx str
 
   pure
     ( Puppet
@@ -141,9 +142,9 @@ main :: IO ()
 main = do
   termSetRawMode FD.stdin
 
-  muxChan <- newTChanIO
+  muxChan <- newBTChanIO 10
   -- TODO: set tty size during creation to avoid any races
-  atomically $ writeTChan muxChan WindowResize
+  atomically $ writeBTChan muxChan WindowResize
 
   (pup1, pup1st) <-
     forkPuppet
@@ -180,19 +181,19 @@ main = do
 
   _muxThread <- forkIO $ do
     let loop !env !st = do
-          cmd <- atomically (readTChan muxChan)
+          cmd <- atomically (readBTChan muxChan)
           muxLog cmd
           newSt <- muxBody env st cmd
           loop env newSt
     loop (mux ^. mux_env) (mux ^. mux_st)
 
-  _ <- installHandler windowChange (Catch (atomically $ writeTChan muxChan WindowResize)) Nothing
+  _ <- installHandler windowChange (Catch (atomically $ writeBTChan muxChan WindowResize)) Nothing
 
   -- switch to the other puppet here
-  let suspendSig = atomically $ writeTChan muxChan SwitchPuppet
+  let suspendSig = atomically $ writeBTChan muxChan SwitchPuppet
   _ <- installHandler keyboardStop (Catch suspendSig) Nothing
 
-  _readThread <- forkIO $ readLoop stdin $ \str -> atomically . writeTChan muxChan $ TermInput str
+  _readThread <- forkIO $ readLoop stdin $ \str -> atomically . writeBTChan muxChan $ TermInput str
 
   _ <- waitForProcess (_pup_process pup1)
   _ <- waitForProcess (_pup_process pup2)
