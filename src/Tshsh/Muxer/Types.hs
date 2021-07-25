@@ -29,9 +29,10 @@ import Lang.Coroutine.CPS
 import Protolude hiding (hPutStrLn, log, tryIO)
 import Tshsh.Commands
 import Tshsh.Puppet
+import Data.Strict.Tuple
 
 data MuxEnv = MuxEnv
-  { _menv_puppets :: (Puppet, Puppet),
+  { _menv_puppets :: Pair Puppet Puppet,
     _menv_logger :: Text -> IO ()
   }
 
@@ -40,7 +41,7 @@ type SyncCwdProgram = Program () (PuppetIdx, BS.ByteString) (PuppetIdx, BS.ByteS
 type SyncCwdProgramSt = ((), SyncCwdProgram)
 
 data MuxState = MuxState
-  { _mst_puppetSt :: (PuppetState, PuppetState),
+  { _mst_puppetSt :: Pair PuppetState PuppetState,
     _mst_currentPuppetIdx :: PuppetIdx,
     _mst_currentProgram :: Maybe SyncCwdProgramSt
   }
@@ -51,13 +52,13 @@ $(makeLenses 'MuxState)
 $(makeLenses 'MuxEnv)
 $(makeLenses 'Mux)
 
-pupIdx :: PuppetIdx -> Lens' (a, a) a
-pupIdx Puppet1 = _1
-pupIdx Puppet2 = _2
+pupIdx :: PuppetIdx -> Lens' (Pair a a) a
+pupIdx Puppet1 f (a :!: b) = (:!: b) <$> f a
+pupIdx Puppet2 f (a :!: b) = (a :!:) <$> f b
 
-sortPup :: PuppetIdx -> Lens' (a, a) (a, a)
-sortPup Puppet1 f (a, b) = f (a, b)
-sortPup Puppet2 f (a, b) = (\(a', b') -> (b', a')) <$> f (b, a)
+sortPup :: PuppetIdx -> Lens' (Pair a a) (Pair a a)
+sortPup Puppet1 f (a :!: b) = f (a :!: b)
+sortPup Puppet2 f (a :!: b) = (\(a' :!: b') -> b' :!: a') <$> f (b :!: a)
 
 mst_currentPuppet :: Lens' MuxState PuppetState
 mst_currentPuppet f m =
@@ -71,7 +72,7 @@ mst_backgroundPuppet f m =
       ls = mst_puppetSt . pupIdx idx
    in (\x -> m & ls .~ x) <$> f (m ^. ls)
 
-mst_sortedPuppets :: Lens' MuxState (PuppetState, PuppetState)
+mst_sortedPuppets :: Lens' MuxState (Pair PuppetState PuppetState)
 mst_sortedPuppets f m =
   let idx = m ^. mst_currentPuppetIdx
       ls = mst_puppetSt . sortPup idx
@@ -82,7 +83,7 @@ menv_currentPuppet st f env =
   let ls = menv_puppets . pupIdx (st ^. mst_currentPuppetIdx)
    in (\x -> env & ls .~ x) <$> f (env ^. ls)
 
-menv_sortedPuppets :: MuxState -> Lens' MuxEnv (Puppet, Puppet)
+menv_sortedPuppets :: MuxState -> Lens' MuxEnv (Pair Puppet Puppet)
 menv_sortedPuppets st f env =
   let ls = menv_puppets . sortPup (st ^. mst_currentPuppetIdx)
    in (\x -> env & ls .~ x) <$> f (env ^. ls)

@@ -17,6 +17,7 @@ import System.Process (readProcess)
 import Tshsh.Commands
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
+import Data.Strict.Tuple
 
 type In = (PuppetIdx, BS.ByteString)
 
@@ -66,7 +67,7 @@ getProcessCwd pid =
 syncCwdP :: MuxEnv -> PuppetIdx -> ProgramCont' () In Out IO
 syncCwdP env idx cont0 =
   let prevIdx = nextPuppet idx
-      (currP, prevP) = env ^. menv_puppets . sortPup idx
+      (currP :!: prevP) = env ^. menv_puppets . sortPup idx
       getCwd cont =
         case prevP ^. pup_getCwdCmd of
           GetCwdCommand cmd ->

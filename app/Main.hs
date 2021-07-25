@@ -11,13 +11,14 @@ import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
 import qualified Data.ByteString as BS
+import Data.Strict.Tuple
 import Data.String.Conversions
 import Foreign
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
 import Matcher.ByteString
 import Protolude hiding (hPutStrLn, log, tryIO)
-import System.IO (hFlush, BufferMode (..), hGetBufSome, hPrint, hSetBuffering)
+import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBuffering)
 import System.IO.Unsafe
 import System.Posix
 import System.Posix.Signals.Exts
@@ -42,8 +43,9 @@ muxLogFile = unsafePerformIO $ do
   pure f
 
 log :: Show a => a -> IO ()
-log str = do hPrint logFile str
-             hFlush logFile
+log str = do
+  hPrint logFile str
+  hFlush logFile
 
 muxLog :: Show a => a -> IO ()
 muxLog = hPrint muxLogFile
@@ -156,7 +158,6 @@ main = do
       "shh"
       []
 
-
   (pup2, pup2st) <-
     forkPuppet
       Puppet2
@@ -170,11 +171,11 @@ main = do
   let mux =
         Mux
           MuxEnv
-            { _menv_puppets = (pup1, pup2),
+            { _menv_puppets = pup1 :!: pup2,
               _menv_logger = log
             }
           MuxState
-            { _mst_puppetSt = (pup1st, pup2st),
+            { _mst_puppetSt = pup1st :!: pup2st,
               _mst_currentPuppetIdx = Puppet1,
               _mst_currentProgram = Nothing
             }

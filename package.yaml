@@ -50,6 +50,7 @@ dependencies:
 - gauge
 - strip-ansi-escape
 - bounded-tchan
+- strict
 
 default-extensions:
 - StrictData
