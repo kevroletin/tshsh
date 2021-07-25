@@ -28,7 +28,7 @@ data MatchResult
   deriving (Eq, Show)
 
 matchStr_ :: Matcher -> T.Text -> Int -> T.Text -> MatchResult
-matchStr_ m orig pos str =
+matchStr_ m orig !pos str =
   case T.uncons str of
     Nothing -> NoMatch m
     Just (h, t) ->

@@ -23,8 +23,8 @@ where
 
 import Control.Lens
 import qualified Data.Array.Unboxed as U
-import Protolude
 import Matcher.Result
+import Protolude
 
 takeEnd :: Int -> [a] -> [a]
 takeEnd i xs0
@@ -114,7 +114,6 @@ matcherReset m = m & mch_pos .~ 0
 -- Invariants:
 -- - accepted matcher should be not full
 -- - returned matcher is not full
-
 matcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> StepResult (Matcher a)
 matcherStep !m0 !inpChr =
   if mch_nextCharUnsafe m0 == inpChr
@@ -129,37 +128,3 @@ matcherStep !m0 !inpChr =
         else
           let Just fallbackPos = m0 ^? mch_jumpTable . ix (m0 ^. mch_pos)
            in matcherStep (m0 & mch_pos .~ fallbackPos) inpChr
-
--- data BuffStepResult a
---   = BuffStepMatch [a] (Matcher a)
---   | BuffStepNoMatch [a] (Matcher a)
-
--- $(makePrisms 'BuffStepNoMatch)
-
--- deriving instance Eq (BuffStepResult Char)
-
--- deriving instance Show (BuffStepResult Char)
-
--- deriving instance Eq (BuffStepResult Word8)
-
--- deriving instance Show (BuffStepResult Word8)
-
--- bufferedMatcherStep_ :: (Eq a, CanUnbox a) => Int -> Matcher a -> a -> BuffStepResult a
--- bufferedMatcherStep_ skipped !m0 !inpChr =
---   if mch_nextCharUnsafe m0 == inpChr
---     then
---       let m = mch_forwardUnsafe m0
---        in if mch_isFull m
---             then BuffStepMatch (U.elems (m0 ^. mch_pattern)) (matcherReset m)
---             else BuffStepNoMatch [] m
---     else
---       if m0 ^. mch_pos == 0
---         then BuffStepNoMatch ((take skipped . U.elems $ m0 ^. mch_pattern) ++ [inpChr]) m0
---         else
---           let Just fallbackPos = m0 ^? mch_jumpTable . ix (m0 ^. mch_pos)
---               dPos = (m0 ^. mch_pos) - fallbackPos
---            in bufferedMatcherStep_ (skipped + dPos) (m0 & mch_pos .~ fallbackPos) inpChr
-
--- -- output characters as long as we understand that it's not part of a match
--- bufferedMatcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> BuffStepResult a
--- bufferedMatcherStep = bufferedMatcherStep_ 0

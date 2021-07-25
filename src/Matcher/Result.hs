@@ -14,7 +14,7 @@ import Protolude
 
 data StepResult m
   = StepMatch
-      { _sr_matchLength :: Int,
+      { _sr_matchLength :: {-# UNPACK #-} !Int,
         _sr_matcher :: m
       }
   | StepNoMatch {_sr_matcher :: m}

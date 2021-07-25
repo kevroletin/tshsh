@@ -28,7 +28,7 @@ data MatchResult
   deriving (Eq, Show)
 
 matchStr_ :: Matcher -> BS.ByteString -> Int -> BS.ByteString -> MatchResult
-matchStr_ m orig pos str =
+matchStr_ m orig !pos str =
   case BS.uncons str of
     Nothing -> NoMatch m
     Just (h, t) ->

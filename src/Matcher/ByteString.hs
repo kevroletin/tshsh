@@ -1,5 +1,3 @@
-{-# LANGUAGE StrictData #-}
-
 module Matcher.ByteString
   ( Matcher,
     MatchResult (..),
@@ -20,7 +18,7 @@ type Matcher = M.Matcher Word8
 data MatchResult
   = Match
       { match_matcher :: Matcher,
-        match_matchLength :: Int,
+        match_matchLength :: {-# UNPACK #-} !Int,
         match_prev :: BS.ByteString,
         match_rest :: BS.ByteString
       }
@@ -31,20 +29,17 @@ instance Show MatchResult where
     "(Match _ " <> Protolude.show l <> " " <> Protolude.show p <> " " <> Protolude.show r <> ")"
   show (NoMatch _) = "NoMatch"
 
-matchStr_ :: Matcher -> BS.ByteString -> Int -> BS.ByteString -> MatchResult
-matchStr_ (M.Matcher m0 step reset) = go m0
-  where
-    pack m = M.Matcher m step reset
-    go m orig pos str =
-      case BS.uncons str of
-        Nothing -> NoMatch (pack m)
-        Just (h, t) ->
-          case step m h of
-            StepMatch len m' -> Match (pack m') len (BS.take (1 + pos) orig) t
-            StepNoMatch m' -> go m' orig (pos + 1) t
+matchStr_ :: M.MatcherI m Word8 => m Word8 -> BS.ByteString -> Int -> BS.ByteString -> MatchResult
+matchStr_ m orig !pos str =
+  case BS.uncons str of
+    Nothing -> NoMatch (M.Matcher m)
+    Just (h, t) ->
+      case M.matcherStep m h of
+        StepMatch len m' -> Match (M.Matcher m') len (BS.take (1 + pos) orig) t
+        StepNoMatch m' -> matchStr_ m' orig (pos + 1) t
 
 matchStr :: Matcher -> ByteString -> MatchResult
-matchStr m str = matchStr_ m str 0 str
+matchStr m str = M.applyMatcher m (\m' -> matchStr_ m' str 0 str)
 
 mkSeqMatcher :: ByteString -> Matcher
 mkSeqMatcher = M.mkSeqMatcher . BS.unpack
