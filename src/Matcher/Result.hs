@@ -21,3 +21,14 @@ data StepResult m
   deriving (Functor)
 
 $(makePrisms 'StepNoMatch)
+
+data MatchResult m arr
+  = Match
+      { _match_matcher :: m,
+        _match_matchLength :: {-# UNPACK #-} !Int,
+        _match_prev :: arr,
+        _match_rest :: arr
+      }
+  | NoMatch {_match_matcher :: m}
+
+$(makePrisms 'NoMatch)

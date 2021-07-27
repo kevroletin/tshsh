@@ -18,6 +18,9 @@ module Matcher.Seq.Unboxed
     mch_jumpTable,
     mch_pos,
     mch_maxPos,
+    mch_nextCharUnsafe,
+    mch_isFull,
+    mch_forwardUnsafe,
   )
 where
 

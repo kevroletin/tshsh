@@ -6,6 +6,7 @@ module Tshsh.Program.SyncCwd where
 import Control.Lens
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
+import Data.Strict.Tuple
 import Data.String.AnsiEscapeCodes.Strip.Text
 import Data.String.Conversions
 import qualified Data.Text as T
@@ -17,7 +18,6 @@ import System.Process (readProcess)
 import Tshsh.Commands
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
-import Data.Strict.Tuple
 
 type In = (PuppetIdx, BS.ByteString)
 
