@@ -40,8 +40,9 @@ where
 
 import Lang.Coroutine.CPS
 import Protolude
+import Data.Strict.Tuple
 
-foldProgram :: forall s st i o r m. Monad m => (s -> o -> s) -> s -> [i] -> (st, Program st i o m r) -> m (s, ContRes st i o m r)
+foldProgram :: forall s st i o r m. Monad m => (s -> o -> s) -> s -> [i] -> Pair st (Program st i o m r) -> m (s, ContRes st i o m r)
 foldProgram f res0 xs0 c0 =
   let
       feedInput' !res [] c = pure (res, Cont c)
@@ -53,7 +54,7 @@ foldProgram f res0 xs0 c0 =
         (ResOut r) -> pure (res, Res r)
    in loop res0 xs0 =<< step Nothing c0
 
-accumProgram :: forall st i o r m. Monad m => [i] -> (st, Program st i o m r) -> m ([o], ContRes st i o m r)
+accumProgram :: forall st i o r m. Monad m => [i] -> Pair st (Program st i o m r) -> m ([o], ContRes st i o m r)
 accumProgram is c = first reverse <$> foldProgram (\s o -> o : s) [] is c
 
 foldResOutputs :: forall s st i o r m. Monad m => (s -> o -> s) -> s -> ContResOut st i o m r -> m (s, ContRes st i o m r)
@@ -64,10 +65,10 @@ foldResOutputs f res0 r =
         ResOut o -> pure (res, Res o)
    in loop res0 r
 
-foldOutputs :: forall s st i o r m. Monad m => (s -> o -> s) -> s -> (st, Program st i o m r) -> m (s, ContRes st i o m r)
+foldOutputs :: forall s st i o r m. Monad m => (s -> o -> s) -> s -> Pair st (Program st i o m r) -> m (s, ContRes st i o m r)
 foldOutputs a b c = foldResOutputs a b =<< step Nothing c
 
-accumOutputs :: forall st i o r m. Monad m => (st, Program st i o m r) -> m ([o], ContRes st i o m r)
+accumOutputs :: forall st i o r m. Monad m => Pair st (Program st i o m r) -> m ([o], ContRes st i o m r)
 accumOutputs c = first reverse <$> foldOutputs (\s o -> o : s) [] c
 
 feedInputFoldOutUnsafe ::
@@ -76,18 +77,18 @@ feedInputFoldOutUnsafe ::
   (s -> o -> s) ->
   s ->
   i ->
-  (st, Program st i o m r) ->
+  Pair st (Program st i o m r) ->
   m (s, ContRes st i o m r)
 feedInputFoldOutUnsafe a b i c = foldResOutputs a b =<< step (Just i) c
 
-feedInputAccumOutputsUnsafe :: forall st i o r m. Monad m => i -> (st, Program st i o m r) -> m ([o], ContRes st i o m r)
+feedInputAccumOutputsUnsafe :: forall st i o r m. Monad m => i -> Pair st (Program st i o m r) -> m ([o], ContRes st i o m r)
 feedInputAccumOutputsUnsafe i c = first reverse <$> feedInputFoldOutUnsafe (\s o -> o : s) [] i c
 
-feedInputFoldOutputs :: forall s st i o r m. Monad m => (s -> o -> s) -> s -> i -> (st, Program st i o m r) -> m (s, ContRes st i o m r)
+feedInputFoldOutputs :: forall s st i o r m. Monad m => (s -> o -> s) -> s -> i -> Pair st (Program st i o m r) -> m (s, ContRes st i o m r)
 feedInputFoldOutputs f s i c =
   foldOutputs f s c >>= \case
     (s', Cont c') -> feedInputFoldOutUnsafe f s' i c'
     (s', Res o) -> pure (s', Res o)
 
-feedInputAccumOutputs :: forall st i o r m. Monad m => i -> (st, Program st i o m r) -> m ([o], ContRes st i o m r)
+feedInputAccumOutputs :: forall st i o r m. Monad m => i -> Pair st (Program st i o m r) -> m ([o], ContRes st i o m r)
 feedInputAccumOutputs i c = first reverse <$> feedInputFoldOutputs (\s o -> o : s) [] i c
