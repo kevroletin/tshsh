@@ -75,6 +75,13 @@ main = hspec $ do
     it "breakOnAll is the same as BS based breakOnAll" $
       property prop_sameAsBsImpl
 
+    it "test manually" $ do
+      breakOnAllBs' ":" "1:2:3" `shouldBe` [("1", ":2:3"), ("1:2", ":3")]
+      breakOnAllBs' ":" "123" `shouldBe` []
+      breakOnAllBs' ":" "---:---" `shouldBe` [("---", ":---")]
+      breakOnAllBs' "123" ("112" <> "123" <> "112" <> "123") `shouldBe` [("112", "123" <> "112123"),
+                                                                         ("112123112", "123")]
+
   describe "CPS lang" Spec.CPS.spec
 
   describe "Monadic lang" Spec.MonadT.spec

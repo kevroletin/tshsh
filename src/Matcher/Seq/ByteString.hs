@@ -9,9 +9,9 @@ module Matcher.Seq.ByteString
   )
 where
 
-import Control.Lens (ix, (.~), (^.), (^?))
 import qualified Data.ByteString as BS
-import Matcher.Seq.Unboxed (matcherReset, mch_forwardUnsafe, mch_isFull, mch_jumpTable, mch_nextCharUnsafe, mch_pos)
+import Matcher.Result
+import Matcher.Seq.Unboxed (mch_nextCharUnsafe)
 import qualified Matcher.Seq.Unboxed as M
 import Protolude
 
@@ -34,22 +34,20 @@ matchStr_ :: Matcher -> BS.ByteString -> Int -> BS.ByteString -> MatchResult
 matchStr_ m0 orig !pos str =
   case BS.uncons str of
     Nothing -> NoMatch m0
-    Just (inpChr, t) ->
-      if mch_nextCharUnsafe m0 == inpChr
-        then
-          let m = mch_forwardUnsafe m0
-           in if mch_isFull m
-                then Match (matcherReset m) (m ^. M.mch_maxPos) (BS.take (1 + pos) orig) t
-                else matchStr_ m orig (pos + 1) t
-        else
-          if m0 ^. mch_pos == 0
-            then
-              let c = mch_nextCharUnsafe m0
+    Just (h, t) ->
+      case M.matcherStep m0 h of
+        StepMatch _ m' -> Match m' (M._mch_maxPos m0) (BS.take (1 + pos) orig) t
+        StepNoMatch m' ->
+          if M._mch_pos m' == 0
+            then -- BS.break (== c) compiles into a fast memchr call which gives a huge
+            -- speedup in a case when the first letter of a pattern isn't common in
+            -- the input string (for example "\n" or a beginning of an escape sequence
+            -- in a output from a shell command
+
+              let c = mch_nextCharUnsafe m'
                   (skip, rest) = BS.break (== c) t
-               in matchStr_ m0 orig (pos + 1 + BS.length skip) rest
-            else
-              let Just fallbackPos = m0 ^? mch_jumpTable . ix (m0 ^. mch_pos)
-               in matchStr_ (m0 & mch_pos .~ fallbackPos) orig pos str
+               in matchStr_ m' orig (pos + 1 + BS.length skip) rest
+            else matchStr_ m' orig (pos + 1) t
 
 matchStr :: Matcher -> ByteString -> MatchResult
 matchStr m str = matchStr_ m str 0 str

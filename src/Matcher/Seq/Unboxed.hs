@@ -13,7 +13,8 @@ module Matcher.Seq.Unboxed
   ( mkMatcher,
     matcherStep,
     matcherReset,
-    Matcher,
+    Matcher(..),
+    mch_fstChar,
     mch_pattern,
     mch_jumpTable,
     mch_pos,
@@ -28,6 +29,7 @@ import Control.Lens
 import qualified Data.Array.Unboxed as U
 import Matcher.Result
 import Protolude
+import Data.Array.IArray
 
 takeEnd :: Int -> [a] -> [a]
 takeEnd i xs0
@@ -61,10 +63,11 @@ preprocess str = reverse $ go (prefixesDesc str)
 -- hence 0 means, we matched nothing and (T.length mch_pattern) means we've
 -- matched everything
 data Matcher a = Matcher
-  { _mch_pattern :: U.UArray Int a,
-    _mch_jumpTable :: U.UArray Int Int,
+  { _mch_fstChar :: !a,
     _mch_pos :: {-# UNPACK #-} !Int,
-    _mch_maxPos :: {-# UNPACK #-} !Int
+    _mch_maxPos :: {-# UNPACK #-} !Int,
+    _mch_pattern :: U.UArray Int a,
+    _mch_jumpTable :: U.UArray Int Int
   }
 
 deriving instance Eq (Matcher Char)
@@ -86,48 +89,51 @@ type CanUnbox a = U.IArray U.UArray a
 -- - mch_pos in range [0, T.lengh mch_pattern]
 -- - mch_maxPos in range [1, T.length mch_pattern]
 mkMatcher :: forall a. (Eq a, CanUnbox a) => [a] -> Matcher a
-mkMatcher str =
+mkMatcher [] = panic "Matcher for empty string makes no sense"
+mkMatcher str@(a : _) =
   let len = length str
-   in if len == 0
-        then panic "Matcher for empty string makes no sense"
-        else
-          Matcher
-            { _mch_pattern = U.listArray (0, len -1) str,
-              _mch_jumpTable = U.listArray (1, len) (preprocess str),
-              _mch_pos = 0,
-              _mch_maxPos = len
-            }
+   in Matcher
+        { _mch_fstChar = a,
+          _mch_pattern = U.listArray (0, len -1) str,
+          _mch_jumpTable = U.listArray (1, len) (preprocess str),
+          _mch_pos = 0,
+          _mch_maxPos = len
+        }
+{-# INLINE mkMatcher #-}
 
 -- Unsafe, can go out of bounds if matcher is full
 mch_nextCharUnsafe :: CanUnbox a => Matcher a -> a
 mch_nextCharUnsafe m =
   fromMaybe (panic "mch_nextCharUnsafe: Matcher is full") $
     m ^? mch_pattern . ix (m ^. mch_pos) -- TODO: check +-1
+{-# INLINE mch_nextCharUnsafe #-}
 
 mch_isFull :: Matcher a -> Bool
 mch_isFull m = m ^. mch_maxPos == m ^. mch_pos
+{-# INLINE mch_isFull #-}
 
 -- Unsafe, fails if matcher is full
 mch_forwardUnsafe :: Matcher a -> Matcher a
-mch_forwardUnsafe m = m & mch_pos %~ (\x -> x + 1)
+mch_forwardUnsafe m = m & mch_pos %~ (+ 1)
+{-# INLINE mch_forwardUnsafe #-}
 
 matcherReset :: Matcher a -> Matcher a
 matcherReset m = m & mch_pos .~ 0
+{-# INLINE matcherReset #-}
 
 -- Invariants:
 -- - accepted matcher should be not full
 -- - returned matcher is not full
 matcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> StepResult (Matcher a)
-matcherStep !m0 !inpChr =
-  if mch_nextCharUnsafe m0 == inpChr
-    then
-      let m = mch_forwardUnsafe m0
-       in if mch_isFull m
-            then StepMatch (m ^. mch_maxPos) (matcherReset m)
-            else StepNoMatch m
-    else
-      if m0 ^. mch_pos == 0
-        then StepNoMatch m0
-        else
-          let Just fallbackPos = m0 ^? mch_jumpTable . ix (m0 ^. mch_pos)
-           in matcherStep (m0 & mch_pos .~ fallbackPos) inpChr
+matcherStep m !inpChr
+      | _mch_pos m == 0 && (inpChr /= _mch_fstChar m) = StepNoMatch m
+      | _mch_pos m == 0 || mch_nextCharUnsafe m == inpChr =
+        let m' = mch_forwardUnsafe m
+         in if mch_isFull m'
+              then StepMatch (_mch_maxPos m') (matcherReset m')
+              else StepNoMatch m'
+      | otherwise =
+        let fallbackPos = _mch_jumpTable m ! _mch_pos m
+         in matcherStep (m { _mch_pos = fallbackPos }) inpChr
+{-# SPECIALIZE INLINE matcherStep ::  Matcher Word8 -> Word8 -> StepResult (Matcher Word8) #-}
+{-# SPECIALIZE INLINE matcherStep ::  Matcher Char -> Char -> StepResult (Matcher Char) #-}
