@@ -88,7 +88,7 @@ readLoop fromH act =
 forkPuppet ::
   PuppetIdx ->
   BTChan MuxCmd ->
-  Matcher ->
+  SomeMatcher ->
   GetCwd ->
   (Text -> Text) ->
   FilePath ->

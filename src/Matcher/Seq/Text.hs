@@ -3,13 +3,13 @@ module Matcher.Seq.Text
     M.matcherStep,
     matchStr,
     Matcher,
-    MatchResult (..),
+    MatchResult,
   )
 where
 
-import Control.Lens ((^.))
 import qualified Data.Text as T
-import Matcher.Result
+import qualified Matcher.Result as R
+import Matcher.Seq.Unboxed (mch_nextCharUnsafe)
 import qualified Matcher.Seq.Unboxed as M
 import Protolude
 
@@ -18,23 +18,22 @@ type Matcher = M.Matcher Char
 mkMatcher :: T.Text -> Matcher
 mkMatcher str = M.mkMatcher (T.unpack str)
 
-data MatchResult
-  = Match
-      { match_matcher :: Matcher,
-        match_prev :: Text,
-        match_rest :: Text
-      }
-  | NoMatch {match_matcher :: Matcher}
-  deriving (Eq, Show)
+type MatchResult = R.MatchResult Matcher Text
 
 matchStr_ :: Matcher -> T.Text -> Int -> T.Text -> MatchResult
-matchStr_ m orig !pos str =
+matchStr_ m0 orig !pos str =
   case T.uncons str of
-    Nothing -> NoMatch m
+    Nothing -> R.NoMatch m0
     Just (h, t) ->
-      case M.matcherStep m h of
-        StepMatch _ m' -> Match m' (T.take (1 + pos - m ^. M.mch_maxPos) orig) t
-        StepNoMatch m' -> matchStr_ m' orig (pos + 1) t
+      case M.matcherStep m0 h of
+        R.StepMatch _ m' -> R.Match m' (M._mch_maxPos m0) (T.take (1 + pos) orig) t
+        R.StepNoMatch m' ->
+          if M._mch_pos m' == 0
+            then
+              let c = mch_nextCharUnsafe m'
+                  (skip, rest) = T.break (== c) t
+               in matchStr_ m' orig (pos + 1 + T.length skip) rest
+            else matchStr_ m' orig (pos + 1) t
 
-matchStr :: Matcher -> T.Text -> MatchResult
+matchStr :: Matcher -> Text -> MatchResult
 matchStr m str = matchStr_ m str 0 str

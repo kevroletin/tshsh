@@ -6,6 +6,10 @@ module Matcher.Result
   ( StepResult (..),
     _StepMatch,
     _StepNoMatch,
+    MatchResult (..),
+    _Match,
+    _NoMatch,
+    mapMatcher,
   )
 where
 
@@ -18,7 +22,7 @@ data StepResult m
         _sr_matcher :: m
       }
   | StepNoMatch {_sr_matcher :: m}
-  deriving (Functor)
+  deriving (Show)
 
 $(makePrisms 'StepNoMatch)
 
@@ -30,5 +34,9 @@ data MatchResult m arr
         _match_rest :: arr
       }
   | NoMatch {_match_matcher :: m}
+  deriving Show
+
+mapMatcher :: (m -> m') -> MatchResult m arr -> MatchResult m' arr
+mapMatcher f m = m { _match_matcher = f x } where x = _match_matcher m
 
 $(makePrisms 'NoMatch)

@@ -2,6 +2,7 @@ import Data.ByteString as BS
 import Data.Strict.Tuple
 import qualified Data.Text as T
 import Gauge.Main
+import Matcher.Result
 import Matcher.Seq.ByteString
 import Protolude
 import qualified Spec.Simulator as S

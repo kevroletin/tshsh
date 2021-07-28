@@ -12,6 +12,7 @@ import Foreign
 import Lang.Coroutine.CPS
 import Lang.Coroutine.CPS.Folds
 import Matcher.ByteString
+import Matcher.Result
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.Terminal.Size
 import System.Posix

@@ -12,6 +12,7 @@ import Data.String.Conversions
 import qualified Data.Text as T
 import Lang.Coroutine.CPS
 import Matcher.ByteString
+import Matcher.Result
 import Protolude
 import System.Posix (ProcessID)
 import System.Process (readProcess)
