@@ -51,6 +51,7 @@ dependencies:
 - strip-ansi-escape
 - bounded-tchan
 - strict
+- ListLike
 
 default-extensions:
 - StrictData

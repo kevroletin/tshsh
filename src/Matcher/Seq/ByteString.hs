@@ -1,43 +1,31 @@
 module Matcher.Seq.ByteString
   ( mkMatcher,
-    M.matcherStep,
+    U.matcherStep,
     matchStr,
     Matcher,
     MatchResult,
   )
 where
 
-import qualified Data.ByteString as BS
 import qualified Matcher.Result as R
-import Matcher.Seq.Unboxed (mch_nextCharUnsafe)
-import qualified Matcher.Seq.Unboxed as M
+import qualified Matcher.Seq.Unboxed as U
 import Protolude
 
-type Matcher = M.Matcher Word8
+{-# SPECIALIZE INLINE U.matcherStep :: U.Matcher Word8 -> Word8 -> R.StepResult (U.Matcher Word8) #-}
 
-mkMatcher :: BS.ByteString -> Matcher
-mkMatcher str = M.mkMatcher (BS.unpack str)
+{-# SPECIALIZE U.matchStr :: U.Matcher Word8 -> ByteString -> R.MatchResult (U.Matcher Word8) ByteString #-}
+
+type Matcher = U.Matcher Word8
 
 type MatchResult = R.MatchResult Matcher ByteString
 
-matchStr_ :: Matcher -> BS.ByteString -> Int -> BS.ByteString -> MatchResult
-matchStr_ m0 orig !pos str =
-  case BS.uncons str of
-    Nothing -> R.NoMatch m0
-    Just (h, t) ->
-      case M.matcherStep m0 h of
-        R.StepMatch _ m' -> R.Match m' (M._mch_maxPos m0) (BS.take (1 + pos) orig) t
-        R.StepNoMatch m' ->
-          if M._mch_pos m' == 0
-            then -- BS.break (== c) compiles into a fast memchr call which gives a huge
-            -- speedup in a case when the first letter of a pattern isn't common in
-            -- the input string (for example "\n" or a beginning of an escape sequence
-            -- in a output from a shell command
+type StepResult = R.StepResult Matcher
 
-              let c = mch_nextCharUnsafe m'
-                  (skip, rest) = BS.break (== c) t
-               in matchStr_ m' orig (pos + 1 + BS.length skip) rest
-            else matchStr_ m' orig (pos + 1) t
+mkMatcher :: ByteString -> Matcher
+mkMatcher = U.mkMatcher
 
 matchStr :: Matcher -> ByteString -> MatchResult
-matchStr m str = matchStr_ m str 0 str
+matchStr = U.matchStr
+
+matcherStep :: Matcher -> Word8 -> StepResult
+matcherStep = U.matcherStep

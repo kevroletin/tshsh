@@ -13,7 +13,8 @@ module Matcher.Seq.Unboxed
   ( mkMatcher,
     matcherStep,
     matcherReset,
-    Matcher(..),
+    matchStr,
+    Matcher (..),
     mch_fstChar,
     mch_pattern,
     mch_jumpTable,
@@ -26,10 +27,13 @@ module Matcher.Seq.Unboxed
 where
 
 import Control.Lens
-import qualified Data.Array.Unboxed as U
-import Matcher.Result
-import Protolude
 import Data.Array.IArray
+import qualified Data.Array.Unboxed as U
+import Data.ListLike (ListLike)
+import qualified Data.ListLike as L
+import Matcher.Result
+import qualified Matcher.Result as R
+import Protolude
 
 takeEnd :: Int -> [a] -> [a]
 takeEnd i xs0
@@ -88,9 +92,9 @@ type CanUnbox a = U.IArray U.UArray a
 -- - mch_jumpTable indixes are in range [0, T.length mch_pattern]
 -- - mch_pos in range [0, T.lengh mch_pattern]
 -- - mch_maxPos in range [1, T.length mch_pattern]
-mkMatcher :: forall a. (Eq a, CanUnbox a) => [a] -> Matcher a
-mkMatcher [] = panic "Matcher for empty string makes no sense"
-mkMatcher str@(a : _) =
+mkMatcher' :: forall a. (Eq a, CanUnbox a) => [a] -> Matcher a
+mkMatcher' [] = panic "Matcher for empty string makes no sense"
+mkMatcher' str@(a : _) =
   let len = length str
    in Matcher
         { _mch_fstChar = a,
@@ -99,6 +103,9 @@ mkMatcher str@(a : _) =
           _mch_pos = 0,
           _mch_maxPos = len
         }
+
+mkMatcher :: (Eq item, CanUnbox item, ListLike full item) => full -> Matcher item
+mkMatcher str = mkMatcher' (L.toList str)
 {-# INLINE mkMatcher #-}
 
 -- Unsafe, can go out of bounds if matcher is full
@@ -126,14 +133,43 @@ matcherReset m = m & mch_pos .~ 0
 -- - returned matcher is not full
 matcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> StepResult (Matcher a)
 matcherStep m !inpChr
-      | _mch_pos m == 0 && (inpChr /= _mch_fstChar m) = StepNoMatch m
-      | _mch_pos m == 0 || mch_nextCharUnsafe m == inpChr =
-        let m' = mch_forwardUnsafe m
-         in if mch_isFull m'
-              then StepMatch (_mch_maxPos m') (matcherReset m')
-              else StepNoMatch m'
-      | otherwise =
-        let fallbackPos = _mch_jumpTable m ! _mch_pos m
-         in matcherStep (m { _mch_pos = fallbackPos }) inpChr
-{-# SPECIALIZE INLINE matcherStep ::  Matcher Word8 -> Word8 -> StepResult (Matcher Word8) #-}
-{-# SPECIALIZE INLINE matcherStep ::  Matcher Char -> Char -> StepResult (Matcher Char) #-}
+  | _mch_pos m == 0 && (inpChr /= _mch_fstChar m) = StepNoMatch m
+  | _mch_pos m == 0 || mch_nextCharUnsafe m == inpChr =
+    let m' = mch_forwardUnsafe m
+     in if mch_isFull m'
+          then StepMatch (_mch_maxPos m') (matcherReset m')
+          else StepNoMatch m'
+  | otherwise =
+    let fallbackPos = _mch_jumpTable m ! _mch_pos m
+     in matcherStep (m {_mch_pos = fallbackPos}) inpChr
+{-# INLINEABLE matcherStep #-}
+
+matchStr_ ::
+  (Eq item, CanUnbox item, ListLike full item) =>
+  Matcher item ->
+  full ->
+  Int ->
+  full ->
+  R.MatchResult (Matcher item) full
+matchStr_ m0 orig !pos str =
+  case L.uncons str of
+    Nothing -> R.NoMatch m0
+    Just (h, t) ->
+      case matcherStep m0 h of
+        R.StepMatch _ m' -> R.Match m' (_mch_maxPos m0) (L.take (1 + pos) orig) t
+        R.StepNoMatch m' ->
+          if _mch_pos m' == 0
+            then
+              let c = mch_nextCharUnsafe m'
+                  (skip, rest) = L.break (== c) t
+               in matchStr_ m' orig (pos + 1 + L.length skip) rest
+            else matchStr_ m' orig (pos + 1) t
+{-# INLINEABLE matchStr_ #-}
+
+matchStr ::
+  (Eq item, CanUnbox item, ListLike full item) =>
+  Matcher item ->
+  full ->
+  MatchResult (Matcher item) full
+matchStr m str = matchStr_ m str 0 str
+{-# INLINEABLE matchStr #-}

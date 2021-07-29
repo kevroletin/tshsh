@@ -49,7 +49,7 @@ main = do
 
   defaultMain
     [ bgroup
-        "Matcher long seq, a few matches"
+        "long/a few"
         -- This test takes a big sequence (a few MB binary) with just a few
         -- occurrences of a pattern. Here we test how efficiently the matcher
         -- can skip irrelevant input. Such usage pattern might happen when a
@@ -62,33 +62,33 @@ main = do
             whnf (BS.foldl' (+) 0) str
         ],
       bgroup
-        "Matcher many matches"
+        "many"
         [ bench "BS" $
             whnf (countMatchesBS longsubstring) str2,
           bench "Matcher.Seq" $
             whnf (countMatchesSeq (mkMatcher longsubstring)) str2,
           bench "dummy BS.foldl'" $
             whnf (BS.foldl' (+) 0) str2
-        ],
-      bgroup
-        "Coroutines DSL"
-        [ bench "CPS" $
-            whnf
-              (S.simulate (() :!: S.syncEnv))
-              [ (S.Shell_1, "env\n", "a=1\nb=2\n"),
-                (S.Shell_1, "pwd\n", "/root\n"),
-                (S.Shell_2, "export a=1\n", ""),
-                (S.Shell_2, "export b=2\n", ""),
-                (S.Shell_2, "cd '/root'\n", "")
-              ],
-          bench "Monadic" $
-            whnf
-              (SM.simulate SM.syncEnv)
-              [ (SM.Shell_1, "env\n", "a=1\nb=2\n"),
-                (SM.Shell_1, "pwd\n", "/root\n"),
-                (SM.Shell_2, "export a=1\n", ""),
-                (SM.Shell_2, "export b=2\n", ""),
-                (SM.Shell_2, "cd '/root'\n", "")
-              ]
         ]
+      -- bgroup
+      --   "Coroutines DSL"
+      --   [ bench "CPS" $
+      --       whnf
+      --         (S.simulate (() :!: S.syncEnv))
+      --         [ (S.Shell_1, "env\n", "a=1\nb=2\n"),
+      --           (S.Shell_1, "pwd\n", "/root\n"),
+      --           (S.Shell_2, "export a=1\n", ""),
+      --           (S.Shell_2, "export b=2\n", ""),
+      --           (S.Shell_2, "cd '/root'\n", "")
+      --         ],
+      --     bench "Monadic" $
+      --       whnf
+      --         (SM.simulate SM.syncEnv)
+      --         [ (SM.Shell_1, "env\n", "a=1\nb=2\n"),
+      --           (SM.Shell_1, "pwd\n", "/root\n"),
+      --           (SM.Shell_2, "export a=1\n", ""),
+      --           (SM.Shell_2, "export b=2\n", ""),
+      --           (SM.Shell_2, "cd '/root'\n", "")
+      --         ]
+      --   ]
     ]

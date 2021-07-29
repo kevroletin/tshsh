@@ -1,39 +1,31 @@
 module Matcher.Seq.Text
   ( mkMatcher,
-    M.matcherStep,
+    U.matcherStep,
     matchStr,
     Matcher,
     MatchResult,
   )
 where
 
-import qualified Data.Text as T
 import qualified Matcher.Result as R
-import Matcher.Seq.Unboxed (mch_nextCharUnsafe)
-import qualified Matcher.Seq.Unboxed as M
+import qualified Matcher.Seq.Unboxed as U
 import Protolude
 
-type Matcher = M.Matcher Char
+{-# SPECIALIZE INLINE U.matcherStep :: U.Matcher Char -> Char -> R.StepResult (U.Matcher Char) #-}
 
-mkMatcher :: T.Text -> Matcher
-mkMatcher str = M.mkMatcher (T.unpack str)
+{-# SPECIALIZE U.matchStr :: U.Matcher Char -> Text -> R.MatchResult (U.Matcher Char) Text #-}
+
+type Matcher = U.Matcher Char
 
 type MatchResult = R.MatchResult Matcher Text
 
-matchStr_ :: Matcher -> T.Text -> Int -> T.Text -> MatchResult
-matchStr_ m0 orig !pos str =
-  case T.uncons str of
-    Nothing -> R.NoMatch m0
-    Just (h, t) ->
-      case M.matcherStep m0 h of
-        R.StepMatch _ m' -> R.Match m' (M._mch_maxPos m0) (T.take (1 + pos) orig) t
-        R.StepNoMatch m' ->
-          if M._mch_pos m' == 0
-            then
-              let c = mch_nextCharUnsafe m'
-                  (skip, rest) = T.break (== c) t
-               in matchStr_ m' orig (pos + 1 + T.length skip) rest
-            else matchStr_ m' orig (pos + 1) t
+type StepResult = R.StepResult Matcher
+
+mkMatcher :: Text -> Matcher
+mkMatcher = U.mkMatcher
 
 matchStr :: Matcher -> Text -> MatchResult
-matchStr m str = matchStr_ m str 0 str
+matchStr = U.matchStr
+
+matcherStep :: Matcher -> Char -> StepResult
+matcherStep = U.matcherStep
