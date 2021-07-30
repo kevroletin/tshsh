@@ -145,8 +145,6 @@ main = do
   termSetRawMode FD.stdin
 
   muxChan <- newBTChanIO 10
-  -- TODO: set tty size during creation to avoid any races
-  atomically $ writeBTChan muxChan WindowResize
 
   (pup1, pup1st) <-
     forkPuppet
@@ -167,6 +165,9 @@ main = do
       (\dir -> " cd '" <> dir <> "'")
       "zsh"
       []
+
+  syncTerminalSize (pup1 ^. pup_pts)
+  syncTerminalSize (pup2 ^. pup_pts)
 
   let mux =
         Mux

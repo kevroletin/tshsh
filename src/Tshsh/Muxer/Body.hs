@@ -23,6 +23,14 @@ import Tshsh.Muxer.Types
 import Tshsh.Program.SyncCwd
 import Tshsh.Puppet
 import Data.Strict.Tuple
+import GHC.Base (String)
+
+syncTerminalSize :: String -> IO ()
+syncTerminalSize pts = do
+  Just (Window h w :: Window Int) <- size
+  -- TODO: link c code
+  _ <- system ("stty -F " <> pts <> " cols " <> show w <> " rows " <> show h)
+  pure ()
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
 muxBody env st (TermInput str) = do
@@ -67,11 +75,7 @@ muxBody env st (PuppetOutput puppetIdx str0) = do
   pure (res & mst_currentProgram .~ nextCp)
 muxBody env st WindowResize = do
   let pup = env ^. menv_currentPuppet st
-  Just (Window h w :: Window Int) <- size
-  -- TODO: link c code
-  _ <- system ("stty -F " <> (pup ^. pup_pts) <> " cols " <> show w <> " rows " <> show h)
-  signalProcess windowChange (pup ^. pup_pid)
-
+  syncTerminalSize (pup ^. pup_pts)
   pure st
 muxBody env st0 SwitchPuppet = do
   let idx = nextPuppet (st0 ^. mst_currentPuppetIdx)
