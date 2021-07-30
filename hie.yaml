@@ -1,0 +1,19 @@
+cradle:
+  cabal:
+    - path: "src"
+      component: "lib:tshsh"
+
+    - path: "bench/Main.hs"
+      component: "tshsh:exe:bench-exe"
+
+    - path: "bench/Paths_tshsh.hs"
+      component: "tshsh:exe:bench-exe"
+
+    - path: "app/Main.hs"
+      component: "tshsh:exe:tshsh-exe"
+
+    - path: "app/Paths_tshsh.hs"
+      component: "tshsh:exe:tshsh-exe"
+
+    - path: "test"
+      component: "tshsh:test:tshsh-test"
