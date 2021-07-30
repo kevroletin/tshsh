@@ -159,7 +159,11 @@ matchStr_ m0 orig !pos str =
         R.StepMatch _ m' -> R.Match m' (_mch_maxPos m0) (L.take (1 + pos) orig) t
         R.StepNoMatch m' ->
           if _mch_pos m' == 0
-            then
+            then -- ByteString.break (== c) compiles into a fast memchr call
+                 -- which gives a huge speedup in a case when the first letter
+                 -- of a pattern isn't common in the input string (for example
+                 -- "\n" or a beginning of an escape sequence in a output from a
+                 -- shell command
               let c = mch_nextCharUnsafe m'
                   (skip, rest) = L.break (== c) t
                in matchStr_ m' orig (pos + 1 + L.length skip) rest

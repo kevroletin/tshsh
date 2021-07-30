@@ -5,11 +5,16 @@
 module Matcher.Result
   ( StepResult (..),
     _StepMatch,
+    match_matcher,
+    match_matchLength,
+    match_prev,
+    match_rest,
     _StepNoMatch,
+    mapStepResult,
     MatchResult (..),
     _Match,
     _NoMatch,
-    mapMatcher,
+    mapMatchResult,
   )
 where
 
@@ -24,6 +29,9 @@ data StepResult m
   | StepNoMatch {_sr_matcher :: m}
   deriving (Show)
 
+mapStepResult :: (m -> m') -> StepResult m -> StepResult m'
+mapStepResult f m = m { _sr_matcher = f x } where x = _sr_matcher m
+
 $(makePrisms 'StepNoMatch)
 
 data MatchResult m arr
@@ -36,7 +44,8 @@ data MatchResult m arr
   | NoMatch {_match_matcher :: m}
   deriving Show
 
-mapMatcher :: (m -> m') -> MatchResult m arr -> MatchResult m' arr
-mapMatcher f m = m { _match_matcher = f x } where x = _match_matcher m
+mapMatchResult :: (m -> m') -> MatchResult m arr -> MatchResult m' arr
+mapMatchResult f m = m { _match_matcher = f x } where x = _match_matcher m
 
+$(makeLenses 'Match)
 $(makePrisms 'NoMatch)

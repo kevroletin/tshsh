@@ -17,11 +17,14 @@ module Matcher.Bracket.Unboxed
     mkMatcher,
     matcherReset,
     matcherStep,
+    matchStr,
   )
 where
 
 import Control.Lens
 import qualified Data.Array.Unboxed as U
+import Data.ListLike (ListLike)
+import qualified Data.ListLike as L
 import Matcher.Result
 import qualified Matcher.Seq.Unboxed as M
 import Protolude
@@ -44,13 +47,16 @@ deriving instance Show (Matcher Word8)
 
 type CanUnbox a = U.IArray U.UArray a
 
-mkMatcher :: forall a. (Eq a, CanUnbox a) => [a] -> [a] -> Matcher a
-mkMatcher left right =
+mkMatcher' :: forall a. (Eq a, CanUnbox a) => [a] -> [a] -> Matcher a
+mkMatcher' left right =
   Matcher
     { _bmch_left = M.mkMatcher left,
       _bmch_right = M.mkMatcher right,
       _bmch_leftMatchOffset = -1
     }
+
+mkMatcher :: (Eq a, CanUnbox a, ListLike list a) => list -> list -> Matcher a
+mkMatcher l r = mkMatcher' (L.toList l) (L.toList r)
 
 matcherReset :: Matcher a -> Matcher a
 matcherReset Matcher {..} =
@@ -59,6 +65,7 @@ matcherReset Matcher {..} =
       _bmch_right = M.matcherReset _bmch_right,
       _bmch_leftMatchOffset = -1
     }
+{-# INLINE matcherReset #-}
 
 matcherStep :: (Eq a, CanUnbox a) => Matcher a -> a -> StepResult (Matcher a)
 matcherStep m0 a =
@@ -79,3 +86,44 @@ matcherStep m0 a =
               ( m0 & bmch_right .~ mr'
                   & bmch_leftMatchOffset %~ (+ 1)
               )
+{-# INLINEABLE matcherStep #-}
+
+matchStr ::
+  (Eq a, CanUnbox a, ListLike full a) =>
+  Matcher a ->
+  full ->
+  MatchResult (Matcher a) full
+matchStr m0 str0 =
+  if _bmch_leftMatchOffset m0 < 0
+    then matchLeft
+    else matchRight 0 m0 str0
+  where
+    matchLeft =
+      case M.matchStr (_bmch_left m0) str0 of
+        Match m len prev rest ->
+          matchRight
+            (L.length prev)
+            ( m0
+                { _bmch_left = m,
+                  _bmch_leftMatchOffset = len
+                }
+            )
+            rest
+        NoMatch m ->
+          NoMatch (m0 {_bmch_left = m})
+    matchRight pos m1 str =
+      case M.matchStr (_bmch_right m1) str of
+        Match _ _ prev rest ->
+          Match
+            (matcherReset m1)
+            (_bmch_leftMatchOffset m1 + L.length prev)
+            (L.take (pos + L.length prev) str0)
+            rest
+        NoMatch m ->
+          NoMatch
+            ( m1
+                { _bmch_right = m,
+                  _bmch_leftMatchOffset = _bmch_leftMatchOffset m1 + L.length str
+                }
+            )
+{-# INLINEABLE matchStr #-}

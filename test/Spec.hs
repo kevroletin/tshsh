@@ -7,8 +7,10 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.Text as T
 import Matcher.Result
-import qualified Matcher.Seq.ByteString as MBS
-import qualified Matcher.Seq.Text as MT
+import qualified Matcher.Seq.ByteString as MSBS
+import qualified Matcher.Seq.Text as MST
+import qualified Matcher.Bracket.ByteString as MBBS
+import qualified Matcher.Bracket.Text as MBT
 import Protolude
 import qualified Spec.CPS
 import qualified Spec.MonadT
@@ -17,10 +19,16 @@ import qualified Spec.SimulatorM
 import Test.Hspec
 import Test.QuickCheck
 import Prelude (String)
+import Test.Hspec.Expectations.Lens
+import Control.Lens
 
-breakOnAll_ :: MT.Matcher -> Text -> Text -> [(Text, Text)]
+resultBind :: MatchResult m a -> (m -> MatchResult m a) -> MatchResult m a
+resultBind r@Match{} _ = r
+resultBind (NoMatch m) f = f m
+
+breakOnAll_ :: MST.Matcher -> Text -> Text -> [(Text, Text)]
 breakOnAll_ m pat hay =
-  case MT.matchStr m hay of
+  case MST.matchStr m hay of
     NoMatch _ -> []
     Match {..} ->
       -- In the case of (a, b) = T.breakOn, b contains a pattern,
@@ -33,7 +41,7 @@ breakOnAll_ m pat hay =
           )
 
 breakOnAll' :: Text -> Text -> [(Text, Text)]
-breakOnAll' p = breakOnAll_ (MT.mkMatcher p) p
+breakOnAll' p = breakOnAll_ (MST.mkMatcher p) p
 
 prop_sameAsTextImpl :: String -> String -> Property
 prop_sameAsTextImpl (T.pack -> a) (T.pack -> b) =
@@ -43,16 +51,16 @@ prop_sameAsTextImpl (T.pack -> a) (T.pack -> b) =
 dropEnd :: Int -> ByteString -> ByteString
 dropEnd n str = BS.take (BS.length str - n) str
 
-breakOnAllBs_ :: MBS.Matcher -> ByteString -> ByteString -> [(ByteString, ByteString)]
+breakOnAllBs_ :: MSBS.Matcher -> ByteString -> ByteString -> [(ByteString, ByteString)]
 breakOnAllBs_ m pat hay =
-  case MBS.matchStr m hay of
+  case MSBS.matchStr m hay of
     NoMatch _ -> []
     Match m' len prev rest ->
       (dropEnd len prev, pat <> rest) :
       (first (prev <>) <$> breakOnAllBs_ m' pat rest)
 
 breakOnAllBs' :: ByteString -> ByteString -> [(ByteString, ByteString)]
-breakOnAllBs' p = breakOnAllBs_ (MBS.mkMatcher p) p
+breakOnAllBs' p = breakOnAllBs_ (MSBS.mkMatcher p) p
 
 breakOnAllBs :: ByteString -> ByteString -> [(ByteString, ByteString)]
 breakOnAllBs p str =
@@ -99,6 +107,36 @@ main = hspec $ do
         `shouldBe` [ ("112", "123" <> "112123"),
                      ("112123112", "123")
                    ]
+
+  describe "Matcher.Bracket.Text" $ do
+    it "finds a match" $ do
+      let res = MBT.matchStr (MBT.mkMatcher "[" "]") "prev[inside]rest"
+      res `shouldHave` _Match
+      res `shouldHave` match_prev . only "prev[inside]"
+      res `shouldHave` match_rest . only "rest"
+      res `shouldHave` match_matchLength . only 8
+
+    it "feed input in chunks" $ do
+      let res0 = MBT.matchStr (MBT.mkMatcher "[" "]") "prev[ins"
+      res0 `shouldHave` _NoMatch
+      let res = res0 `resultBind` (`MBT.matchStr` "ide]rest")
+      res `shouldHave` _Match
+      res `shouldHave` match_prev . only "ide]"
+      res `shouldHave` match_rest . only "rest"
+      res `shouldHave` match_matchLength . only 8
+
+    it "feed input in many chunks" $ do
+      let res0 = MBT.matchStr (MBT.mkMatcher "[" "]") ""
+      res0 `shouldHave` _NoMatch
+      let res = res0 `resultBind` (`MBT.matchStr` "pr")
+                     `resultBind` (`MBT.matchStr` "e")
+                     `resultBind` (`MBT.matchStr` "v[i")
+                     `resultBind` (`MBT.matchStr` "nsi")
+                     `resultBind` (`MBT.matchStr` "de]rest")
+      res `shouldHave` _Match
+      res `shouldHave` match_prev . only "de]"
+      res `shouldHave` match_rest . only "rest"
+      res `shouldHave` match_matchLength . only 8
 
   describe "CPS lang" Spec.CPS.spec
 
