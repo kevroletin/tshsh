@@ -9,50 +9,70 @@ module Matcher.Unboxed
     MatcherI (..),
     MatcherArrI (..),
     applySomeMatcher,
+    matcherStep,
+    matchStr,
+    mkSeqMatcher,
+    mkBracketMatcher,
   )
 where
 
-import qualified Data.Array.Unboxed as U
+import qualified Data.Array.Unboxed
+import Data.ListLike (ListLike)
 import qualified Matcher.Bracket.Unboxed as MB
-import qualified Matcher.Bracket.ByteString as MBBs
-import qualified Matcher.Bracket.Text as MBT
 import Matcher.Result
 import qualified Matcher.Seq.Unboxed as MS
-import qualified Matcher.Seq.ByteString as MSBs
-import qualified Matcher.Seq.Text as MST
 import Protolude
 
-type CanUnbox a = U.IArray U.UArray a
+type CanUnbox a = Data.Array.Unboxed.IArray Data.Array.Unboxed.UArray a
 
 class MatcherI m a where
-  matcherStep  :: (Eq a, CanUnbox a) => m a -> a-> StepResult (m a)
-  matcherReset :: m a -> m a
+  matcherStepI :: (Eq a, CanUnbox a) => m a -> a -> StepResult (m a)
+  matcherResetI :: m a -> m a
 
 class MatcherI m a => MatcherArrI m arr a | arr -> a where
-  matchStr     :: (Eq a, CanUnbox a) => m a -> arr -> MatchResult (m a) arr
+  matchStrI :: (Eq a, CanUnbox a) => m a -> arr -> MatchResult (m a) arr
 
 data SomeMatcher arr a where
   SomeMatcher :: MatcherArrI m arr a => m a -> SomeMatcher arr a
 
 applySomeMatcher :: forall r arr a. SomeMatcher arr a -> (forall m. MatcherArrI m arr a => m a -> r) -> r
 applySomeMatcher (SomeMatcher m) f = f m
+{-# INLINE applySomeMatcher #-}
 
 instance (Eq a, CanUnbox a) => MatcherI MB.Matcher a where
-  matcherStep = MB.matcherStep
-  matcherReset = MB.matcherReset
-
-instance MatcherArrI MB.Matcher ByteString Word8 where
-  matchStr = MBBs.matchStr
-
-instance MatcherArrI MB.Matcher Text Char where
-  matchStr = MBT.matchStr
+  matcherStepI = MB.matcherStep
+  matcherResetI = MB.matcherReset
 
 instance (Eq a, CanUnbox a) => MatcherI MS.Matcher a where
-  matcherStep = MS.matcherStep
-  matcherReset = MS.matcherReset
+  matcherStepI = MS.matcherStep
+  matcherResetI = MS.matcherReset
 
-instance MatcherArrI MS.Matcher ByteString Word8 where
-  matchStr = MSBs.matchStr
+instance (Eq a, CanUnbox a, ListLike list a) => MatcherArrI MS.Matcher list a where
+  matchStrI = MS.matchStr
 
-instance MatcherArrI MS.Matcher Text Char where
-  matchStr = MST.matchStr
+instance (Eq a, CanUnbox a, ListLike list a) => MatcherArrI MB.Matcher list a where
+  matchStrI = MB.matchStr
+
+matcherStep :: (Eq a, CanUnbox a) => SomeMatcher list a -> a -> StepResult (SomeMatcher list a)
+matcherStep m0 c =
+  applySomeMatcher
+    m0
+    ( \m -> SomeMatcher `mapStepResult` matcherStepI m c
+    )
+{-# INLINE matcherStep #-}
+
+matchStr :: (Eq a, CanUnbox a, ListLike list a) => SomeMatcher list a -> list -> MatchResult (SomeMatcher list a) list
+matchStr m0 str =
+  applySomeMatcher
+    m0
+    ( \m -> SomeMatcher `mapMatchResult` matchStrI m str
+    )
+{-# INLINE matchStr #-}
+
+mkSeqMatcher :: (Eq a, CanUnbox a, ListLike list a) => list -> SomeMatcher list a
+mkSeqMatcher = SomeMatcher . MS.mkMatcher
+{-# INLINE mkSeqMatcher #-}
+
+mkBracketMatcher :: (Eq a, CanUnbox a, ListLike list a) => list -> list -> SomeMatcher list a
+mkBracketMatcher l r = SomeMatcher (MB.mkMatcher l r)
+{-# INLINE mkBracketMatcher #-}

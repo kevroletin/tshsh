@@ -8,9 +8,7 @@ module Matcher.ByteString
   )
 where
 
-import qualified Matcher.Bracket.ByteString
 import qualified Matcher.Result as R
-import qualified Matcher.Seq.ByteString
 import qualified Matcher.Unboxed as U
 import Protolude
 
@@ -21,21 +19,17 @@ type MatchResult = R.MatchResult SomeMatcher ByteString
 type StepResult = R.StepResult SomeMatcher
 
 matcherStep :: SomeMatcher -> Word8 -> StepResult
-matcherStep m0 c =
-  U.applySomeMatcher
-    m0
-    ( \m -> U.SomeMatcher `R.mapStepResult` U.matcherStep m c
-    )
+matcherStep = U.matcherStep
+{-# INLINE matcherStep #-}
 
 matchStr :: SomeMatcher -> ByteString -> MatchResult
-matchStr m0 str =
-  U.applySomeMatcher
-    m0
-    ( \m -> U.SomeMatcher `R.mapMatchResult` U.matchStr m str
-    )
+matchStr = U.matchStr
+{-# INLINE matchStr #-}
 
 mkSeqMatcher :: ByteString -> SomeMatcher
-mkSeqMatcher = U.SomeMatcher . Matcher.Seq.ByteString.mkMatcher
+mkSeqMatcher = U.mkSeqMatcher
+{-# INLINE mkSeqMatcher #-}
 
 mkBracketMatcher :: ByteString -> ByteString -> SomeMatcher
-mkBracketMatcher l r = U.SomeMatcher (Matcher.Bracket.ByteString.mkMatcher l r)
+mkBracketMatcher = U.mkBracketMatcher
+{-# INLINE mkBracketMatcher #-}
