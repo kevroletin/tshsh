@@ -65,8 +65,10 @@ tty(1) are generating certain signals when a user presses ^C, ^Z, etc. (see how 
 handle signals). Puppet's virtual tty is configured by a puppet itself; puppet
 will get expected behavior because tty(1) is in raw mode, so all the
 modifications of input happen in pup_tty(2) according to the puppet's requested
-configuration; it seems like tty doesn't change the output from a puppet
-and just passes it to an xterm (TODO: find a proof).
+configuration. The same happens with the output: we disable output postprocessing in
+tty(1) and let all the modifications to happen in (2)pup_tty. (2)pup_tty is configured
+by a puppet so it will get the expected behavior (given that xterm config is in sync with
+the puppet's expectations, see [](Puppet output) section for details).
 
 In theory, we can handle signals in two ways: parse raw input from a user or ask
 tty to parse it and generate signals for us. For now, we ask tty to generate
@@ -86,6 +88,15 @@ xterm <- tty <- tshsh <- pup_tty <- sh
   configured by sh
   using ANSI escape seq.
 ```
+
+We disable tty(1) output postprocessing.
+
+pup_tty(2) is configured by a puppet.
+
+xterm might display content differently depending on it's settings; things works
+well as long as xterm settings and puppet's expectations about xterm settings are
+synchronized. To achieve this we want to keep track of terminal state and change
+it while switching puppets. This is not yet implemented.
 
 There are several dark corners in handling output from a puppet:
 * Unicode: currently we don't parse Unicode so while switching puppets we might

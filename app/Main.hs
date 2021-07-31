@@ -4,6 +4,7 @@
 
 module Main where
 
+import System.Posix.Terminal
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.STM.BTChan
@@ -109,7 +110,7 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
           new_session = True
         }
   (Just pid) <- getPid p
-  putStrLn ("Started: " <> show pid :: Text)
+  putStrLn ("Started: " <> (show pid :: Text) <> "\r")
 
   readThread <- forkIO . readLoop masterH $ \str ->
     atomically . writeBTChan chan $ PuppetOutput idx str
@@ -132,17 +133,18 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
         }
     )
 
--- https://linux.die.net/man/3/cfmakeraw input is available character by
--- character, echoing is disabled, and all special processing of terminal input
--- and output characters is disabled
-termSetRawMode :: IODevice a => a -> IO ()
-termSetRawMode f = do
-  setRaw f True
-  setEcho f False
+setStdinToRaw :: IO ()
+setStdinToRaw = do
+  -- Disable input processing
+  setRaw FD.stdin True
+  setEcho FD.stdin False
+  -- Disable output processing ~ stty -opost"
+  attr <- getTerminalAttributes stdInput
+  setTerminalAttributes stdInput (attr `withoutMode` ProcessOutput) WhenDrained
 
 main :: IO ()
 main = do
-  termSetRawMode FD.stdin
+  setStdinToRaw
 
   muxChan <- newBTChanIO 10
 
