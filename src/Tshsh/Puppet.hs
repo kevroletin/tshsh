@@ -16,6 +16,9 @@ module Tshsh.Puppet
     ps_idx,
     ps_parser,
     ps_readThread,
+    ps_clrScrParser,
+    ps_mode,
+    PuppetMode (..),
   )
 where
 
@@ -43,10 +46,17 @@ data Puppet = Puppet
 
 $(makeLenses 'Puppet)
 
+data PuppetMode
+  = PuppetModeTUI
+  | PuppetModeRepl
+  deriving (Eq, Ord, Show)
+
 data PuppetState = PuppetState
   { _ps_idx :: PuppetIdx,
     _ps_parser :: SomeMatcher,
-    _ps_readThread :: ThreadId
+    _ps_readThread :: ThreadId,
+    _ps_clrScrParser :: SomeMatcher,
+    _ps_mode :: PuppetMode
   }
 
 $(makeLenses 'PuppetState)

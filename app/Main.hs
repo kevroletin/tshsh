@@ -115,6 +115,8 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
   readThread <- forkIO . readLoop masterH $ \str ->
     atomically . writeBTChan chan $ PuppetOutput idx str
 
+  let clrScrParser = mkSeqMatcher "\ESC[H\ESC[2J"
+
   pure
     ( Puppet
         { _pup_idx = idx,
@@ -129,7 +131,9 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
       PuppetState
         { _ps_idx = idx,
           _ps_parser = matcher,
-          _ps_readThread = readThread
+          _ps_readThread = readThread,
+          _ps_clrScrParser = clrScrParser,
+          _ps_mode = PuppetModeRepl
         }
     )
 
