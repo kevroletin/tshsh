@@ -25,11 +25,11 @@ where
 
 import Control.Lens
 import qualified Data.ByteString as BS
+import Data.Strict.Tuple
 import Lang.Coroutine.CPS
 import Protolude hiding (hPutStrLn, log, tryIO)
 import Tshsh.Commands
 import Tshsh.Puppet
-import Data.Strict.Tuple
 
 data MuxEnv = MuxEnv
   { _menv_puppets :: Pair Puppet Puppet,

@@ -4,7 +4,6 @@
 
 module Main where
 
-import System.Posix.Terminal
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.STM.BTChan
@@ -15,6 +14,8 @@ import qualified Data.ByteString as BS
 import Data.Strict.Tuple
 import Data.String.Conversions
 import Foreign
+import Foreign.C.Types (CChar)
+import GHC.ForeignPtr
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
 import Matcher.ByteString
@@ -23,6 +24,7 @@ import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBuffering)
 import System.IO.Unsafe
 import System.Posix
 import System.Posix.Signals.Exts
+import System.Posix.Terminal
 import System.Process
 import Tshsh.Commands
 import Tshsh.Muxer
@@ -54,6 +56,9 @@ muxLog = hPrint muxLogFile
 bufSize :: Int
 bufSize = 1024
 
+minBufSize :: Int
+minBufSize = 64
+
 newPuppet :: FilePath -> [String] -> IO (ProcessHandle, Handle, FilePath)
 newPuppet cmd args = do
   (master, slave) <- openPseudoTerminal
@@ -72,19 +77,23 @@ newPuppet cmd args = do
   pts <- getSlaveTerminalName master
   pure (p, masterH, pts)
 
-readLoop :: Handle -> (BS.ByteString -> IO ()) -> IO ()
-readLoop fromH act =
-  allocaBytes bufSize $ \buf -> do
-    let loop =
-          hGetBufSome fromH buf bufSize >>= \case
-            n | n > 0 -> do
-              str <- BS.packCStringLen (buf, n)
-              act str
-              loop
-            _ -> pure ()
-    -- ignore io errors
-    _ <- tryIO loop
-    pure ()
+readLoop :: Handle -> (BufferSlice -> IO ()) -> IO ()
+readLoop fromH act = do
+  let loop !capacity buff0 dataPtr =
+        if capacity < minBufSize
+          then do buff <- mallocForeignPtrBytes bufSize
+                  loop bufSize buff buff
+          else
+            withForeignPtr dataPtr (\ptr -> hGetBufSome fromH ptr capacity) >>= \case
+              n | n > 0 -> do
+                act (BufferSlice buff0 dataPtr n)
+                loop (capacity - n) buff0 (plusForeignPtr dataPtr n)
+              _ -> pure ()
+  -- ignore io errors
+  _ <-
+    tryIO $ do buff <- mallocForeignPtrBytes bufSize
+               loop bufSize buff buff
+  pure ()
 
 forkPuppet ::
   PuppetIdx ->

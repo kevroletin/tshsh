@@ -7,6 +7,7 @@ module Tshsh.Muxer.Body where
 import Control.Lens
 import Control.Monad
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Internal as BS
 import Data.Strict.Tuple
 import Data.String.Conversions
 import Foreign
@@ -25,6 +26,7 @@ import Tshsh.Commands
 import Tshsh.Muxer.Types
 import Tshsh.Program.SyncCwd
 import Tshsh.Puppet
+import System.IO
 
 syncTerminalSize :: String -> IO ()
 syncTerminalSize pts = do
@@ -34,17 +36,20 @@ syncTerminalSize pts = do
   pure ()
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
-muxBody env st (TermInput str) = do
+muxBody env st (TermInput (BufferSlice _ buff size)) = do
   let h = env ^. menv_currentPuppet st . pup_inputH
-  BS.hPut h str
-  pure st
-muxBody env st (PuppetOutput puppetIdx str0) = do
+  withForeignPtr buff $ \ptr -> do
+    hPutBuf h ptr size
+    pure st
+muxBody env st (PuppetOutput puppetIdx (BufferSlice _ buf size)) = do
+  let str0 = BS.fromForeignPtr (castForeignPtr buf) 0 size
+
   let runProgram p = do
         let onOut (i, x) = do
               -- TODO: should we push output into muxer queue?
               let h = env ^. menv_puppets . pupIdx i . pup_inputH
               BS.hPut h x
-        feedInputM onOut (puppetIdx, str0) p >>= \case
+        feedInputM onOut (puppetIdx, BS.copy str0) p >>= \case
           Cont p' -> pure (Just p')
           Res r -> do
             (env ^. menv_logger) $ "Program terminated with: " <> show r
