@@ -18,11 +18,14 @@ module Tshsh.Puppet
     ps_readThread,
     ps_clrScrParser,
     ps_mode,
+    ps_currCmdOut,
+    ps_prevCmdOut,
     PuppetMode (..),
   )
 where
 
 import Control.Lens
+import Data.BufferSlice (SliceList (..))
 import Matcher.ByteString
 import Protolude
 import System.Posix (ProcessID)
@@ -56,7 +59,9 @@ data PuppetState = PuppetState
     _ps_parser :: SomeMatcher,
     _ps_readThread :: ThreadId,
     _ps_clrScrParser :: SomeMatcher,
-    _ps_mode :: PuppetMode
+    _ps_mode :: PuppetMode,
+    _ps_currCmdOut :: SliceList,
+    _ps_prevCmdOut :: SliceList
   }
 
 $(makeLenses 'PuppetState)

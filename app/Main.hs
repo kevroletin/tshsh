@@ -10,12 +10,12 @@ import Control.Concurrent.STM.BTChan
 import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
-import qualified Data.ByteString as BS
+import Data.BufferSlice (BufferSlice (..))
+import qualified Data.BufferSlice as BufferSlice
 import Data.Strict.Tuple
 import Data.String.Conversions
+import qualified Data.Text.IO as T
 import Foreign
-import Foreign.C.Types (CChar)
-import GHC.ForeignPtr
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
 import Matcher.ByteString
@@ -24,7 +24,6 @@ import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBuffering)
 import System.IO.Unsafe
 import System.Posix
 import System.Posix.Signals.Exts
-import System.Posix.Terminal
 import System.Process
 import Tshsh.Commands
 import Tshsh.Muxer
@@ -81,8 +80,9 @@ readLoop :: Handle -> (BufferSlice -> IO ()) -> IO ()
 readLoop fromH act = do
   let loop !capacity buff0 dataPtr =
         if capacity < minBufSize
-          then do buff <- mallocForeignPtrBytes bufSize
-                  loop bufSize buff buff
+          then do
+            buff <- mallocForeignPtrBytes bufSize
+            loop bufSize buff buff
           else
             withForeignPtr dataPtr (\ptr -> hGetBufSome fromH ptr capacity) >>= \case
               n | n > 0 -> do
@@ -91,8 +91,9 @@ readLoop fromH act = do
               _ -> pure ()
   -- ignore io errors
   _ <-
-    tryIO $ do buff <- mallocForeignPtrBytes bufSize
-               loop bufSize buff buff
+    tryIO $ do
+      buff <- mallocForeignPtrBytes bufSize
+      loop bufSize buff buff
   pure ()
 
 forkPuppet ::
@@ -142,7 +143,9 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
           _ps_parser = matcher,
           _ps_readThread = readThread,
           _ps_clrScrParser = clrScrParser,
-          _ps_mode = PuppetModeRepl
+          _ps_mode = PuppetModeRepl,
+          _ps_currCmdOut = BufferSlice.listEmpty,
+          _ps_prevCmdOut = BufferSlice.listEmpty
         }
     )
 

@@ -1,15 +1,21 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 module Tshsh.Muxer.Body where
 
 import Control.Lens
 import Control.Monad
+import Data.BufferSlice (BufferSlice (..), SliceList (..))
+import qualified Data.BufferSlice as BufferSlice
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BS
 import Data.Strict.Tuple
+import Data.String.AnsiEscapeCodes.Strip.Text
 import Data.String.Conversions
+import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import Foreign
 import GHC.Base (String)
 import Lang.Coroutine.CPS
@@ -19,6 +25,7 @@ import Matcher.Result
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.ANSI
 import System.Console.Terminal.Size
+import System.IO
 import System.Posix
 import System.Posix.Signals.Exts
 import System.Process
@@ -26,7 +33,6 @@ import Tshsh.Commands
 import Tshsh.Muxer.Types
 import Tshsh.Program.SyncCwd
 import Tshsh.Puppet
-import System.IO
 
 syncTerminalSize :: String -> IO ()
 syncTerminalSize pts = do
@@ -41,8 +47,8 @@ muxBody env st (TermInput (BufferSlice _ buff size)) = do
   withForeignPtr buff $ \ptr -> do
     hPutBuf h ptr size
     pure st
-muxBody env st (PuppetOutput puppetIdx (BufferSlice _ buf size)) = do
-  let str0 = BS.fromForeignPtr (castForeignPtr buf) 0 size
+muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = do
+  let str0 = BS.fromForeignPtr buf 0 size
 
   let runProgram p = do
         let onOut (i, x) = do
@@ -55,21 +61,52 @@ muxBody env st (PuppetOutput puppetIdx (BufferSlice _ buf size)) = do
             (env ^. menv_logger) $ "Program terminated with: " <> show r
             pure Nothing
 
-  let feedMatcher !foundPosEnd !m !str =
+  let feedMatcher :: Monad m => (st -> Int -> ByteString -> ByteString -> m st) -> (st -> m st) -> st -> SomeMatcher -> ByteString -> m (st, SomeMatcher)
+      feedMatcher onMatch onNoMatch !st !m !str =
         case matchStr m str of
-          NoMatch m' -> (foundPosEnd, m')
-          Match m' len _ rest ->
+          NoMatch m' -> (,m') <$> onNoMatch st
+          Match m' len prev rest ->
             if BS.null rest
-              then (0, m')
+              then (,m') <$> onMatch st len prev rest
               else do
-                feedMatcher (BS.length rest) m' rest
+                newSt <- onMatch st len prev rest
+                feedMatcher onMatch onNoMatch newSt m' rest
 
   let runMatchers currP = do
-        let (promptPos, m') = feedMatcher (-1) (currP ^. ps_parser) str0
-        let (clrScrPos, mc') = feedMatcher (-1) (currP ^. ps_clrScrParser) str0
+        -- TODO: don't accumulate output when we are in tui mode
+        let ((promptPos, prevCmdOut, currCmdOut), m') =
+              runIdentity $
+                feedMatcher
+                  ( \(_, prev, curr) len str strRest -> do
+                      let slice = BufferSlice.sliceFromByteString inpSliceId str
+                      pure
+                        ( BS.length strRest,
+                          BufferSlice.listDropEnd len $ BufferSlice.listAppendEnd curr slice,
+                          BufferSlice.listEmpty
+                        )
+                  )
+                  (\(pos, prev, curr) -> pure (pos, prev, BufferSlice.listAppendEnd curr inp))
+                  (-1, currP ^. ps_prevCmdOut, currP ^. ps_currCmdOut)
+                  (currP ^. ps_parser)
+                  str0
+        let (clrScrPos, mc') =
+              runIdentity $
+                feedMatcher (\_ _ _ rest -> pure (BS.length rest)) pure (-1) (currP ^. ps_clrScrParser) str0
 
-        when (promptPos >= 0) $
-          (env ^. menv_logger) ("=== Prompt detected. offset: " <> show promptPos <> "; " <> show puppetIdx)
+        -- log and copy to clipboard
+        when (promptPos >= 0) $ do
+          (env ^. menv_logger) ("=== Prompt detected. offset: " <> show promptPos <> "; " <> show puppetIdx <> "\n")
+          (env ^. menv_logger) "=== stripped output of the last cmd:\n"
+          let txt = cs $ BufferSlice.listConcat prevCmdOut
+          let stripped = T.strip . T.drop 1 . Protolude.snd . T.break (== '\n') . stripAnsiEscapeCodes $ txt
+          (env ^. menv_logger) (show stripped)
+          (env ^. menv_logger) "\n"
+
+          unless (T.null stripped) $ do
+            (Just inP, _, _, _) <- createProcess $ (proc "xclip" ["-selection", "clipboard", "-in"]) {std_in = CreatePipe}
+            T.hPutStr inP stripped
+            hClose inP
+
         when (clrScrPos >= 0) $
           (env ^. menv_logger) ("=== ClrScr detected. offset: " <> show clrScrPos <> "; " <> show puppetIdx)
 
@@ -85,7 +122,9 @@ muxBody env st (PuppetOutput puppetIdx (BufferSlice _ buf size)) = do
           ( currP
               { _ps_parser = m',
                 _ps_clrScrParser = mc',
-                _ps_mode = mode
+                _ps_mode = mode,
+                _ps_currCmdOut = currCmdOut,
+                _ps_prevCmdOut = prevCmdOut
               }
           )
 
