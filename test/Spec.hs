@@ -4,12 +4,12 @@
 {-# LANGUAGE ViewPatterns #-}
 
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Internal as BS
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.Text as T
 import Matcher.Result
 import qualified Matcher.Seq.ByteString as MSBS
 import qualified Matcher.Seq.Text as MST
-import qualified Matcher.Bracket.ByteString as MBBS
 import qualified Matcher.Bracket.Text as MBT
 import Protolude
 import qualified Spec.CPS
@@ -21,6 +21,8 @@ import Test.QuickCheck
 import Prelude (String)
 import Test.Hspec.Expectations.Lens
 import Control.Lens
+import qualified Data.BufferSlice as BufferSlice
+import Data.BufferSlice (BufferSlice(..), SliceList(..))
 
 resultBind :: MatchResult m a -> (m -> MatchResult m a) -> MatchResult m a
 resultBind r@Match{} _ = r
@@ -79,7 +81,73 @@ prop_sameAsBsImpl (C8.pack -> a) (C8.pack -> b) =
     ==> breakOnAllBs' a b == breakOnAllBs a b
 
 main :: IO ()
+
+chopBs :: Int -> ByteString -> [ByteString]
+chopBs n str
+  | BS.null str = []
+  | otherwise = BS.take n str : chopBs n (BS.drop n str)
+
+sliceBs :: Int -> ByteString -> [BufferSlice]
+sliceBs n str0 = fmap (BufferSlice.sliceFromByteString sliceId) (chopBs n str0)
+  where sliceId = BS.toForeignPtr str0 ^. _1
+
 main = hspec $ do
+  describe "Buffer slices" $ do
+    it "merge" $ do
+      let xs = "1234"
+      let (id, 0, _) = BS.toForeignPtr xs
+      let Just ys = BufferSlice.mergeSlices (BufferSlice.sliceFromByteString id (BS.take 2 xs))
+                                (BufferSlice.sliceFromByteString id (BS.drop 2 xs))
+      BufferSlice.sliceToByteString ys `shouldBe` xs
+
+    it "merge failure" $ do
+      let xs = "1234"
+      let ys = BS.copy xs
+      let (id1, 0, _) = BS.toForeignPtr xs
+      let (id2, 0, _) = BS.toForeignPtr ys
+      let res = BufferSlice.mergeSlices (BufferSlice.sliceFromByteString id1 (BS.take 2 xs))
+                            (BufferSlice.sliceFromByteString id2 (BS.drop 2 ys))
+      res `shouldBe` Nothing
+
+    it "merge zero" $ do
+      let xs = "1234"
+      let ys = ""
+      let s = BufferSlice.sliceFromByteString (BS.toForeignPtr xs ^. _1) xs
+      let sz = BufferSlice.sliceFromByteString (BS.toForeignPtr ys ^. _1) ys
+      BufferSlice.mergeSlices s sz `shouldBe` Just s
+      BufferSlice.mergeSlices sz s `shouldBe` Just s
+
+    it "merge many" $ do
+      let xs = "1234567890"
+      let s = BufferSlice.sliceFromByteString (BS.toForeignPtr xs ^. _1) xs
+      let (s1:ss) = sliceBs 2 xs
+      let res = foldl' (\acc x -> join $ traverse (`BufferSlice.mergeSlices` x) acc) (Just s1) ss
+      res `shouldBe` Just s
+
+    it "merge slices from the same buffer" $ do
+      let xs = "1234567890"
+      let s = BufferSlice.sliceFromByteString (BS.toForeignPtr xs ^. _1) xs
+      let res = foldl' BufferSlice.listAppendEnd BufferSlice.listEmpty (sliceBs 3 xs)
+      res `shouldBe` SliceList [s]
+      BufferSlice.listConcat res `shouldBe` xs
+
+    it "merge slices from different buffers" $ do
+      let xs = "1234567890"
+      -- We know that slices produced by chopBs are located in memory one after the other.
+      -- But because we assign different id's to each slice, BufferSlice.mergeSlices should recognize them
+      -- as parts of different buffers (which might have different finalizers) and should refuse
+      -- to merge them into a single slice.
+      let ss = (\x -> BufferSlice.sliceFromByteString (BS.toForeignPtr (BS.copy x) ^. _1) x) <$> chopBs 3 xs
+      let res@(SliceList rs) = foldl' BufferSlice.listAppendEnd BufferSlice.listEmpty ss
+      length rs `shouldBe` length ss
+      BufferSlice.listConcat res `shouldBe` xs
+
+    it "dropEnd" $ do
+      let xs = "1234567890"
+      let ss = (\x -> BufferSlice.sliceFromByteString (BS.toForeignPtr (BS.copy x) ^. _1) x) <$> chopBs 3 xs
+      let res = foldl' BufferSlice.listAppendEnd BufferSlice.listEmpty ss
+      BufferSlice.listConcat (BufferSlice.listDropEnd 5 res) `shouldBe` "12345"
+
   describe "Matcher.Seq.Text" $ do
     -- TODO: quickcheck generates quite useless input and doesn't catch errors,
     -- fix Arbitrary instances
