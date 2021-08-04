@@ -148,6 +148,12 @@ main = hspec $ do
       let res = foldl' BufferSlice.listAppendEnd BufferSlice.listEmpty ss
       BufferSlice.listConcat (BufferSlice.listDropEnd 5 res) `shouldBe` "12345"
 
+    it "takeEnd" $ do
+      let xs = "1234567890"
+      let ss = (\x -> BufferSlice.sliceFromByteString (BS.toForeignPtr (BS.copy x) ^. _1) x) <$> chopBs 3 xs
+      let res = foldl' BufferSlice.listAppendEnd BufferSlice.listEmpty ss
+      BufferSlice.listConcat (BufferSlice.listTakeEnd 5 res) `shouldBe` "67890"
+
   describe "Matcher.Seq.Text" $ do
     -- TODO: quickcheck generates quite useless input and doesn't catch errors,
     -- fix Arbitrary instances

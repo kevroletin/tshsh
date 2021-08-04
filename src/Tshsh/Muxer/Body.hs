@@ -47,10 +47,15 @@ copyToXClipboard str = do
   T.hPutStr inP str
   hClose inP
 
+bsDropEnd :: Int -> ByteString -> ByteString
+bsDropEnd n xs =  BS.take (BS.length xs - n) xs
+
+-- strip 1st and the last lines, strip ansi escape sequences
 stripCmdOut :: BufferSlice.SliceList -> Text
 stripCmdOut list =
-  let txt = cs $ BufferSlice.listConcat list
-   in T.strip . T.drop 1 . Protolude.snd . T.break (== '\n') . stripAnsiEscapeCodes $ txt
+  let bs = BufferSlice.listConcat list
+      bs' = BS.drop 1 . Protolude.snd . BS.break (==10) . bsDropEnd 1 . Protolude.fst . BS.breakEnd (==10) $ bs
+   in T.strip . stripAnsiEscapeCodes $ cs bs'
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
 muxBody env st (TermInput (BufferSlice _ buff size)) = do
@@ -59,10 +64,6 @@ muxBody env st (TermInput (BufferSlice _ buff size)) = do
     hPutBuf h ptr size
     pure st
 muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = do
-  (env ^. menv_logger) "--- Puppet output:\n"
-  (env ^. menv_logger) (show . stripAnsiEscapeCodes . cs . BufferSlice.sliceToByteString $ inp)
-  (env ^. menv_logger) "\n---\n"
-
   let str0 = BS.fromForeignPtr buf 0 size
 
   let runProgram p = do
@@ -89,14 +90,17 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
 
   let runMatchers currP = do
         -- TODO: don't accumulate output when we are in tui mode
-        let ((promptPos, prevCmdOut, currCmdOut), m') =
-              runIdentity $
+        ((promptPos, prevCmdOut, currCmdOut), m') <- do
                 feedMatcher
                   ( \(_, prev, curr) len str strRest -> do
                       let slice = BufferSlice.sliceFromByteString inpSliceId str
+                      let cmdOut = BufferSlice.listAppendEnd curr slice
+                      (env ^. menv_logger) ("=== Prompt (" <> show puppetIdx <> "):\n")
+                      (env ^. menv_logger) (show . BufferSlice.listConcat . BufferSlice.listTakeEnd len $ cmdOut)
+                      (env ^. menv_logger) "\n"
                       pure
                         ( BS.length strRest,
-                          BufferSlice.listDropEnd len $ BufferSlice.listAppendEnd curr slice,
+                          BufferSlice.listDropEnd len cmdOut,
                           BufferSlice.listEmpty
                         )
                   )
@@ -116,8 +120,6 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
           let stripped = stripCmdOut prevCmdOut
           (env ^. menv_logger) stripped
           (env ^. menv_logger) "\n"
-
-          unless (T.null stripped) (copyToXClipboard stripped)
 
         when (clrScrPos >= 0) $
           (env ^. menv_logger) ("=== ClrScr detected. offset: " <> show clrScrPos <> "; " <> show puppetIdx)

@@ -6,6 +6,7 @@ module Data.BufferSlice
     SliceList (..),
     listAppendEnd,
     listDropEnd,
+    listTakeEnd,
     listConcat,
     listEmpty,
   )
@@ -59,6 +60,15 @@ listDropEnd n (SliceList (BufferSlice id buf size : xs)) =
   if size > n
     then SliceList (BufferSlice id buf (size - n) : xs)
     else listDropEnd (n - size) (SliceList xs)
+
+listTakeEnd :: Int -> SliceList -> SliceList
+listTakeEnd n0 (SliceList xs) = SliceList (go n0 xs)
+  where go 0 _ = []
+        go _ [] = []
+        go n (BufferSlice id buf size : xs) =
+          if size > n
+            then [BufferSlice id (plusForeignPtr buf (size - n)) n]
+            else BufferSlice id buf size : go (n - size) xs
 
 listConcat :: SliceList -> ByteString
 listConcat (SliceList []) = BS.empty

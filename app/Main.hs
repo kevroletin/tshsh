@@ -14,7 +14,6 @@ import Data.BufferSlice (BufferSlice (..))
 import qualified Data.BufferSlice as BufferSlice
 import Data.Strict.Tuple
 import Data.String.Conversions
-import qualified Data.Text.IO as T
 import Foreign
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
@@ -29,6 +28,7 @@ import Tshsh.Commands
 import Tshsh.Muxer
 import Tshsh.Puppet
 import Prelude (String)
+import qualified Data.Text.IO as T
 
 logFile :: Handle
 {-# NOINLINE logFile #-}
@@ -44,9 +44,9 @@ muxLogFile = unsafePerformIO $ do
   hSetBuffering f LineBuffering
   pure f
 
-log :: Show a => a -> IO ()
+log :: Text -> IO ()
 log str = do
-  hPrint logFile str
+  T.hPutStr logFile str
   hFlush logFile
 
 muxLog :: Show a => a -> IO ()
@@ -168,7 +168,7 @@ main = do
     forkPuppet
       Puppet1
       muxChan
-      (mkBracketMatcher "\ESC[1;36m\206\187\ESC[0m \ESC[1;32m" "\ESC[0m")
+      (mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ")
       (GetCwdCommand "pwd")
       (\dir -> "cd \"" <> dir <> "\"")
       "shh"
@@ -178,7 +178,7 @@ main = do
     forkPuppet
       Puppet2
       muxChan
-      (mkBracketMatcher "\ESC>\ESC[?2004l" "\ESC[?2004h")
+      (mkSeqMatcher "\ESC[K\ESC[?2004h")
       GetCwdFromProcess
       (\dir -> " cd '" <> dir <> "'")
       "zsh"
