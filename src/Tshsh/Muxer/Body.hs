@@ -41,6 +41,17 @@ syncTerminalSize pts = do
   _ <- system ("stty -F " <> pts <> " cols " <> show w <> " rows " <> show h)
   pure ()
 
+copyToXClipboard :: Text -> IO ()
+copyToXClipboard str = do
+  (Just inP, _, _, _) <- createProcess $ (proc "xclip" ["-selection", "clipboard", "-in"]) {std_in = CreatePipe}
+  T.hPutStr inP str
+  hClose inP
+
+stripCmdOut :: BufferSlice.SliceList -> Text
+stripCmdOut list =
+  let txt = cs $ BufferSlice.listConcat list
+   in T.strip . T.drop 1 . Protolude.snd . T.break (== '\n') . stripAnsiEscapeCodes $ txt
+
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
 muxBody env st (TermInput (BufferSlice _ buff size)) = do
   let h = env ^. menv_currentPuppet st . pup_inputH
@@ -48,6 +59,10 @@ muxBody env st (TermInput (BufferSlice _ buff size)) = do
     hPutBuf h ptr size
     pure st
 muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = do
+  (env ^. menv_logger) "--- Puppet output:\n"
+  (env ^. menv_logger) (show . stripAnsiEscapeCodes . cs . BufferSlice.sliceToByteString $ inp)
+  (env ^. menv_logger) "\n---\n"
+
   let str0 = BS.fromForeignPtr buf 0 size
 
   let runProgram p = do
@@ -97,15 +112,12 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
         when (promptPos >= 0) $ do
           (env ^. menv_logger) ("=== Prompt detected. offset: " <> show promptPos <> "; " <> show puppetIdx <> "\n")
           (env ^. menv_logger) "=== stripped output of the last cmd:\n"
-          let txt = cs $ BufferSlice.listConcat prevCmdOut
-          let stripped = T.strip . T.drop 1 . Protolude.snd . T.break (== '\n') . stripAnsiEscapeCodes $ txt
-          (env ^. menv_logger) (show stripped)
+
+          let stripped = stripCmdOut prevCmdOut
+          (env ^. menv_logger) stripped
           (env ^. menv_logger) "\n"
 
-          unless (T.null stripped) $ do
-            (Just inP, _, _, _) <- createProcess $ (proc "xclip" ["-selection", "clipboard", "-in"]) {std_in = CreatePipe}
-            T.hPutStr inP stripped
-            hClose inP
+          unless (T.null stripped) (copyToXClipboard stripped)
 
         when (clrScrPos >= 0) $
           (env ^. menv_logger) ("=== ClrScr detected. offset: " <> show clrScrPos <> "; " <> show puppetIdx)
@@ -153,7 +165,9 @@ muxBody env st0 SwitchPuppet = do
   -- see https://cirw.in/blog/bracketed-paste
   BS.hPut stdout ("\x1b[?2004l" :: BS.ByteString)
 
-  let program = () :!: syncCwdP env idx (Finish (Right ()))
+  let copyPrevCmdC = Lift . copyToXClipboard . stripCmdOut $ st0 ^. mst_currentPuppet . ps_prevCmdOut
+      copyPrevCmd = copyPrevCmdC $ \_ -> Finish (Right ())
+      program = () :!: syncCwdP env idx copyPrevCmd
 
   let (from :!: to) = st0 ^. mst_sortedPuppets
   mProgram <- case (_ps_mode from, _ps_mode to) of
