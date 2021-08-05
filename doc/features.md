@@ -1,6 +1,6 @@
 # Demo
 
-Planned features.
+[Almost] implemented features.
 
 ## C-z to switch between interactive shells
 
