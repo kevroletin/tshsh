@@ -34,6 +34,28 @@ tshsh as a very primitive terminal multiplexer (i.e.
 [screen](https://man7.org/linux/man-pages/man1/screen.1.html)); except that
 tshsh doesn't draw any tui.
 
+## Features
+
+See [Features](./doc/features.md) for more screencasts:
+
+* switching between shells by hitting Ctrl-z;
+* copying an output of a previous executed command after switching;
+* synchronizing a current working directory after switching (both to a repl and a tui app);
+
+Here is one of the demos which demonstrate copying of a previous command output
+to clipboard:
+
+* execute `[x**2 for x in range(1,10)]` in python repl;
+* hit `Ctrl-z` and switch to `zsh`;
+* clipboard contains output from the python command, so we can insert it from a clipboard;
+* execute `echo $TERM` in `zsh`;
+* hit `Ctrl-z` and switch back to `python`;
+* clipboard contains `rxvt-unicode-256color` (which is my terminal emulator).
+
+![Clipboard](./assets/demo_copy_out.svg?raw=true "Title")
+
+# How does it work
+
 ## Terminology
 
 For simplicity, we'll refer to a GUI terminal as `xterm` or a `terminal`. We'll
