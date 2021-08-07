@@ -76,15 +76,27 @@ setSnd' b (a :!: _) = a :!: b
 {-# INLINE setSnd' #-}
 
 -- This config implemented as a class to be able to specialize
-class RaceMatchersCfg a where
+class RaceMatchersDataCfg a where
   onData :: BufferSlice -> a
   onFstEv :: Int -> a
   onSndEv :: Int -> a
 
-instance RaceMatchersCfg SegmentedOutput where
+class RaceMatchersStateCfg st where
+  fstMatcher :: Lens' st SomeMatcher
+  sndMatcher :: Lens' st SomeMatcher
+
+instance RaceMatchersDataCfg SegmentedOutput where
   onData = Data
   onFstEv = Prompt
   onSndEv = const TuiMode
+
+instance RaceMatchersStateCfg PuppetState where
+  fstMatcher = ps_parser
+  sndMatcher = ps_clrScrParser
+
+instance RaceMatchersStateCfg (Pair SomeMatcher SomeMatcher) where
+  fstMatcher f (a :!: b) = (:!: b) <$> f a
+  sndMatcher f (a :!: b) = (a :!:) <$> f b
 
 -- | Split input based on matches from given matchers
 --
@@ -97,8 +109,9 @@ instance RaceMatchersCfg SegmentedOutput where
 --     ,     PromptDetected
 --     ,     |     $|
 --     ,           PromptDetected
---     ,           |   \ESC[H\ESC[2J |
---     ,                             ClrScrDetected
+--     ,           |   \ESC[H\ESC[2J|
+--     ,                            ClrScrDetected
+--     ,                            | |
 --     ]
 --
 -- the difficult part of the implementation is to avoid running the same matcher
@@ -115,71 +128,109 @@ instance RaceMatchersCfg SegmentedOutput where
 -- than matching on strings due to memChr optimization). Or it would use
 -- matchStr, but would sometimes run matchStr several times on parts of the
 -- same input).
-raceMatchersP :: forall out m . RaceMatchersCfg out => Program (Pair SomeMatcher SomeMatcher) BufferSlice out m
+raceMatchersP :: forall st out m .
+  (RaceMatchersStateCfg st, RaceMatchersDataCfg out) =>
+  Program st BufferSlice out m
 raceMatchersP =
-  let modifyState f cont = GetState $ \st -> PutState (f st) cont
-      feedM m0 putSt onOut bs@(BufferSlice id buf size) cont =
+  let feedM m0 putSt onOut bs@(BufferSlice id buf size) cont =
         let str = BufferSlice.sliceToByteString bs
          in case matchStr m0 str of
               NoMatch newM ->
-                modifyState (putSt newM) $
+                ModifyState (putSt .~ newM) $
                 if BufferSlice.sliceNull bs
                    then cont
                    else Output (onData bs) cont
               Match newM len prev rest ->
-                modifyState (putSt newM) $
+                ModifyState (putSt .~ newM) $
                 Output (onData $ BufferSlice.sliceTake (BS.length prev) bs) $
                 Output (onOut len) $
                 feedM newM putSt onOut (BufferSlice.sliceDrop (BS.length prev) bs) cont
       go bs0@(BufferSlice id buf size) =
         let str = BS.fromForeignPtr buf 0 size
-         in GetState $ \(fstM :!: sndM) ->
-              case matchStr fstM str of
+         in GetState $ \st ->
+              case matchStr (st ^. fstMatcher) str of
                 NoMatch newFstM ->
-                  modifyState (setFst' newFstM) $
-                  feedM sndM
-                        setSnd'
+                  ModifyState (fstMatcher .~ newFstM) $
+                  feedM (st ^. sndMatcher)
+                        sndMatcher
                         onSndEv
                         bs0 $
                   raceMatchersP
                 Match newFstM lenFst prevFst restFst ->
-                  modifyState (setFst' newFstM) $
-                  case matchStr sndM str of
+                  ModifyState (fstMatcher .~ newFstM) $
+                  case matchStr (st ^. sndMatcher) str of
                     NoMatch newSndM ->
-                      modifyState (setSnd' newSndM) $
+                      ModifyState (sndMatcher .~ newSndM) $
                       Output (onData (BufferSlice.sliceTake (BS.length prevFst) bs0)) $
                       Output (onFstEv lenFst) $
                       feedM newFstM
-                            setFst'
+                            fstMatcher
                             onFstEv
                             (BufferSlice.sliceDrop (BS.length prevFst) bs0) $
                       raceMatchersP
                     Match newSndM lenSnd prevSnd restSnd ->
                       if BS.length prevSnd < BS.length prevFst
                         then
-                          modifyState (setSnd' newSndM) $
+                          ModifyState (sndMatcher .~ newSndM) $
                           Output (onData (BufferSlice.sliceTake (BS.length prevSnd) bs0)) $
                           Output (onSndEv lenSnd) $
                           feedM newSndM
-                                setSnd'
+                                sndMatcher
                                 onSndEv
                                 ( bs0 & BufferSlice.sliceTake (BS.length prevFst)
                                       & BufferSlice.sliceDrop (BS.length prevSnd)) $
                           Output (onFstEv lenFst) $
                           go (BufferSlice.sliceDrop (BS.length prevFst) bs0)
                         else
-                          modifyState (setFst' newFstM) $
+                          ModifyState (fstMatcher .~ newFstM) $
                           Output (onData (BufferSlice.sliceTake (BS.length prevFst) bs0)) $
                           Output (onFstEv lenSnd) $
                           feedM newFstM
-                                setFst'
+                                fstMatcher
                                 onFstEv
                                 (bs0 & BufferSlice.sliceTake (BS.length prevSnd)
                                      & BufferSlice.sliceDrop (BS.length prevFst)) $
                           Output (onSndEv lenSnd) $
                           go (BufferSlice.sliceDrop (BS.length prevSnd) bs0)
    in WaitInput go
-{-# SPECIALIZE raceMatchersP :: forall m . Program (Pair SomeMatcher SomeMatcher) BufferSlice SegmentedOutput m #-}
+{-# SPECIALIZE raceMatchersP :: forall m . Program PuppetState BufferSlice SegmentedOutput m #-}
+
+accumCmdOutP :: Program PuppetState SegmentedOutput SliceList IO
+accumCmdOutP =
+  WaitInput $ \i ->
+  GetState $ \st@PuppetState{..} ->
+    case i of
+      Data bs ->
+        if st ^. ps_mode == PuppetModeRepl
+          then
+            PutState (st & ps_currCmdOut %~ (`BufferSlice.listAppendEnd` bs))
+            accumCmdOutP
+          else
+            accumCmdOutP
+      Prompt len ->
+        if st ^. ps_mode == PuppetModeRepl
+          then
+            let res = BufferSlice.listDropEnd len _ps_currCmdOut in
+            PutState (st { _ps_prevCmdOut = res,
+                           _ps_currCmdOut = BufferSlice.listEmpty }) $
+            Output res
+            accumCmdOutP
+          else
+            PutState (st { _ps_mode = PuppetModeRepl })
+            accumCmdOutP
+      TuiMode ->
+        if st ^. ps_mode == PuppetModeRepl
+          then
+            PutState (st { _ps_mode = PuppetModeTUI,
+                           _ps_currCmdOut = BufferSlice.listEmpty })
+            accumCmdOutP
+          else
+            accumCmdOutP
+
+stripCmdOutP :: Program PuppetState SliceList Text IO
+stripCmdOutP =
+  WaitInput $ \i ->
+    Output (stripCmdOut i) stripCmdOutP
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
 muxBody env st (TermInput (BufferSlice _ buff size)) = do
@@ -198,95 +249,23 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
         feedInputM onOut (puppetIdx, BS.copy str0) p >>= \case
           Cont p' -> pure (Just p')
           Res r -> do
-            (env ^. menv_logger) $ "Program terminated with: " <> show r
+            env ^. menv_logger $ "Program terminated with: " <> show r
             pure Nothing
-
-  let feedMatcher :: Monad m => (st -> Int -> ByteString -> ByteString -> m st) -> (st -> m st) -> st -> SomeMatcher -> ByteString -> m (st, SomeMatcher)
-      feedMatcher onMatch onNoMatch !st !m !str =
-        case matchStr m str of
-          NoMatch m' -> (,m') <$> onNoMatch st
-          Match m' len prev rest ->
-            if BS.null rest
-              then (,m') <$> onMatch st len prev rest
-              else do
-                newSt <- onMatch st len prev rest
-                feedMatcher onMatch onNoMatch newSt m' rest
-
-  let runMatchers currP = do
-        -- TODO: don't accumulate output when we are in tui mode
-        ((promptPos, prevCmdOut, currCmdOut), m') <- do
-          feedMatcher
-            ( \(_, prev, curr) len str strRest -> do
-                let slice = BufferSlice.sliceFromByteString inpSliceId str
-                let cmdOut = BufferSlice.listAppendEnd curr slice
-                (env ^. menv_logger) ("=== Prompt (" <> show puppetIdx <> "):\n")
-                (env ^. menv_logger) (show . BufferSlice.listConcat . BufferSlice.listTakeEnd len $ cmdOut)
-                (env ^. menv_logger) "\n"
-                pure
-                  ( BS.length strRest,
-                    BufferSlice.listDropEnd len cmdOut,
-                    BufferSlice.listEmpty
-                  )
-            )
-            (\(pos, prev, curr) -> pure (pos, prev, BufferSlice.listAppendEnd curr inp))
-            (-1, currP ^. ps_prevCmdOut, currP ^. ps_currCmdOut)
-            (currP ^. ps_parser)
-            str0
-        let (clrScrPos, mc') =
-              runIdentity $
-                feedMatcher (\_ _ _ rest -> pure (BS.length rest)) pure (-1) (currP ^. ps_clrScrParser) str0
-
-        -- log and copy to clipboard
-        when (promptPos >= 0) $ do
-          (env ^. menv_logger) ("=== Prompt detected. offset: " <> show promptPos <> "; " <> show puppetIdx <> "\n")
-          (env ^. menv_logger) "=== stripped output of the last cmd:\n"
-
-          let stripped = stripCmdOut prevCmdOut
-          (env ^. menv_logger) stripped
-          (env ^. menv_logger) "\n"
-
-        when (clrScrPos >= 0) $
-          (env ^. menv_logger) ("=== ClrScr detected. offset: " <> show clrScrPos <> "; " <> show puppetIdx)
-
-        let mode = case (promptPos, clrScrPos) of
-              (-1, -1) -> currP ^. ps_mode
-              (_, -1) -> PuppetModeRepl
-              (-1, _) -> PuppetModeTUI
-              (p, c) -> if p > c then PuppetModeTUI else PuppetModeRepl
-        when (mode /= currP ^. ps_mode) $
-          (env ^. menv_logger) ("=== Mode has changed: " <> show mode <> "; " <> show puppetIdx)
-
-        pure
-          ( currP
-              { _ps_parser = m',
-                _ps_clrScrParser = mc',
-                _ps_mode = mode,
-                _ps_currCmdOut = currCmdOut,
-                _ps_prevCmdOut = prevCmdOut
-              }
-          )
 
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     BS.hPut stdout str0
 
-  let runProgram' p = do
-        let onOut x = do (env ^. menv_logger) "-> "
-                         (env ^. menv_logger) (show x)
-                         (env ^. menv_logger) "\n"
-
-        feedInputM onOut inp p >>= \case
-          Cont p' -> pure p'
-          Res r -> panic "oops"
-
+  let onOut x = do (env ^. menv_logger) "-> "
+                   (env ^. menv_logger) (show x)
+                   (env ^. menv_logger) "\n"
   let currP = st ^. mst_currentPuppet
-  newModeP <- runProgram' (currP ^. ps_modeP)
+  Cont (newPup :!: newModeP) <- feedInputM onOut inp (currP :!: (currP ^. ps_modeP))
 
   nextCp <- join <$> traverse runProgram (st ^. mst_currentProgram)
-  nextPup <- runMatchers (st ^. mst_currentPuppet)
 
   pure
     ( st & mst_currentProgram .~ nextCp
-        & mst_currentPuppet .~ (nextPup & ps_modeP .~ newModeP)
+         & mst_currentPuppet .~ (newPup & ps_modeP .~ newModeP)
     )
 muxBody env st WindowResize = do
   let pup = env ^. menv_currentPuppet st

@@ -29,6 +29,7 @@ import Tshsh.Muxer
 import Tshsh.Puppet
 import Prelude (String)
 import qualified Data.Text.IO as T
+import Lang.Coroutine.CPS
 
 logFile :: Handle
 {-# NOINLINE logFile #-}
@@ -146,7 +147,7 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
           _ps_mode = PuppetModeRepl,
           _ps_currCmdOut = BufferSlice.listEmpty,
           _ps_prevCmdOut = BufferSlice.listEmpty,
-          _ps_modeP = (matcher :!: clrScrParser) :!: raceMatchersP
+          _ps_modeP = raceMatchersP `Pipe` accumCmdOutP `Pipe` stripCmdOutP
         }
     )
 

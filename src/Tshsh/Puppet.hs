@@ -72,7 +72,7 @@ data PuppetState = PuppetState
     _ps_mode :: PuppetMode,
     _ps_currCmdOut :: SliceList,
     _ps_prevCmdOut :: SliceList,
-    _ps_modeP :: ProgramSt (Pair SomeMatcher SomeMatcher) BufferSlice SegmentedOutput IO
+    _ps_modeP :: Program PuppetState BufferSlice Text IO
   }
 
 $(makeLenses 'PuppetState)

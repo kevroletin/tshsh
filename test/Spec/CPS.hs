@@ -113,3 +113,49 @@ spec = do
     st `shouldBe` 55
     out `shouldBe` [1..10]
     res `shouldHave` _Cont
+
+  -- TODO: this test doesn't check that we consume all outputs
+  -- in a single consumOutputs call. We saw in practice that because
+  -- feedInputM calls consumeOutputs first, it masks the problem
+  -- when incorrect implementation of `step Pipe` retains some outputs
+  it "pipe" $ do
+    let groupInp n = GetState $ \(acc, _) ->
+          if length acc < n
+            then
+              WaitInput $ \i ->
+                ModifyState (_1 %~ (++ [i]))
+                  (groupInp n)
+            else
+              ModifyState (_1 .~ []) $
+                Output acc (groupInp n)
+    let sumInp = WaitInput $ \i -> Output (sum i) sumInp
+    let takeNInp n = GetState $ \(_, t) ->
+          if t < n
+            then WaitInput $ \i ->
+              ModifyState (_2 %~ (+ 1)) $
+                Output i (takeNInp n)
+            else Finish (Right ())
+    let p = groupInp 3 `Pipe` sumInp `Pipe` takeNInp 10
+    let (out, _) =
+          rid $
+            accumProgram @([Int], Int) @Int @Int @_
+              [1 ..]
+              (([], 0) :!: p)
+    out `shouldBe` [6, 15, 24, 33, 42, 51, 60, 69, 78, 87]
+
+  it "tee" $ do
+    let producer =
+          WaitInput $ \i -> Output i producer
+    let consumer x =
+          WaitInput $ \i ->
+            let loop 0 = consumer x
+                loop n = Output x (loop (n-1))
+            in loop i
+    let p = producer `Pipe` Tee Nothing (consumer 1) (consumer 2)
+    let (out, _) =
+          rid $
+            accumProgram @() @Int @Int @_
+              [1 .. 3]
+              (() :!: p)
+
+    out `shouldBe` [1, 2, 1, 1, 2, 2, 1, 1, 1, 2, 2, 2]

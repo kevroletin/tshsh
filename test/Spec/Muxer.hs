@@ -25,7 +25,7 @@ mappendData [] = []
 mappendData (TestData x : TestData y : rest) = mappendData (TestData (x <> y) : rest)
 mappendData (x : xs) = x : mappendData xs
 
-instance RaceMatchersCfg (TestSeq BufferSlice) where
+instance RaceMatchersDataCfg (TestSeq BufferSlice) where
   onData = TestData
   onFstEv = LeftBracket
   onSndEv = RightBracket
@@ -46,38 +46,38 @@ spec = do
   let st = mkSeqMatcher "<<" :!: mkSeqMatcher ">>"
   let beautify xs = mappendData $ (BufferSlice.sliceToByteString <$>) <$> xs
   it "no match" $ do
-    let res = runProgram ["abc"] (st :!: raceMatchersP @(TestSeq BufferSlice))
+    let res = runProgram ["abc"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "abc"]
 
   it "fst match" $ do
-    let res = runProgram ["a>>b"] (st :!: raceMatchersP @(TestSeq BufferSlice))
+    let res = runProgram ["a>>b"] (st :!: raceMatchersP @_  @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a>>", RightBracket 2, TestData "b"]
 
   it "snd match" $ do
-    let res = runProgram ["a<<b"] (st :!: raceMatchersP @(TestSeq BufferSlice))
+    let res = runProgram ["a<<b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a<<", LeftBracket 2, TestData "b"]
 
   it "fst match split" $ do
-    let res = runProgram ["a>", ">b"] (st :!: raceMatchersP @(TestSeq BufferSlice))
+    let res = runProgram ["a>", ">b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a>>", RightBracket 2, TestData "b"]
 
   it "snd match split" $ do
-    let res = runProgram ["a<", "<b"] (st :!: raceMatchersP @(TestSeq BufferSlice))
+    let res = runProgram ["a<", "<b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a<<", LeftBracket 2, TestData "b"]
 
   it "snd after fst" $ do
-    let res = runProgram ["a>", ">b<", "<c"] (st :!: raceMatchersP @(TestSeq BufferSlice))
+    let res = runProgram ["a>", ">b<", "<c"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a>>", RightBracket 2, TestData "b<<", LeftBracket 2, TestData "c"]
 
   it "fst after snd" $ do
-    let res = runProgram ["a<", "<b>", ">c"] (st :!: raceMatchersP @(TestSeq BufferSlice))
+    let res = runProgram ["a<", "<b>", ">c"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a<<", LeftBracket 2, TestData "b>>", RightBracket 2, TestData "c"]
 
   it "no spaces in between" $ do
-    let res = runProgram ["<", "<", ">", ">", "<", "<", ">", ">"] (st :!: raceMatchersP @(TestSeq BufferSlice))
+    let res = runProgram ["<", "<", ">", ">", "<", "<", ">", ">"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [ TestData "<<", LeftBracket 2, TestData ">>", RightBracket 2,
                               TestData "<<", LeftBracket 2, TestData ">>", RightBracket 2]
 
   it "partial matches" $ do
-    let res = runProgram ["<", ">", "<", ">", "<", "<", ">", ">"] (st :!: raceMatchersP @(TestSeq BufferSlice))
+    let res = runProgram ["<", ">", "<", ">", "<", "<", ">", ">"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [ TestData "<><><<", LeftBracket 2, TestData ">>", RightBracket 2]
