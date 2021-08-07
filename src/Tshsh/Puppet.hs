@@ -20,7 +20,9 @@ module Tshsh.Puppet
     ps_mode,
     ps_currCmdOut,
     ps_prevCmdOut,
+    ps_modeP,
     PuppetMode (..),
+    SegmentedOutput (..),
   )
 where
 
@@ -31,6 +33,14 @@ import Protolude
 import System.Posix (ProcessID)
 import System.Process (ProcessHandle)
 import Tshsh.Commands
+import Lang.Coroutine.CPS
+import Data.Strict.Tuple
+import Data.BufferSlice (BufferSlice)
+
+data SegmentedOutput = Data BufferSlice
+                     | Prompt Int
+                     | TuiMode
+                     deriving Show
 
 data GetCwd
   = GetCwdCommand Text
@@ -61,7 +71,8 @@ data PuppetState = PuppetState
     _ps_clrScrParser :: SomeMatcher,
     _ps_mode :: PuppetMode,
     _ps_currCmdOut :: SliceList,
-    _ps_prevCmdOut :: SliceList
+    _ps_prevCmdOut :: SliceList,
+    _ps_modeP :: ProgramSt (Pair SomeMatcher SomeMatcher) BufferSlice SegmentedOutput IO
   }
 
 $(makeLenses 'PuppetState)

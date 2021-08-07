@@ -9,6 +9,7 @@
 -- + built-in state
 module Lang.Coroutine.CPS
   ( Program (..),
+    ProgramSt,
     ProgramCont,
     ProgramCont',
     ContResOut (..),
@@ -39,6 +40,8 @@ data Program st i o m where
   WaitInput :: (i -> Program st i o m) -> Program st i o m
   Output :: o -> Program st i o m -> Program st i o m
   Finish :: Either Error () -> Program st i o m
+
+type ProgramSt st i o m = Pair st (Program st i o m)
 
 type ProgramCont st i o m s = forall t. (s -> Program st i o m) -> Program st i o m
 

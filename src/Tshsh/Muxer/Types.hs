@@ -30,6 +30,7 @@ import Lang.Coroutine.CPS
 import Protolude hiding (hPutStrLn, log, tryIO)
 import Tshsh.Commands
 import Tshsh.Puppet
+import Data.BufferSlice (BufferSlice)
 
 data MuxEnv = MuxEnv
   { _menv_puppets :: Pair Puppet Puppet,

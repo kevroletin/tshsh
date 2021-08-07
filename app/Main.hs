@@ -145,7 +145,8 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
           _ps_clrScrParser = clrScrParser,
           _ps_mode = PuppetModeRepl,
           _ps_currCmdOut = BufferSlice.listEmpty,
-          _ps_prevCmdOut = BufferSlice.listEmpty
+          _ps_prevCmdOut = BufferSlice.listEmpty,
+          _ps_modeP = (matcher :!: clrScrParser) :!: raceMatchersP
         }
     )
 

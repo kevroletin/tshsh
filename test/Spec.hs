@@ -3,29 +3,30 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
 
+import Control.Lens
+import Data.BufferSlice (BufferSlice (..), SliceList (..))
+import qualified Data.BufferSlice as BufferSlice
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Internal as BS
 import qualified Data.ByteString.Char8 as C8
+import qualified Data.ByteString.Internal as BS
 import qualified Data.Text as T
+import qualified Matcher.Bracket.Text as MBT
 import Matcher.Result
 import qualified Matcher.Seq.ByteString as MSBS
 import qualified Matcher.Seq.Text as MST
-import qualified Matcher.Bracket.Text as MBT
 import Protolude
 import qualified Spec.CPS
 import qualified Spec.MonadT
+import qualified Spec.Muxer
 import qualified Spec.Simulator
 import qualified Spec.SimulatorM
 import Test.Hspec
+import Test.Hspec.Expectations.Lens
 import Test.QuickCheck
 import Prelude (String)
-import Test.Hspec.Expectations.Lens
-import Control.Lens
-import qualified Data.BufferSlice as BufferSlice
-import Data.BufferSlice (BufferSlice(..), SliceList(..))
 
 resultBind :: MatchResult m a -> (m -> MatchResult m a) -> MatchResult m a
-resultBind r@Match{} _ = r
+resultBind r@Match {} _ = r
 resultBind (NoMatch m) f = f m
 
 breakOnAll_ :: MST.Matcher -> Text -> Text -> [(Text, Text)]
@@ -81,7 +82,6 @@ prop_sameAsBsImpl (C8.pack -> a) (C8.pack -> b) =
     ==> breakOnAllBs' a b == breakOnAllBs a b
 
 main :: IO ()
-
 chopBs :: Int -> ByteString -> [ByteString]
 chopBs n str
   | BS.null str = []
@@ -89,15 +89,18 @@ chopBs n str
 
 sliceBs :: Int -> ByteString -> [BufferSlice]
 sliceBs n str0 = fmap (BufferSlice.sliceFromByteString sliceId) (chopBs n str0)
-  where sliceId = BS.toForeignPtr str0 ^. _1
+  where
+    sliceId = BS.toForeignPtr str0 ^. _1
 
 main = hspec $ do
   describe "Buffer slices" $ do
     it "merge" $ do
       let xs = "1234"
       let (id, 0, _) = BS.toForeignPtr xs
-      let Just ys = BufferSlice.mergeSlices (BufferSlice.sliceFromByteString id (BS.take 2 xs))
-                                (BufferSlice.sliceFromByteString id (BS.drop 2 xs))
+      let Just ys =
+            BufferSlice.mergeSlices
+              (BufferSlice.sliceFromByteString id (BS.take 2 xs))
+              (BufferSlice.sliceFromByteString id (BS.drop 2 xs))
       BufferSlice.sliceToByteString ys `shouldBe` xs
 
     it "merge failure" $ do
@@ -105,8 +108,10 @@ main = hspec $ do
       let ys = BS.copy xs
       let (id1, 0, _) = BS.toForeignPtr xs
       let (id2, 0, _) = BS.toForeignPtr ys
-      let res = BufferSlice.mergeSlices (BufferSlice.sliceFromByteString id1 (BS.take 2 xs))
-                            (BufferSlice.sliceFromByteString id2 (BS.drop 2 ys))
+      let res =
+            BufferSlice.mergeSlices
+              (BufferSlice.sliceFromByteString id1 (BS.take 2 xs))
+              (BufferSlice.sliceFromByteString id2 (BS.drop 2 ys))
       res `shouldBe` Nothing
 
     it "merge zero" $ do
@@ -120,7 +125,7 @@ main = hspec $ do
     it "merge many" $ do
       let xs = "1234567890"
       let s = BufferSlice.sliceFromByteString (BS.toForeignPtr xs ^. _1) xs
-      let (s1:ss) = sliceBs 2 xs
+      let (s1 : ss) = sliceBs 2 xs
       let res = foldl' (\acc x -> join $ traverse (`BufferSlice.mergeSlices` x) acc) (Just s1) ss
       res `shouldBe` Just s
 
@@ -250,11 +255,12 @@ main = hspec $ do
     it "feed input in many chunks" $ do
       let res0 = MBT.matchStr (MBT.mkMatcher "[" "]") ""
       res0 `shouldHave` _NoMatch
-      let res = res0 `resultBind` (`MBT.matchStr` "pr")
-                     `resultBind` (`MBT.matchStr` "e")
-                     `resultBind` (`MBT.matchStr` "v[i")
-                     `resultBind` (`MBT.matchStr` "nsi")
-                     `resultBind` (`MBT.matchStr` "de]rest")
+      let res =
+            res0 `resultBind` (`MBT.matchStr` "pr")
+              `resultBind` (`MBT.matchStr` "e")
+              `resultBind` (`MBT.matchStr` "v[i")
+              `resultBind` (`MBT.matchStr` "nsi")
+              `resultBind` (`MBT.matchStr` "de]rest")
       res `shouldHave` _Match
       res `shouldHave` match_prev . only "de]"
       res `shouldHave` match_rest . only "rest"
@@ -284,3 +290,5 @@ main = hspec $ do
               ]
       Spec.Simulator.simulateEnvSync `shouldBe` Right res
       Spec.SimulatorM.simulateEnvSync `shouldBe` Right res
+
+  describe "Muxer" Spec.Muxer.spec

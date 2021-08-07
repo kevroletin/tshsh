@@ -2,6 +2,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Tshsh.Muxer.Body where
 
@@ -34,6 +35,8 @@ import Tshsh.Muxer.Types
 import Tshsh.Program.SyncCwd
 import Tshsh.Puppet
 
+import Spec.CPS.Folds
+
 syncTerminalSize :: String -> IO ()
 syncTerminalSize pts = do
   Just (Window h w :: Window Int) <- size
@@ -48,14 +51,135 @@ copyToXClipboard str = do
   hClose inP
 
 bsDropEnd :: Int -> ByteString -> ByteString
-bsDropEnd n xs =  BS.take (BS.length xs - n) xs
+bsDropEnd n xs = BS.take (BS.length xs - n) xs
 
 -- strip 1st and the last lines, strip ansi escape sequences
 stripCmdOut :: BufferSlice.SliceList -> Text
 stripCmdOut list =
   let bs = BufferSlice.listConcat list
-      bs' = BS.drop 1 . Protolude.snd . BS.break (==10) . bsDropEnd 1 . Protolude.fst . BS.breakEnd (==10) $ bs
+      bs' = BS.drop 1 . Protolude.snd . BS.break (== 10) . bsDropEnd 1 . Protolude.fst . BS.breakEnd (== 10) $ bs
    in T.strip . stripAnsiEscapeCodes $ cs bs'
+
+data ParsePromptSt = ParsePromptSt
+  { _pps_promptMatcher :: SomeMatcher,
+    _pps_clrScrMatcher :: SomeMatcher,
+    _pps_mode :: PuppetMode
+  }
+  deriving Show
+
+setFst' :: a -> Pair a b -> Pair a b
+setFst' a (_ :!: b) = a :!: b
+{-# INLINE setFst' #-}
+
+setSnd' :: b -> Pair a b -> Pair a b
+setSnd' b (a :!: _) = a :!: b
+{-# INLINE setSnd' #-}
+
+-- This config implemented as a class to be able to specialize
+class RaceMatchersCfg a where
+  onData :: BufferSlice -> a
+  onFstEv :: Int -> a
+  onSndEv :: Int -> a
+
+instance RaceMatchersCfg SegmentedOutput where
+  onData = Data
+  onFstEv = Prompt
+  onSndEv = const TuiMode
+
+-- | Split input based on matches from given matchers
+--
+-- Let's say we have two matchers to detect a prompt $ and a clear screen sequence.
+-- raceMatchersP splits input into smaller chunks each time the first or the
+-- second matcher fires. In between it inserts messages to indicate that a match
+-- happened. For example given input (1) it produces a sequence (2)
+-- (1) [ |   $     $   \ESC[H\ESC[2J | ]
+-- (2) [ |   $|
+--     ,     PromptDetected
+--     ,     |     $|
+--     ,           PromptDetected
+--     ,           |   \ESC[H\ESC[2J |
+--     ,                             ClrScrDetected
+--     ]
+--
+-- the difficult part of the implementation is to avoid running the same matcher
+-- more than once on the same input
+--
+-- in the case of (1) we run prompt matcher and clrScr matcher one after the
+-- other and discover that both matched, but a prompt appeared earlier in
+-- the input. That means that in the portion of the input until clrScr match
+-- there might be multiple occurrences of a prompt but no occurrences of clrScr.
+--
+-- The implementation would be simple if we would combine two matchers into
+-- a single one. But it likely would be less efficient because it would either
+-- use matcherStep and consume the input element by element (which is slower
+-- than matching on strings due to memChr optimization). Or it would use
+-- matchStr, but would sometimes run matchStr several times on parts of the
+-- same input).
+raceMatchersP :: forall out m . RaceMatchersCfg out => Program (Pair SomeMatcher SomeMatcher) BufferSlice out m
+raceMatchersP =
+  let modifyState f cont = GetState $ \st -> PutState (f st) cont
+      feedM m0 putSt onOut bs@(BufferSlice id buf size) cont =
+        let str = BufferSlice.sliceToByteString bs
+         in case matchStr m0 str of
+              NoMatch newM ->
+                modifyState (putSt newM) $
+                if BufferSlice.sliceNull bs
+                   then cont
+                   else Output (onData bs) cont
+              Match newM len prev rest ->
+                modifyState (putSt newM) $
+                Output (onData $ BufferSlice.sliceTake (BS.length prev) bs) $
+                Output (onOut len) $
+                feedM newM putSt onOut (BufferSlice.sliceDrop (BS.length prev) bs) cont
+      go bs0@(BufferSlice id buf size) =
+        let str = BS.fromForeignPtr buf 0 size
+         in GetState $ \(fstM :!: sndM) ->
+              case matchStr fstM str of
+                NoMatch newFstM ->
+                  modifyState (setFst' newFstM) $
+                  feedM sndM
+                        setSnd'
+                        onSndEv
+                        bs0 $
+                  raceMatchersP
+                Match newFstM lenFst prevFst restFst ->
+                  modifyState (setFst' newFstM) $
+                  case matchStr sndM str of
+                    NoMatch newSndM ->
+                      modifyState (setSnd' newSndM) $
+                      Output (onData (BufferSlice.sliceTake (BS.length prevFst) bs0)) $
+                      Output (onFstEv lenFst) $
+                      feedM newFstM
+                            setFst'
+                            onFstEv
+                            (BufferSlice.sliceDrop (BS.length prevFst) bs0) $
+                      raceMatchersP
+                    Match newSndM lenSnd prevSnd restSnd ->
+                      if BS.length prevSnd < BS.length prevFst
+                        then
+                          modifyState (setSnd' newSndM) $
+                          Output (onData (BufferSlice.sliceTake (BS.length prevSnd) bs0)) $
+                          Output (onSndEv lenSnd) $
+                          feedM newSndM
+                                setSnd'
+                                onSndEv
+                                ( bs0 & BufferSlice.sliceTake (BS.length prevFst)
+                                      & BufferSlice.sliceDrop (BS.length prevSnd)) $
+                          Output (onFstEv lenFst) $
+                          go (BufferSlice.sliceDrop (BS.length prevFst) bs0)
+                        else
+                          modifyState (setFst' newFstM) $
+                          Output (onData (BufferSlice.sliceTake (BS.length prevFst) bs0)) $
+                          Output (onFstEv lenSnd) $
+                          feedM newFstM
+                                setFst'
+                                onFstEv
+                                (bs0 & BufferSlice.sliceTake (BS.length prevSnd)
+                                     & BufferSlice.sliceDrop (BS.length prevFst)) $
+                          Output (onSndEv lenSnd) $
+                          go (BufferSlice.sliceDrop (BS.length prevSnd) bs0)
+   in WaitInput go
+{-# SPECIALIZE raceMatchersP :: forall m . Program (Pair SomeMatcher SomeMatcher) BufferSlice SegmentedOutput m #-}
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
 muxBody env st (TermInput (BufferSlice _ buff size)) = do
@@ -91,23 +215,23 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
   let runMatchers currP = do
         -- TODO: don't accumulate output when we are in tui mode
         ((promptPos, prevCmdOut, currCmdOut), m') <- do
-                feedMatcher
-                  ( \(_, prev, curr) len str strRest -> do
-                      let slice = BufferSlice.sliceFromByteString inpSliceId str
-                      let cmdOut = BufferSlice.listAppendEnd curr slice
-                      (env ^. menv_logger) ("=== Prompt (" <> show puppetIdx <> "):\n")
-                      (env ^. menv_logger) (show . BufferSlice.listConcat . BufferSlice.listTakeEnd len $ cmdOut)
-                      (env ^. menv_logger) "\n"
-                      pure
-                        ( BS.length strRest,
-                          BufferSlice.listDropEnd len cmdOut,
-                          BufferSlice.listEmpty
-                        )
+          feedMatcher
+            ( \(_, prev, curr) len str strRest -> do
+                let slice = BufferSlice.sliceFromByteString inpSliceId str
+                let cmdOut = BufferSlice.listAppendEnd curr slice
+                (env ^. menv_logger) ("=== Prompt (" <> show puppetIdx <> "):\n")
+                (env ^. menv_logger) (show . BufferSlice.listConcat . BufferSlice.listTakeEnd len $ cmdOut)
+                (env ^. menv_logger) "\n"
+                pure
+                  ( BS.length strRest,
+                    BufferSlice.listDropEnd len cmdOut,
+                    BufferSlice.listEmpty
                   )
-                  (\(pos, prev, curr) -> pure (pos, prev, BufferSlice.listAppendEnd curr inp))
-                  (-1, currP ^. ps_prevCmdOut, currP ^. ps_currCmdOut)
-                  (currP ^. ps_parser)
-                  str0
+            )
+            (\(pos, prev, curr) -> pure (pos, prev, BufferSlice.listAppendEnd curr inp))
+            (-1, currP ^. ps_prevCmdOut, currP ^. ps_currCmdOut)
+            (currP ^. ps_parser)
+            str0
         let (clrScrPos, mc') =
               runIdentity $
                 feedMatcher (\_ _ _ rest -> pure (BS.length rest)) pure (-1) (currP ^. ps_clrScrParser) str0
@@ -145,12 +269,24 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     BS.hPut stdout str0
 
+  let runProgram' p = do
+        let onOut x = do (env ^. menv_logger) "-> "
+                         (env ^. menv_logger) (show x)
+                         (env ^. menv_logger) "\n"
+
+        feedInputM onOut inp p >>= \case
+          Cont p' -> pure p'
+          Res r -> panic "oops"
+
+  let currP = st ^. mst_currentPuppet
+  newModeP <- runProgram' (currP ^. ps_modeP)
+
   nextCp <- join <$> traverse runProgram (st ^. mst_currentProgram)
   nextPup <- runMatchers (st ^. mst_currentPuppet)
 
   pure
     ( st & mst_currentProgram .~ nextCp
-        & mst_currentPuppet .~ nextPup
+        & mst_currentPuppet .~ (nextPup & ps_modeP .~ newModeP)
     )
 muxBody env st WindowResize = do
   let pup = env ^. menv_currentPuppet st
@@ -189,3 +325,4 @@ muxBody env st0 SwitchPuppet = do
       pure (Just program)
 
   pure (st & mst_currentProgram .~ mProgram)
+
