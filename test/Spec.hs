@@ -142,6 +142,54 @@ main = hspec $ do
       length rs `shouldBe` length ss
       BufferSlice.listConcat res `shouldBe` xs
 
+    it "slice take" $ do
+      let xs = "1234567890"
+      let s = BufferSlice.sliceFromByteString (BS.toForeignPtr xs ^. _1) xs
+      BufferSlice.sliceToByteString (BufferSlice.sliceTake 4 s) `shouldBe` "1234"
+      BufferSlice.sliceToByteString (BufferSlice.sliceTake 10 s) `shouldBe` "1234567890"
+      BufferSlice.sliceToByteString (BufferSlice.sliceTake 100 s) `shouldBe` "1234567890"
+      BufferSlice.sliceToByteString (BufferSlice.sliceTake 0 s) `shouldBe` ""
+      BufferSlice.sliceToByteString (BufferSlice.sliceTake (-1) s) `shouldBe` ""
+
+    it "slice take end" $ do
+      let xs = "1234567890"
+      let s = BufferSlice.sliceFromByteString (BS.toForeignPtr xs ^. _1) xs
+      BufferSlice.sliceToByteString (BufferSlice.sliceTakeEnd 4 s) `shouldBe` "7890"
+      BufferSlice.sliceToByteString (BufferSlice.sliceTakeEnd 10 s) `shouldBe` "1234567890"
+      BufferSlice.sliceToByteString (BufferSlice.sliceTakeEnd 100 s) `shouldBe` "1234567890"
+      BufferSlice.sliceToByteString (BufferSlice.sliceTakeEnd 0 s) `shouldBe` ""
+      BufferSlice.sliceToByteString (BufferSlice.sliceTakeEnd (-1) s) `shouldBe` ""
+
+    it "slice drop" $ do
+      let xs = "1234567890"
+      let s = BufferSlice.sliceFromByteString (BS.toForeignPtr xs ^. _1) xs
+      BufferSlice.sliceToByteString (BufferSlice.sliceDrop 4 s) `shouldBe` "567890"
+      BufferSlice.sliceToByteString (BufferSlice.sliceDrop 10 s) `shouldBe` ""
+      BufferSlice.sliceToByteString (BufferSlice.sliceDrop 100 s) `shouldBe` ""
+      BufferSlice.sliceToByteString (BufferSlice.sliceDrop 0 s) `shouldBe` "1234567890"
+      BufferSlice.sliceToByteString (BufferSlice.sliceDrop (-1) s) `shouldBe` "1234567890"
+
+    it "slice dropEnd" $ do
+      let xs = "1234567890"
+      let s = BufferSlice.sliceFromByteString (BS.toForeignPtr xs ^. _1) xs
+      BufferSlice.sliceToByteString (BufferSlice.sliceDropEnd 4 s) `shouldBe` "123456"
+      BufferSlice.sliceToByteString (BufferSlice.sliceDropEnd 10 s) `shouldBe` ""
+      BufferSlice.sliceToByteString (BufferSlice.sliceDropEnd 100 s) `shouldBe` ""
+      BufferSlice.sliceToByteString (BufferSlice.sliceDropEnd 0 s) `shouldBe` "1234567890"
+      BufferSlice.sliceToByteString (BufferSlice.sliceDropEnd (-1) s) `shouldBe` "1234567890"
+
+    it "drop" $ do
+      let xs = "1234567890"
+      let ss = (\x -> BufferSlice.sliceFromByteString (BS.toForeignPtr (BS.copy x) ^. _1) x) <$> chopBs 3 xs
+      let res = foldl' BufferSlice.listAppendEnd BufferSlice.listEmpty ss
+      BufferSlice.listConcat (BufferSlice.listDrop 5 res) `shouldBe` "67890"
+
+    it "take" $ do
+      let xs = "1234567890"
+      let ss = (\x -> BufferSlice.sliceFromByteString (BS.toForeignPtr (BS.copy x) ^. _1) x) <$> chopBs 3 xs
+      let res = foldl' BufferSlice.listAppendEnd BufferSlice.listEmpty ss
+      BufferSlice.listConcat (BufferSlice.listTake 5 res) `shouldBe` "12345"
+
     it "dropEnd" $ do
       let xs = "1234567890"
       let ss = (\x -> BufferSlice.sliceFromByteString (BS.toForeignPtr (BS.copy x) ^. _1) x) <$> chopBs 3 xs
