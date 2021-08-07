@@ -22,6 +22,7 @@ import qualified Matcher.Bracket.Unboxed as MB
 import Matcher.Result
 import qualified Matcher.Seq.Unboxed as MS
 import Protolude
+import Prelude (Show(..))
 
 type CanUnbox a = Data.Array.Unboxed.IArray Data.Array.Unboxed.UArray a
 
@@ -33,9 +34,12 @@ class MatcherI m a => MatcherArrI m arr a | arr -> a where
   matchStrI :: (Eq a, CanUnbox a) => m a -> arr -> MatchResult (m a) arr
 
 data SomeMatcher arr a where
-  SomeMatcher :: MatcherArrI m arr a => m a -> SomeMatcher arr a
+  SomeMatcher :: (Show (m a), MatcherArrI m arr a) => m a -> SomeMatcher arr a
 
-applySomeMatcher :: forall r arr a. SomeMatcher arr a -> (forall m. MatcherArrI m arr a => m a -> r) -> r
+instance Show (SomeMatcher arr a) where
+  show (SomeMatcher m) = Prelude.show m
+
+applySomeMatcher :: forall r arr a. SomeMatcher arr a -> (forall m. (Show (m a), MatcherArrI m arr a) => m a -> r) -> r
 applySomeMatcher (SomeMatcher m) f = f m
 {-# INLINE applySomeMatcher #-}
 
@@ -69,10 +73,10 @@ matchStr m0 str =
     )
 {-# INLINE matchStr #-}
 
-mkSeqMatcher :: (Eq a, CanUnbox a, ListLike list a) => list -> SomeMatcher list a
+mkSeqMatcher :: (Eq a, CanUnbox a, ListLike list a, Show (MS.Matcher a)) => list -> SomeMatcher list a
 mkSeqMatcher = SomeMatcher . MS.mkMatcher
 {-# INLINE mkSeqMatcher #-}
 
-mkBracketMatcher :: (Eq a, CanUnbox a, ListLike list a) => list -> list -> SomeMatcher list a
+mkBracketMatcher :: (Eq a, CanUnbox a, ListLike list a, Show (MB.Matcher a)) => list -> list -> SomeMatcher list a
 mkBracketMatcher l r = SomeMatcher (MB.mkMatcher l r)
 {-# INLINE mkBracketMatcher #-}

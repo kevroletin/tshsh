@@ -21,7 +21,9 @@ module Data.BufferSlice
 where
 
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Internal as BS
+import Data.String (IsString (..))
 import GHC.ForeignPtr
 import Protolude hiding (concat, listEmpty)
 import Prelude (Show (..))
@@ -36,7 +38,17 @@ data BufferSlice = BufferSlice
 instance Show BufferSlice where
   show = Prelude.show . sliceToByteString
 
-newtype SliceList = SliceList { unSliceList :: [BufferSlice] } deriving (Eq, Ord, Show)
+newtype SliceList = SliceList {unSliceList :: [BufferSlice]} deriving (Eq, Ord, Show)
+
+instance IsString BufferSlice where
+  fromString str =
+    let bs = C8.pack str
+     in sliceFromByteString_ bs bs
+
+sliceFromByteString_ :: ByteString -> ByteString -> BufferSlice
+sliceFromByteString_ bsId bsData =
+  let (ptr, _, _) = BS.toForeignPtr bsId
+   in sliceFromByteString ptr bsData
 
 sliceFromByteString :: ForeignPtr Word8 -> ByteString -> BufferSlice
 sliceFromByteString sliceId bs =
