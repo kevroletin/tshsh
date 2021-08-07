@@ -36,7 +36,7 @@ data MuxEnv = MuxEnv
     _menv_logger :: Text -> IO ()
   }
 
-type SyncCwdProgram = Program () (PuppetIdx, BS.ByteString) (PuppetIdx, BS.ByteString) IO ()
+type SyncCwdProgram = Program () (PuppetIdx, BS.ByteString) (PuppetIdx, BS.ByteString) IO
 
 type SyncCwdProgramSt = Pair () SyncCwdProgram
 

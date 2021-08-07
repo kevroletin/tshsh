@@ -97,7 +97,7 @@ setCwd :: Shell -> Text -> ProgramCont' st (Shell, Input) (Shell, Text) m
 setCwd shell cwd cont =
   runCmdNoOut shell ("cd '" <> cwd <> "'\n") cont
 
-syncEnv :: Program st (Shell, Input) (Shell, Text) m ()
+syncEnv :: Program st (Shell, Input) (Shell, Text) m
 syncEnv = getEnv Shell_1 $ \env ->
   getCwd Shell_1 $ \cwd ->
     setEnv Shell_2 env $
@@ -153,7 +153,7 @@ simulateEnvSync =
 -- Input "ls\nmain.cpp main.o\n" can be sent as Input "ls\n" : Input "main.cpp main.o\n"
 -- or in other combinations.
 simulate ::
-  Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) r) ->
+  Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text))) ->
   [(Shell, Text, Text)] ->
   Either Text Text
 simulate p0 resp0 = getLog $ runProgram p0 resp0
@@ -167,9 +167,9 @@ simulate p0 resp0 = getLog $ runProgram p0 resp0
     arrange (a, b, c) = ((a, b), c)
 
     runProgram ::
-      Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) r) ->
+      Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text))) ->
       [(Shell, Text, Text)] ->
-      Either Text (Pair st (Either Text r), EvalState)
+      Either Text (Pair st (Either Text ()), EvalState)
     runProgram p resp =
       runIdentity $
         runExceptT $
@@ -196,7 +196,7 @@ simulate p0 resp0 = getLog $ runProgram p0 resp0
 
     getInput :: StateT EvalState (ExceptT Text Identity) (Shell, Input)
     getInput =
-      use (pendingInputs) >>= \case
+      use pendingInputs >>= \case
         [] -> throwError "getInput: no more inputs"
         (x : xs) -> do
           pendingInputs .= xs

@@ -32,32 +32,32 @@ type Error = Text
 -- i, o - input/output types for yield
 -- t - returned value (when program is successfully finished)
 -- m - base Monad for Lift (and for the interpreter 'step')
-data Program st i o m t where
-  Lift :: m a -> (a -> Program st i o m t) -> Program st i o m t
-  GetState :: (st -> Program st i o m t) -> Program st i o m t
-  PutState :: st -> Program st i o m t -> Program st i o m t
-  WaitInput :: (i -> Program st i o m t) -> Program st i o m t
-  Output :: o -> Program st i o m t -> Program st i o m t
-  Finish :: Either Error t -> Program st i o m t
+data Program st i o m where
+  Lift :: m a -> (a -> Program st i o m) -> Program st i o m
+  GetState :: (st -> Program st i o m) -> Program st i o m
+  PutState :: st -> Program st i o m -> Program st i o m
+  WaitInput :: (i -> Program st i o m) -> Program st i o m
+  Output :: o -> Program st i o m -> Program st i o m
+  Finish :: Either Error () -> Program st i o m
 
-type ProgramCont st i o m s = forall t. (s -> Program st i o m t) -> Program st i o m t
+type ProgramCont st i o m s = forall t. (s -> Program st i o m) -> Program st i o m
 
-type ProgramCont' st i o m = forall t. Program st i o m t -> Program st i o m t
+type ProgramCont' st i o m = forall t. Program st i o m -> Program st i o m
 
-data ContResOut st i o m r
-  = ContOut (Maybe o) (Pair st (Program st i o m r))
-  | ResOut (Pair st (Either Error r))
+data ContResOut st i o m
+  = ContOut (Maybe o) (Pair st (Program st i o m))
+  | ResOut (Pair st (Either Error ()))
 
 $(makePrisms 'ResOut)
 
-data ContRes st i o m r
-  = Cont (Pair st (Program st i o m r))
-  | Res (Pair st (Either Error r))
+data ContRes st i o m
+  = Cont (Pair st (Program st i o m))
+  | Res (Pair st (Either Error ()))
 
 $(makePrisms 'Res)
 
 -- TODO: fix this show instance
-instance (Show o) => Show (Program st i o m r) where
+instance (Show o) => Show (Program st i o m) where
   show (Lift _ _) = "Lift"
   show (GetState _) = "GetState"
   show (PutState _ _) = "PutState"
@@ -65,16 +65,16 @@ instance (Show o) => Show (Program st i o m r) where
   show (Output o _) = "Output " <> Protolude.show o
   show (Finish _) = "Finish "
 
-deriving instance (Show st, Show i, Show o, Show r) => Show (ContResOut st i o m r)
+deriving instance (Show st, Show i, Show o) => Show (ContResOut st i o m)
 
-deriving instance (Show st, Show i, Show o, Show r) => Show (ContRes st i o m r)
+deriving instance (Show st, Show i, Show o) => Show (ContRes st i o m)
 
 step ::
-  forall st i o m r.
+  forall st i o m.
   Monad m =>
   Maybe i ->
-  Pair st (Program st i o m r) ->
-  m (ContResOut st i o m r)
+  Pair st (Program st i o m) ->
+  m (ContResOut st i o m)
 step i (st :!: Lift ma cont) = do
   a <- ma
   step i (st :!: cont a)

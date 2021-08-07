@@ -28,21 +28,21 @@ _2' f (a :!: b) = (a :!:) <$> f b
 spec :: SpecM () ()
 spec = do
   it "finish x == x" $ do
-    let (out, res) = rid $ accumOutputs @() @Int @Int (() :!: Finish (Right (10 :: Int)))
+    let (out, res) = rid $ accumOutputs @() @Int @Int (() :!: Finish (Right ()))
     out `shouldBe` []
-    res `shouldHave` _Res . _2' . _Right . only 10
+    res `shouldHave` _Res . _2' . _Right
 
   it "output outputs" $ do
     let (out, res) =
-          rid $ accumOutputs @() @Int @Int @Int
+          rid $ accumOutputs @() @Int @Int
             ( () :!:
               (Output 1 $
                 Output 2 $
                   Output 3 $
-                    Finish (Right 4))
+                    Finish (Right ()))
             )
     out `shouldBe` [1, 2, 3]
-    res `shouldHave` _Res . _2' . _Right . only 4
+    res `shouldHave` _Res . _2' . _Right
 
   it "waitInput doesn't output" $ do
     let (out, res) =
@@ -68,7 +68,7 @@ spec = do
 
   it "program can have recursion" $ do
     let loop = WaitInput $ \i -> Output i loop
-        (out, cont) = rid $ accumProgram @() @Int @Int @() [1, 2, 3 :: Int] (() :!: loop)
+        (out, cont) = rid $ accumProgram @() @Int @Int [1, 2, 3 :: Int] (() :!: loop)
     out `shouldBe` [1, 2, 3]
     cont `shouldHave` _Cont
 
@@ -76,7 +76,7 @@ spec = do
     let loop 0 = Finish (Right ())
         loop n = WaitInput $ \i -> Output i (loop (n -1))
 
-        (out, res) = rid $ accumProgram @() @Int @Int @() [1 ..] (() :!: loop (10 :: Int))
+        (out, res) = rid $ accumProgram @() @Int @Int [1 ..] (() :!: loop (10 :: Int))
     out `shouldBe` [1 .. 10]
     res `shouldHave` _Res
 
@@ -86,7 +86,7 @@ spec = do
                   PutState (i + st) $
                   sumLoop
 
-        (out, res) = rid $ accumProgram @Int @Int @Int @Int [1..10] (0 :!: sumLoop)
+        (out, res) = rid $ accumProgram @Int @Int @Int [1..10] (0 :!: sumLoop)
     out `shouldBe` []
     res `shouldHave` _Cont . _1' . only (55 :: Int)
 
@@ -96,11 +96,11 @@ spec = do
                   PutState (i + st) $
                   if (i + st) < 100
                     then sumLoop
-                    else Finish (Right i)
+                    else Output i $ Finish (Right ())
 
-        (out, res) = rid $ accumProgram @Int @Int @Int @Int [1..] (0 :!: sumLoop)
-    out `shouldBe` []
-    res `shouldHave` _Res . only (105 :!: Right 14) -- sum [1..14] == 105
+        (out, res) = rid $ accumProgram @Int @Int @Int [1..] (0 :!: sumLoop)
+    out `shouldBe` [14]
+    res `shouldHave` _Res . only (105 :!: Right ()) -- sum [1..14] == 105
 
   it "lift" $ do
     let sumLoop = WaitInput $ \i ->
@@ -108,7 +108,7 @@ spec = do
                   Output i
                   sumLoop
 
-    let ((out, res), st)  = flip runState 0 $ accumProgram @Int @Int @Int @Int [1..10] (0 :!: sumLoop)
+    let ((out, res), st)  = flip runState 0 $ accumProgram @Int @Int @Int [1..10] (0 :!: sumLoop)
 
     st `shouldBe` 55
     out `shouldBe` [1..10]
