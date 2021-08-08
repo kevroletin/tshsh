@@ -22,24 +22,28 @@ module Tshsh.Puppet
     ps_process,
     PuppetMode (..),
     SegmentedOutput (..),
+    CmdResultOutput (..),
   )
 where
 
 import Control.Lens
-import Data.BufferSlice (SliceList (..))
+import Data.BufferSlice (BufferSlice, SliceList (..))
+import Data.Strict.Tuple
+import Lang.Coroutine.CPS
 import Matcher.ByteString
 import Protolude
 import System.Posix (ProcessID)
 import System.Process (ProcessHandle)
 import Tshsh.Commands
-import Lang.Coroutine.CPS
-import Data.Strict.Tuple
-import Data.BufferSlice (BufferSlice)
 
-data SegmentedOutput = Data BufferSlice
-                     | Prompt Int
-                     | TuiMode
-                     deriving Show
+data SegmentedOutput
+  = Data BufferSlice
+  | Prompt Int
+  | TuiMode
+  deriving (Show)
+
+newtype CmdResultOutput = CmdResultOutput Text
+  deriving (Show)
 
 data GetCwd
   = GetCwdCommand Text

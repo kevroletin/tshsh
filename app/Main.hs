@@ -212,7 +212,8 @@ main = do
           MuxState
             { _mst_puppetSt = pup1st { _ps_process = Right pup1pids } :!: pup2st { _ps_process = Right pup2pids },
               _mst_currentPuppetIdx = Puppet1,
-              _mst_currentProgram = Nothing
+              _mst_currentProgram = Nothing,
+              _mst_program = Nothing
             }
 
   _muxThread <- forkIO $ do
