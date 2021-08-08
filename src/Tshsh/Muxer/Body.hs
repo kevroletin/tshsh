@@ -310,7 +310,11 @@ muxBody env st0 SwitchPuppet = do
 
   mProgram <- case (_ps_mode fromSt, _ps_mode toSt) of
     (_, PuppetModeTUI) -> do
-      -- returning into tui -> send C-l toSt with the hope that tui app will redraw itself
+      -- returning into tui
+      -- send ESC in case it's vim and it's in input mode
+      -- -> send C-l toSt with the hope that tui app will redraw itself
+      BS.hPut (to ^. pup_inputH) ("\ESC" :: BS.ByteString)
+      BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
       BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
       pure Nothing
     (PuppetModeRepl, PuppetModeRepl) -> do
