@@ -7,8 +7,6 @@ module Tshsh.Puppet
     pup_idx,
     pup_promptParser,
     pup_inputH,
-    pup_process,
-    pup_pid,
     pup_pts,
     pup_getCwdCmd,
     pup_mkCdCmd,
@@ -21,6 +19,7 @@ module Tshsh.Puppet
     ps_currCmdOut,
     ps_prevCmdOut,
     ps_modeP,
+    ps_process,
     PuppetMode (..),
     SegmentedOutput (..),
   )
@@ -50,8 +49,6 @@ data Puppet = Puppet
   { _pup_idx :: PuppetIdx,
     _pup_promptParser :: SomeMatcher,
     _pup_inputH :: Handle,
-    _pup_process :: ProcessHandle,
-    _pup_pid :: ProcessID,
     _pup_pts :: FilePath,
     _pup_getCwdCmd :: GetCwd,
     _pup_mkCdCmd :: Text -> Text
@@ -72,7 +69,8 @@ data PuppetState = PuppetState
     _ps_mode :: PuppetMode,
     _ps_currCmdOut :: SliceList,
     _ps_prevCmdOut :: SliceList,
-    _ps_modeP :: Program PuppetState BufferSlice Text IO
+    _ps_modeP :: Program PuppetState BufferSlice Text IO,
+    _ps_process :: Either (IO (Pair ProcessHandle ProcessID)) (Pair ProcessHandle ProcessID)
   }
 
 $(makeLenses 'PuppetState)

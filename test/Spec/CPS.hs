@@ -8,29 +8,24 @@
 
 module Spec.CPS where
 
-import Control.Lens hiding (_1', _2')
+import Control.Lens
 import Lang.Coroutine.CPS
 import Spec.CPS.Folds
 import Protolude
 import Test.Hspec
 import Test.Hspec.Core.Spec
 import Test.Hspec.Expectations.Lens
-import Data.Strict.Tuple
+import Data.Strict.Tuple.Extended
 
 rid :: Identity a -> a
 rid = runIdentity
-
-_1' :: Lens' (Pair a b) a
-_1' f (a :!: b) = (:!: b) <$> f a
-_2' :: Lens' (Pair a b) b
-_2' f (a :!: b) = (a :!:) <$> f b
 
 spec :: SpecM () ()
 spec = do
   it "finish x == x" $ do
     let (out, res) = rid $ accumOutputs @() @Int @Int (() :!: Finish (Right ()))
     out `shouldBe` []
-    res `shouldHave` _Res . _2' . _Right
+    res `shouldHave` _Res . _2 . _Right
 
   it "output outputs" $ do
     let (out, res) =
@@ -42,7 +37,7 @@ spec = do
                     Finish (Right ()))
             )
     out `shouldBe` [1, 2, 3]
-    res `shouldHave` _Res . _2' . _Right
+    res `shouldHave` _Res . _2 . _Right
 
   it "waitInput doesn't output" $ do
     let (out, res) =
@@ -64,7 +59,7 @@ spec = do
             10
             (() :!: (Output 1 $ WaitInput $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` [1, 10]
-    res `shouldHave` _Res . _2' . _Right . only ()
+    res `shouldHave` _Res . _2 . _Right . only ()
 
   it "program can have recursion" $ do
     let loop = WaitInput $ \i -> Output i loop
@@ -88,7 +83,7 @@ spec = do
 
         (out, res) = rid $ accumProgram @Int @Int @Int [1..10] (0 :!: sumLoop)
     out `shouldBe` []
-    res `shouldHave` _Cont . _1' . only (55 :: Int)
+    res `shouldHave` _Cont . _1 . only (55 :: Int)
 
   it "can access the state after program terminates" $ do
     let sumLoop = WaitInput $ \i ->

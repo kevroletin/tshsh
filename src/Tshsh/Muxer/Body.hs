@@ -12,7 +12,7 @@ import Data.BufferSlice (BufferSlice (..), SliceList (..))
 import qualified Data.BufferSlice as BufferSlice
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BS
-import Data.Strict.Tuple
+import Data.Strict.Tuple.Extended
 import Data.String.AnsiEscapeCodes.Strip.Text
 import Data.String.Conversions
 import qualified Data.Text as T
@@ -67,15 +67,7 @@ data ParsePromptSt = ParsePromptSt
   }
   deriving Show
 
-setFst' :: a -> Pair a b -> Pair a b
-setFst' a (_ :!: b) = a :!: b
-{-# INLINE setFst' #-}
-
-setSnd' :: b -> Pair a b -> Pair a b
-setSnd' b (a :!: _) = a :!: b
-{-# INLINE setSnd' #-}
-
--- This config implemented as a class to be able to specialize
+-- This config implemented as a class toSt be able toSt specialize
 class RaceMatchersDataCfg a where
   onData :: BufferSlice -> a
   onFstEv :: Int -> a
@@ -98,11 +90,11 @@ instance RaceMatchersStateCfg (Pair SomeMatcher SomeMatcher) where
   fstMatcher f (a :!: b) = (:!: b) <$> f a
   sndMatcher f (a :!: b) = (a :!:) <$> f b
 
--- | Split input based on matches from given matchers
+-- | Split input based on matches fromSt given matchers
 --
--- Let's say we have two matchers to detect a prompt $ and a clear screen sequence.
+-- Let's say we have two matchers toSt detect a prompt $ and a clear screen sequence.
 -- raceMatchersP splits input into smaller chunks each time the first or the
--- second matcher fires. In between it inserts messages to indicate that a match
+-- second matcher fires. In between it inserts messages toSt indicate that a match
 -- happened. For example given input (1) it produces a sequence (2)
 -- (1) [ |   $     $   \ESC[H\ESC[2J | ]
 -- (2) [ |   $|
@@ -114,7 +106,7 @@ instance RaceMatchersStateCfg (Pair SomeMatcher SomeMatcher) where
 --     ,                            | |
 --     ]
 --
--- the difficult part of the implementation is to avoid running the same matcher
+-- the difficult part of the implementation is toSt avoid running the same matcher
 -- more than once on the same input
 --
 -- in the case of (1) we run prompt matcher and clrScr matcher one after the
@@ -125,7 +117,7 @@ instance RaceMatchersStateCfg (Pair SomeMatcher SomeMatcher) where
 -- The implementation would be simple if we would combine two matchers into
 -- a single one. But it likely would be less efficient because it would either
 -- use matcherStep and consume the input element by element (which is slower
--- than matching on strings due to memChr optimization). Or it would use
+-- than matching on strings due toSt memChr optimization). Or it would use
 -- matchStr, but would sometimes run matchStr several times on parts of the
 -- same input).
 raceMatchersP :: forall st out m .
@@ -195,6 +187,25 @@ raceMatchersP =
    in WaitInput go
 {-# SPECIALIZE raceMatchersP :: forall m . Program PuppetState BufferSlice SegmentedOutput m #-}
 
+maybeStartProcess :: Either (IO (Pair ProcessHandle ProcessID)) (Pair ProcessHandle ProcessID)
+                  -> IO (Pair ProcessHandle ProcessID)
+maybeStartProcess x =
+    case x of
+      Left startProc -> startProc
+      Right pids -> pure pids
+
+startProcesses :: MuxState -> IO (MuxState, Pair (Pair ProcessHandle ProcessID) (Pair ProcessHandle ProcessID))
+startProcesses mux = do
+  let (st1 :!: st2) = _mst_puppetSt mux
+  case (_ps_process st1, _ps_process st2) of
+    (Right a, Right b) -> pure (mux, sortPup_ (_mst_currentPuppetIdx mux) (a :!: b))
+    (ma, mb) -> do
+      a <- maybeStartProcess ma
+      b <- maybeStartProcess mb
+      pure ( mux { _mst_puppetSt = ( st1 { _ps_process = Right a } :!:
+                                     st2 { _ps_process = Right b } ) },
+             sortPup_ (_mst_currentPuppetIdx mux) (a :!: b) )
+
 accumCmdOutP :: Program PuppetState SegmentedOutput SliceList IO
 accumCmdOutP =
   WaitInput $ \i ->
@@ -257,8 +268,8 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
 
   let onOut x = do hPutStr stderr ("-> " :: Text)
                    hPrint stderr x
-  let currP = st ^. mst_currentPuppet
-  Cont (newPup :!: newModeP) <- feedInputM onOut inp (currP :!: (currP ^. ps_modeP))
+  let to = st ^. mst_currentPuppet
+  Cont (newPup :!: newModeP) <- feedInputM onOut inp (to :!: (to ^. ps_modeP))
 
   nextCp <- join <$> traverse runProgram (st ^. mst_currentProgram)
 
@@ -272,10 +283,11 @@ muxBody env st WindowResize = do
   pure st
 muxBody env st0 SwitchPuppet = do
   let idx = nextPuppet (st0 ^. mst_currentPuppetIdx)
-  let st = st0 & mst_currentPuppetIdx .~ idx
-  let currP = env ^. menv_currentPuppet st
+  (st, currPid :!: prevPid)  <- startProcesses (st0 { _mst_currentPuppetIdx = idx })
+  let (toSt :!: fromSt) = st ^. mst_sortedPuppets
+  let to = env ^. menv_currentPuppet st
 
-  -- TODO: a hack. Finxing paste from X clipboard in ghci
+  -- TODO: a hack. Finxing paste fromSt X clipboard in ghci
   -- Paste stops working in GHCI if bracket mode is enabled. Zsh enables bracket paste
   -- mode each time it prints a prompt (at least in our setup with zprezto).
   -- see https://cirw.in/blog/bracketed-paste
@@ -283,24 +295,22 @@ muxBody env st0 SwitchPuppet = do
 
   let copyPrevCmdC = Lift . copyToXClipboard . stripCmdOut $ st0 ^. mst_currentPuppet . ps_prevCmdOut
       copyPrevCmd = copyPrevCmdC $ \_ -> Finish (Right ())
-      program = () :!: syncCwdP env idx copyPrevCmd
+      program = () :!: syncCwdP (currPid ^. _2 :!: prevPid ^. _2) env idx copyPrevCmd
 
-  let (from :!: to) = st0 ^. mst_sortedPuppets
-  mProgram <- case (_ps_mode from, _ps_mode to) of
+  mProgram <- case (_ps_mode fromSt, _ps_mode toSt) of
     (_, PuppetModeTUI) -> do
-      -- returning into tui -> send C-l to with the hope that tui app will redraw itself
-      BS.hPut (currP ^. pup_inputH) ("\f" :: BS.ByteString)
+      -- returning into tui -> send C-l toSt with the hope that tui app will redraw itself
+      BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
       pure Nothing
     (PuppetModeRepl, PuppetModeRepl) -> do
       -- switching between repls -> send C-c with the hope that repl will render a prompt
-      signalProcess keyboardSignal (currP ^. pup_pid)
+      signalProcess keyboardSignal (currPid ^. _2)
       pure (Just program)
     (PuppetModeTUI, PuppetModeRepl) -> do
-      -- clear tui interface, try to redraw repl prompt by sending C-c
-      BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor to (0,0) clearScreen
+      -- clear tui interface, try toSt redraw repl prompt by sending C-c
+      BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
       showCursor
-      signalProcess keyboardSignal (currP ^. pup_pid)
+      signalProcess keyboardSignal (currPid ^. _2)
       pure (Just program)
 
   pure (st & mst_currentProgram .~ mProgram)
-

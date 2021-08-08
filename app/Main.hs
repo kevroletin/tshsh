@@ -12,15 +12,15 @@ import Control.Lens
 import Control.Monad
 import Data.BufferSlice (BufferSlice (..))
 import qualified Data.BufferSlice as BufferSlice
-import Data.Strict.Tuple
+import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import Foreign
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
 import Lang.Coroutine.CPS
 import Matcher.ByteString
-import Protolude hiding (hPutStrLn, log, tryIO)
-import System.IO (hSetBinaryMode, BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBuffering)
+import Protolude hiding (tryIO)
+import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBinaryMode, hSetBuffering)
 import System.IO.Unsafe
 import System.Posix
 import System.Posix.Signals.Exts
@@ -99,16 +99,18 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
   slaveH <- fdToHandle slave
   pts <- getSlaveTerminalName master
 
-  (_, _, _, p) <-
-    createProcess
-      (proc cmd args)
-        { std_in = UseHandle slaveH,
-          std_out = UseHandle slaveH,
-          std_err = UseHandle slaveH,
-          new_session = True
-        }
-  (Just pid) <- getPid p
-  putStrLn ("Started: " <> (show pid :: Text) <> "\r")
+  let startProcess = do
+        (_, _, _, p) <-
+          createProcess
+            (proc cmd args)
+              { std_in = UseHandle slaveH,
+                std_out = UseHandle slaveH,
+                std_err = UseHandle slaveH,
+                new_session = True
+              }
+        (Just pid) <- getPid p
+        hPutStrLn stderr ("Started: " <> (show pid :: Text))
+        pure (p :!: pid)
 
   readThread <- forkIO . readLoop masterH $ \str ->
     atomically . writeBTChan chan $ PuppetOutput idx str
@@ -120,8 +122,6 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
         { _pup_idx = idx,
           _pup_promptParser = matcher,
           _pup_inputH = masterH,
-          _pup_process = p,
-          _pup_pid = pid,
           _pup_pts = pts,
           _pup_getCwdCmd = getCwd,
           _pup_mkCdCmd = cdCmd
@@ -134,14 +134,15 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
           _ps_mode = PuppetModeRepl,
           _ps_currCmdOut = BufferSlice.listEmpty,
           _ps_prevCmdOut = BufferSlice.listEmpty,
-          _ps_modeP = raceMatchersP `Pipe` accumCmdOutP `Pipe` stripCmdOutP
+          _ps_modeP = raceMatchersP `Pipe` accumCmdOutP `Pipe` stripCmdOutP,
+          _ps_process = Left startProcess
         }
     )
 
 stderrToFile :: Text -> IO ()
 stderrToFile fName = do
   hFlush stderr
-  logFileFd <- openFd (cs fName) WriteOnly (Just 0664) (defaultFileFlags {append = True})
+  logFileFd <- handleToFd =<< openFile (cs fName) AppendMode
   _ <- dupTo logFileFd stdError
   closeFd logFileFd
   hSetBuffering stderr LineBuffering
@@ -194,13 +195,22 @@ main = do
   syncTerminalSize (pup1 ^. pup_pts)
   syncTerminalSize (pup2 ^. pup_pts)
 
+  pup1pids <-
+    case pup1st ^. ps_process of
+      Left startProc -> startProc
+      Right pids -> pure pids
+  pup2pids <-
+    case pup2st ^. ps_process of
+      Left startProc -> startProc
+      Right pids -> pure pids
+
   let mux =
         Mux
           MuxEnv
             { _menv_puppets = pup1 :!: pup2
             }
           MuxState
-            { _mst_puppetSt = pup1st :!: pup2st,
+            { _mst_puppetSt = pup1st { _ps_process = Right pup1pids } :!: pup2st { _ps_process = Right pup2pids },
               _mst_currentPuppetIdx = Puppet1,
               _mst_currentProgram = Nothing
             }
@@ -221,7 +231,6 @@ main = do
 
   _readThread <- forkIO $ readLoop stdin $ \str -> atomically . writeBTChan muxChan $ TermInput str
 
-  _ <- waitForProcess (_pup_process pup1)
-  _ <- waitForProcess (_pup_process pup2)
+  _ <- waitForProcess (pup1pids ^. _1)
 
   pure ()

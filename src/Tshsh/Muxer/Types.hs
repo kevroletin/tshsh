@@ -14,6 +14,7 @@ module Tshsh.Muxer.Types
     mux_st,
     pupIdx,
     sortPup,
+    sortPup_,
     mst_currentPuppet,
     mst_backgroundPuppet,
     mst_sortedPuppets,
@@ -58,6 +59,10 @@ pupIdx Puppet2 f (a :!: b) = (a :!:) <$> f b
 sortPup :: PuppetIdx -> Lens' (Pair a a) (Pair a a)
 sortPup Puppet1 f (a :!: b) = f (a :!: b)
 sortPup Puppet2 f (a :!: b) = (\(a' :!: b') -> b' :!: a') <$> f (b :!: a)
+
+sortPup_ :: PuppetIdx -> Pair a a -> Pair a a
+sortPup_ Puppet1 (a :!: b) = (a :!: b)
+sortPup_ Puppet2 (a :!: b) = (b :!: a)
 
 mst_currentPuppet :: Lens' MuxState PuppetState
 mst_currentPuppet f m =
