@@ -26,7 +26,7 @@ import Matcher.Result
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.ANSI
 import System.Console.Terminal.Size
-import System.IO
+import System.IO hiding (hPutStr)
 import System.Posix
 import System.Posix.Signals.Exts
 import System.Process
@@ -249,15 +249,14 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
         feedInputM onOut (puppetIdx, BS.copy str0) p >>= \case
           Cont p' -> pure (Just p')
           Res r -> do
-            env ^. menv_logger $ "Program terminated with: " <> show r
+            hPutStrLn stderr $ "Program terminated with: " <> show r
             pure Nothing
 
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     BS.hPut stdout str0
 
-  let onOut x = do (env ^. menv_logger) "-> "
-                   (env ^. menv_logger) (show x)
-                   (env ^. menv_logger) "\n"
+  let onOut x = do hPutStr stderr ("-> " :: Text)
+                   hPrint stderr x
   let currP = st ^. mst_currentPuppet
   Cont (newPup :!: newModeP) <- feedInputM onOut inp (currP :!: (currP ^. ps_modeP))
 

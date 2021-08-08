@@ -17,9 +17,10 @@ import Data.String.Conversions
 import Foreign
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
+import Lang.Coroutine.CPS
 import Matcher.ByteString
 import Protolude hiding (hPutStrLn, log, tryIO)
-import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBuffering)
+import System.IO (hSetBinaryMode, BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBuffering)
 import System.IO.Unsafe
 import System.Posix
 import System.Posix.Signals.Exts
@@ -28,30 +29,16 @@ import Tshsh.Commands
 import Tshsh.Muxer
 import Tshsh.Puppet
 import Prelude (String)
-import qualified Data.Text.IO as T
-import Lang.Coroutine.CPS
 
-logFile :: Handle
-{-# NOINLINE logFile #-}
-logFile = unsafePerformIO $ do
-  f <- openFile "log.txt" AppendMode
-  hSetBuffering f LineBuffering
-  pure f
-
-muxLogFile :: Handle
+muxLogFile :: MVar Handle
+muxLogFile = unsafePerformIO newEmptyMVar
 {-# NOINLINE muxLogFile #-}
-muxLogFile = unsafePerformIO $ do
-  f <- openFile "mux-log.txt" AppendMode
-  hSetBuffering f LineBuffering
-  pure f
-
-log :: Text -> IO ()
-log str = do
-  T.hPutStr logFile str
-  hFlush logFile
 
 muxLog :: Show a => a -> IO ()
-muxLog = hPrint muxLogFile
+muxLog a =
+  tryReadMVar muxLogFile >>= \case
+    Nothing -> pure ()
+    Just h -> hPrint h a
 
 bufSize :: Int
 bufSize = 1024
@@ -151,6 +138,21 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
         }
     )
 
+stderrToFile :: Text -> IO ()
+stderrToFile fName = do
+  hFlush stderr
+  logFileFd <- openFd (cs fName) WriteOnly (Just 0664) (defaultFileFlags {append = True})
+  _ <- dupTo logFileFd stdError
+  closeFd logFileFd
+  hSetBuffering stderr LineBuffering
+
+openMuxLog :: IO ()
+openMuxLog = do
+  muxF <- openFile "mux-log.txt" AppendMode
+  hSetBuffering muxF LineBuffering
+  hSetBinaryMode muxF True
+  putMVar muxLogFile muxF
+
 setStdinToRaw :: IO ()
 setStdinToRaw = do
   -- Disable input processing
@@ -162,6 +164,9 @@ setStdinToRaw = do
 
 main :: IO ()
 main = do
+  stderrToFile "log.txt"
+  openMuxLog
+
   setStdinToRaw
 
   muxChan <- newBTChanIO 10
@@ -192,8 +197,7 @@ main = do
   let mux =
         Mux
           MuxEnv
-            { _menv_puppets = pup1 :!: pup2,
-              _menv_logger = log
+            { _menv_puppets = pup1 :!: pup2
             }
           MuxState
             { _mst_puppetSt = pup1st :!: pup2st,

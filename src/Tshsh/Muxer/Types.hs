@@ -5,7 +5,6 @@
 module Tshsh.Muxer.Types
   ( MuxEnv (..),
     menv_puppets,
-    menv_logger,
     MuxState (..),
     mst_puppetSt,
     mst_currentPuppetIdx,
@@ -32,9 +31,8 @@ import Tshsh.Commands
 import Tshsh.Puppet
 import Data.BufferSlice (BufferSlice)
 
-data MuxEnv = MuxEnv
-  { _menv_puppets :: Pair Puppet Puppet,
-    _menv_logger :: Text -> IO ()
+newtype MuxEnv = MuxEnv
+  { _menv_puppets :: Pair Puppet Puppet
   }
 
 type SyncCwdProgram = Program () (PuppetIdx, BS.ByteString) (PuppetIdx, BS.ByteString) IO

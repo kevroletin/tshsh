@@ -78,6 +78,6 @@ syncCwdP env idx cont0 =
             Lift (getProcessCwd (prevP ^. pup_pid)) cont
    in getCwd $ \cwd' ->
         let cwd = unquote cwd'
-         in Lift ((env ^. menv_logger) ("prev cwd(" <> cs cwd <> ")")) $ \() ->
+         in Lift (hPutStrLn stderr ("~ SyncCwd: prev cwd " <> cwd)) $ \() ->
               runCmd env idx (cs $ (currP ^. pup_mkCdCmd) (cs cwd)) $
                 const cont0

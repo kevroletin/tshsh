@@ -38,7 +38,7 @@ eatResOutputsM f r = do
 
   loop r
 
-eatOutputsM :: forall st i o m r. Monad m => (o -> m ()) -> Pair st (Program st i o m) -> m (ContRes st i o m)
+eatOutputsM :: forall st i o m. Monad m => (o -> m ()) -> Pair st (Program st i o m) -> m (ContRes st i o m)
 eatOutputsM f c = eatResOutputsM f =<< step Nothing c
 
 feedInputUnsafeM :: forall st i o m r. Monad m => (o -> m ()) -> i -> Pair st (Program st i o m) -> m (ContRes st i o m)
