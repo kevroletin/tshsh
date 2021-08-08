@@ -18,7 +18,7 @@ module Tshsh.Puppet
     ps_mode,
     ps_currCmdOut,
     ps_prevCmdOut,
-    ps_modeP,
+    ps_cmdOutP,
     ps_process,
     PuppetMode (..),
     SegmentedOutput (..),
@@ -42,7 +42,7 @@ data SegmentedOutput
   | TuiMode
   deriving (Show)
 
-newtype CmdResultOutput = CmdResultOutput Text
+newtype CmdResultOutput = CmdResultOutput { unCmdResultOutput :: Text }
   deriving (Show)
 
 data GetCwd
@@ -73,7 +73,7 @@ data PuppetState = PuppetState
     _ps_mode :: PuppetMode,
     _ps_currCmdOut :: SliceList,
     _ps_prevCmdOut :: SliceList,
-    _ps_modeP :: Program PuppetState BufferSlice Text IO,
+    _ps_cmdOutP :: Program PuppetState BufferSlice CmdResultOutput IO,
     _ps_process :: Either (IO (Pair ProcessHandle ProcessID)) (Pair ProcessHandle ProcessID)
   }
 

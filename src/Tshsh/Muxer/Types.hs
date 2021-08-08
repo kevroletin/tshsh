@@ -5,11 +5,11 @@
 module Tshsh.Muxer.Types
   ( MuxEnv (..),
     menv_puppets,
+    menv_currentPuppet,
+    menv_sortedPuppets,
     MuxState (..),
     mst_puppetSt,
     mst_currentPuppetIdx,
-    mst_currentProgram,
-    Mux (..),
     mux_env,
     mux_st,
     pupIdx,
@@ -18,8 +18,8 @@ module Tshsh.Muxer.Types
     mst_currentPuppet,
     mst_backgroundPuppet,
     mst_sortedPuppets,
-    menv_currentPuppet,
-    menv_sortedPuppets,
+    mst_syncCwdP,
+    Mux (..),
   )
 where
 
@@ -43,8 +43,7 @@ type SyncCwdProgramSt = Pair () SyncCwdProgram
 data MuxState = MuxState
   { _mst_puppetSt :: Pair PuppetState PuppetState,
     _mst_currentPuppetIdx :: PuppetIdx,
-    _mst_currentProgram :: Maybe SyncCwdProgramSt,
-    _mst_program :: Maybe (Program () (PuppetIdx, CmdResultOutput) (PuppetIdx, BS.ByteString) IO)
+    _mst_syncCwdP :: Maybe (Program () (PuppetIdx, CmdResultOutput) (PuppetIdx, BS.ByteString) IO)
   }
 
 data Mux = Mux {_mux_env :: MuxEnv, _mux_st :: MuxState}

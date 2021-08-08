@@ -238,44 +238,55 @@ accumCmdOutP =
           else
             accumCmdOutP
 
-stripCmdOutP :: Program PuppetState SliceList Text IO
+stripCmdOutP :: Program PuppetState SliceList CmdResultOutput IO
 stripCmdOutP =
   WaitInput $ \i ->
-    Output (stripCmdOut i) stripCmdOutP
+    Output (CmdResultOutput $ stripCmdOut i) stripCmdOutP
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
-muxBody env st (TermInput (BufferSlice _ buff size)) = do
+muxBody env st (TermInput (BufferSlice _ buf size)) = do
   let h = env ^. menv_currentPuppet st . pup_inputH
-  withForeignPtr buff $ \ptr -> do
+  withForeignPtr buf $ \ptr -> do
     hPutBuf h ptr size
     pure st
 muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = do
-  let str0 = BS.fromForeignPtr buf 0 size
-
-  let runProgram p = do
-        let onOut (i, x) = do
-              -- TODO: should we push output into muxer queue?
-              let h = env ^. menv_puppets . pupIdx i . pup_inputH
-              BS.hPut h x
-        feedInputM onOut (puppetIdx, BS.copy str0) p >>= \case
-          Cont p' -> pure (Just p')
-          Res r -> do
-            hPutStrLn stderr $ "Program terminated with: " <> show r
-            pure Nothing
-
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
-    BS.hPut stdout str0
+    withForeignPtr buf $ \ptr -> do
+      hPutBuf stdout ptr size
 
-  let onOut x = do hPutStr stderr ("-> " :: Text)
-                   hPrint stderr x
-  let to = st ^. mst_currentPuppet
-  Cont (newPup :!: newModeP) <- feedInputM onOut inp (to :!: (to ^. ps_modeP))
+  let thisPuppet = st ^. mst_puppetSt . pupIdx puppetIdx
 
-  nextCp <- join <$> traverse runProgram (st ^. mst_currentProgram)
+  -- manually pipe output of commands output splitter into
+  -- sync cwd
+  let onOut (i, x) = do
+        hPutStr stderr $ "-> Send " <> (show (i, x) :: Text) <> "\n"
+        let h = env ^. menv_puppets . pupIdx i . pup_inputH
+        BS.hPut h x
+  let loop i producer mConsumer =
+        step i producer >>= \case
+          ContOut (Just o) prodCont -> do
+            hPutStr stderr ("-> " :: Text)
+            hPrint stderr o
+            case mConsumer of
+              Nothing -> loop Nothing prodCont Nothing
+              Just consumer ->
+                feedInputM onOut (puppetIdx, o) consumer >>= \case
+                    Cont consCont -> loop Nothing prodCont (Just consCont)
+                    Res r -> do
+                      hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
+                      loop Nothing prodCont Nothing
+          ContOut Nothing prodCont -> pure (prodCont, mConsumer)
+          ResOut (_ :!: r) -> panic ("oops, input parser exited with " <> show r)
+
+  (newThisPup :!: newCmdOutP, newMuxProg) <-
+    loop
+      (Just inp)
+      (thisPuppet :!: thisPuppet ^. ps_cmdOutP)
+      ((():!:) <$> _mst_syncCwdP st)
 
   pure
-    ( st & mst_currentProgram .~ nextCp
-         & mst_currentPuppet .~ (newPup & ps_modeP .~ newModeP)
+    ( st & mst_puppetSt . pupIdx puppetIdx .~ (newThisPup & ps_cmdOutP .~ newCmdOutP)
+         & mst_syncCwdP .~ ((^. _2) <$> newMuxProg)
     )
 muxBody env st WindowResize = do
   let pup = env ^. menv_currentPuppet st
@@ -295,7 +306,7 @@ muxBody env st0 SwitchPuppet = do
 
   let copyPrevCmdC = Lift . copyToXClipboard . stripCmdOut $ st0 ^. mst_currentPuppet . ps_prevCmdOut
       copyPrevCmd = copyPrevCmdC $ \_ -> Finish (Right ())
-      program = () :!: syncCwdP (currPid ^. _2 :!: prevPid ^. _2) env idx copyPrevCmd
+      program = syncCwdP (currPid ^. _2 :!: prevPid ^. _2) env idx copyPrevCmd
 
   mProgram <- case (_ps_mode fromSt, _ps_mode toSt) of
     (_, PuppetModeTUI) -> do
@@ -313,4 +324,4 @@ muxBody env st0 SwitchPuppet = do
       signalProcess keyboardSignal (currPid ^. _2)
       pure (Just program)
 
-  pure (st & mst_currentProgram .~ mProgram)
+  pure (st & mst_syncCwdP .~ mProgram)

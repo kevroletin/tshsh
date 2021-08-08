@@ -20,45 +20,23 @@ import Tshsh.Commands
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
 
-type In = (PuppetIdx, BS.ByteString)
+type In = (PuppetIdx, CmdResultOutput)
 
 type Out = (PuppetIdx, BS.ByteString)
-
-dropEnd :: Int -> ByteString -> ByteString
-dropEnd n str = BS.take (BS.length str - n) str
-
-takeEnd :: Int -> ByteString -> ByteString
-takeEnd n str = BS.drop (BS.length str - n) str
-
-readUntilPrompt :: MuxEnv -> PuppetIdx -> ProgramCont () In Out IO BS.ByteString
-readUntilPrompt env idx cont =
-  let pup = env ^. menv_puppets . pupIdx idx
-      loop !res !matcher = WaitInput $ \(s, i) ->
-        if s /= idx
-          then loop res matcher
-          else case matchStr matcher i of
-            Match _m len prev _rest ->
-              cont (dropEnd len . mconcat . reverse $ prev : res)
-            NoMatch m -> loop (i : res) m
-   in loop [] (pup ^. pup_promptParser)
-
-removeFirstLine :: BS.ByteString -> BS.ByteString
-removeFirstLine str =
-  let (a, b) = BS.breakSubstring "\n" str
-   in if BS.null a
-        then b
-        else BS.drop 1 b
 
 unquote :: ByteString -> ByteString
 unquote =
   let p = (\x -> x == '"' || x == '\'')
    in C8.dropWhile p . C8.dropWhileEnd p
 
-runCmd :: MuxEnv -> PuppetIdx -> BS.ByteString -> ProgramCont () In Out IO BS.ByteString
+runCmd :: MuxEnv -> PuppetIdx -> BS.ByteString -> ProgramCont () In Out IO Text
 runCmd env idx cmd cont =
   Output (idx, cmd <> "\n") $
-    readUntilPrompt env idx $ \str ->
-      cont (C8.dropWhileEnd isSpace . removeFirstLine $ str)
+    let loop = WaitInput $ \(inIdx, str) ->
+                 if inIdx == idx
+                   then cont (unCmdResultOutput str)
+                   else loop
+    in loop
 
 getProcessCwd :: ProcessID -> IO ByteString
 getProcessCwd pid =
@@ -76,8 +54,10 @@ syncCwdP (currPid :!: prevPid) env idx cont0 =
               cont (cs . T.strip . stripAnsiEscapeCodes $ cs str)
           GetCwdFromProcess ->
             Lift (getProcessCwd prevPid) cont
-   in getCwd $ \cwd' ->
-        let cwd = unquote cwd'
-         in Lift (hPutStrLn stderr ("~ SyncCwd: prev cwd " <> cwd)) $ \() ->
-              runCmd env idx (cs $ (currP ^. pup_mkCdCmd) (cs cwd)) $
-                const cont0
+   in
+    Lift (hPutStrLn stderr ("~ Sync env program started" :: Text)) $ \_ ->
+      getCwd $ \cwd' ->
+          let cwd = unquote cwd'
+          in Lift (hPutStrLn stderr ("~ SyncCwd: prev cwd " <> cwd)) $ \() ->
+                runCmd env idx (cs $ (currP ^. pup_mkCdCmd) (cs cwd)) $
+                  const cont0

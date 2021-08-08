@@ -134,7 +134,7 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
           _ps_mode = PuppetModeRepl,
           _ps_currCmdOut = BufferSlice.listEmpty,
           _ps_prevCmdOut = BufferSlice.listEmpty,
-          _ps_modeP = raceMatchersP `Pipe` accumCmdOutP `Pipe` stripCmdOutP,
+          _ps_cmdOutP = raceMatchersP `Pipe` accumCmdOutP `Pipe` stripCmdOutP,
           _ps_process = Left startProcess
         }
     )
@@ -212,8 +212,7 @@ main = do
           MuxState
             { _mst_puppetSt = pup1st { _ps_process = Right pup1pids } :!: pup2st { _ps_process = Right pup2pids },
               _mst_currentPuppetIdx = Puppet1,
-              _mst_currentProgram = Nothing,
-              _mst_program = Nothing
+              _mst_syncCwdP = Nothing
             }
 
   _muxThread <- forkIO $ do
