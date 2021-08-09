@@ -238,6 +238,55 @@ accumCmdOutP i cont =
           else
             cont
 
+-- manually loop over output of commands output parser and feed into sync cwd
+pipeInput ::
+  MuxEnv
+  -> PuppetIdx
+  -> Maybe inp
+  -> Pair (ProgramSt st1 inp SliceList IO)
+          (Maybe (ProgramSt () (PuppetIdx, CmdResultOutput) (PuppetIdx, ByteString) IO))
+  -> IO (Pair
+          (ProgramSt st1 inp SliceList IO)
+          (Maybe (ProgramSt () (PuppetIdx, CmdResultOutput) (PuppetIdx, ByteString) IO)))
+pipeInput env puppetIdx = loop
+  where
+    onOut (i, x) = do
+      hPutStr stderr $ "-> Send " <> (show (i, x) :: Text) <> "\n"
+      let h = env ^. menv_puppets . pupIdx i . pup_inputH
+      BS.hPut h x
+    loop i (producer :!: mConsumer) =
+      step i producer >>= \case
+        ContOut (Just o) prodCont -> do
+          hPutStr stderr ("-> " :: Text)
+          hPrint stderr o
+          case mConsumer of
+            Nothing -> loop Nothing (prodCont :!: Nothing)
+            Just consumer ->
+              feedInputM onOut (puppetIdx, CmdResultOutput . stripCmdOut $ o) consumer >>= \case
+                  Cont consCont -> loop Nothing (prodCont :!: Just consCont)
+                  Res r -> do
+                    hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
+                    loop Nothing (prodCont :!: Nothing)
+        ContOut Nothing prodCont -> pure (prodCont :!: mConsumer)
+        ResOut (_ :!: r) -> panic ("oops, input parser exited with " <> show r)
+
+runMuxPrograms :: MuxEnv -> MuxState -> PuppetIdx -> Maybe BufferSlice -> IO MuxState
+runMuxPrograms env st puppetIdx mInp = do
+  let thisPuppet = st ^. mst_puppetSt . pupIdx puppetIdx
+  let cmdOutPSt = thisPuppet :!: thisPuppet ^. ps_cmdOutP
+      mSyncCwdPSt = (():!:) <$> _mst_syncCwdP st
+  ((newThisPup :!: newCmdOutP) :!: newMuxProg) <-
+    case mInp of
+      Nothing ->
+        pipeInput env puppetIdx Nothing (cmdOutPSt :!: mSyncCwdPSt)
+      (Just inp) ->
+        pipeInput env puppetIdx (Just inp) =<<
+          pipeInput env puppetIdx Nothing (cmdOutPSt :!: mSyncCwdPSt)
+  pure
+    ( st & mst_puppetSt . pupIdx puppetIdx .~ (newThisPup & ps_cmdOutP .~ newCmdOutP)
+         & mst_syncCwdP .~ ((^. _2) <$> newMuxProg)
+    )
+
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
 muxBody env st (TermInput (BufferSlice _ buf size)) = do
   let h = env ^. menv_currentPuppet st . pup_inputH
@@ -248,41 +297,7 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     withForeignPtr buf $ \ptr -> do
       hPutBuf stdout ptr size
-
-  let thisPuppet = st ^. mst_puppetSt . pupIdx puppetIdx
-
-  -- manually pipe output of commands output splitter into
-  -- sync cwd
-  let onOut (i, x) = do
-        hPutStr stderr $ "-> Send " <> (show (i, x) :: Text) <> "\n"
-        let h = env ^. menv_puppets . pupIdx i . pup_inputH
-        BS.hPut h x
-  let loop i producer mConsumer =
-        step i producer >>= \case
-          ContOut (Just o) prodCont -> do
-            hPutStr stderr ("-> " :: Text)
-            hPrint stderr o
-            case mConsumer of
-              Nothing -> loop Nothing prodCont Nothing
-              Just consumer ->
-                feedInputM onOut (puppetIdx, CmdResultOutput . stripCmdOut $ o) consumer >>= \case
-                    Cont consCont -> loop Nothing prodCont (Just consCont)
-                    Res r -> do
-                      hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
-                      loop Nothing prodCont Nothing
-          ContOut Nothing prodCont -> pure (prodCont, mConsumer)
-          ResOut (_ :!: r) -> panic ("oops, input parser exited with " <> show r)
-
-  (newThisPup :!: newCmdOutP, newMuxProg) <-
-    loop
-      (Just inp)
-      (thisPuppet :!: thisPuppet ^. ps_cmdOutP)
-      ((():!:) <$> _mst_syncCwdP st)
-
-  pure
-    ( st & mst_puppetSt . pupIdx puppetIdx .~ (newThisPup & ps_cmdOutP .~ newCmdOutP)
-         & mst_syncCwdP .~ ((^. _2) <$> newMuxProg)
-    )
+  runMuxPrograms env st puppetIdx (Just inp)
 muxBody env st WindowResize = do
   let pup = env ^. menv_currentPuppet st
   syncTerminalSize (pup ^. pup_pts)
