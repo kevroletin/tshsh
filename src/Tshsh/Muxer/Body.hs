@@ -322,28 +322,36 @@ muxBody env st0 SwitchPuppet = do
   -- see https://cirw.in/blog/bracketed-paste
   BS.hPut stdout ("\x1b[?2004l" :: BS.ByteString)
 
+  -- TODO: explicitly capture only required fields of a Puppet
   let copyPrevCmdC = Lift . copyToXClipboard . stripCmdOut $ st0 ^. mst_currentPuppet . ps_prevCmdOut
-      copyPrevCmd = copyPrevCmdC $ \_ -> Finish (Right ())
-      program = syncCwdP (currPid ^. _2 :!: prevPid ^. _2) env newIdx copyPrevCmd
+      copyPrevCmdP = copyPrevCmdC $ \_ -> Finish (Right ())
+      preparePromptC = Lift $
+        case (_ps_mode fromSt, _ps_mode toSt) of
+          (_, PuppetModeTUI) -> do
+            -- returning into tui
+            -- send ESC in case it's vim and it's in input mode
+            -- -> send C-l toSt with the hope that tui app will redraw itself
+            BS.hPut (to ^. pup_inputH) ("\ESC" :: BS.ByteString)
+            BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
+            BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
+            pure False
+          (PuppetModeRepl, PuppetModeRepl) -> do
+            -- switching between repls -> send C-c with the hope that repl will render a prompt
+            signalProcess keyboardSignal (currPid ^. _2)
+            pure True
+          (PuppetModeTUI, PuppetModeRepl) -> do
+            -- clear tui interface, try toSt redraw repl prompt by sending C-c
+            BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
+            showCursor
+            signalProcess keyboardSignal (currPid ^. _2)
+            pure True
+      program =
+        preparePromptC $ \needSync ->
+          case needSync of
+            True ->
+              syncCwdP (currPid ^. _2 :!: prevPid ^. _2) env newIdx
+              copyPrevCmdP
+            False ->
+              copyPrevCmdP
 
-  mProgram <- case (_ps_mode fromSt, _ps_mode toSt) of
-    (_, PuppetModeTUI) -> do
-      -- returning into tui
-      -- send ESC in case it's vim and it's in input mode
-      -- -> send C-l toSt with the hope that tui app will redraw itself
-      BS.hPut (to ^. pup_inputH) ("\ESC" :: BS.ByteString)
-      BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
-      BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
-      pure Nothing
-    (PuppetModeRepl, PuppetModeRepl) -> do
-      -- switching between repls -> send C-c with the hope that repl will render a prompt
-      signalProcess keyboardSignal (currPid ^. _2)
-      pure (Just program)
-    (PuppetModeTUI, PuppetModeRepl) -> do
-      -- clear tui interface, try toSt redraw repl prompt by sending C-c
-      BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
-      showCursor
-      signalProcess keyboardSignal (currPid ^. _2)
-      pure (Just program)
-
-  runMuxPrograms env (st & mst_syncCwdP .~ mProgram) newIdx Nothing
+  runMuxPrograms env (st & mst_syncCwdP .~ Just program) newIdx Nothing
