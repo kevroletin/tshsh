@@ -73,7 +73,7 @@ data PuppetState = PuppetState
     _ps_mode :: PuppetMode,
     _ps_currCmdOut :: SliceList,
     _ps_prevCmdOut :: SliceList,
-    _ps_cmdOutP :: Program PuppetState BufferSlice CmdResultOutput IO,
+    _ps_cmdOutP :: Program PuppetState BufferSlice SliceList IO,
     _ps_process :: Either (IO (Pair ProcessHandle ProcessID)) (Pair ProcessHandle ProcessID)
   }
 

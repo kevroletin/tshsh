@@ -120,10 +120,11 @@ instance RaceMatchersStateCfg (Pair SomeMatcher SomeMatcher) where
 -- than matching on strings due toSt memChr optimization). Or it would use
 -- matchStr, but would sometimes run matchStr several times on parts of the
 -- same input).
-raceMatchersP :: forall st out m .
-  (RaceMatchersStateCfg st, RaceMatchersDataCfg out) =>
+raceMatchersP :: forall st msg out m .
+  (RaceMatchersStateCfg st, RaceMatchersDataCfg msg) =>
+  (msg -> ProgramCont' st BufferSlice out m) ->
   Program st BufferSlice out m
-raceMatchersP =
+raceMatchersP consumer =
   let feedM m0 putSt onOut bs@(BufferSlice id buf size) cont =
         let str = BufferSlice.sliceToByteString bs
          in case matchStr m0 str of
@@ -131,11 +132,11 @@ raceMatchersP =
                 ModifyState (putSt .~ newM) $
                 if BufferSlice.sliceNull bs
                    then cont
-                   else Output (onData bs) cont
+                   else consumer (onData bs) cont
               Match newM len prev rest ->
                 ModifyState (putSt .~ newM) $
-                Output (onData $ BufferSlice.sliceTake (BS.length prev) bs) $
-                Output (onOut len) $
+                consumer (onData $ BufferSlice.sliceTake (BS.length prev) bs) $
+                consumer (onOut len) $
                 feedM newM putSt onOut (BufferSlice.sliceDrop (BS.length prev) bs) cont
       go bs0@(BufferSlice id buf size) =
         let str = BS.fromForeignPtr buf 0 size
@@ -147,45 +148,45 @@ raceMatchersP =
                         sndMatcher
                         onSndEv
                         bs0 $
-                  raceMatchersP
+                  raceMatchersP consumer
                 Match newFstM lenFst prevFst restFst ->
                   ModifyState (fstMatcher .~ newFstM) $
                   case matchStr (st ^. sndMatcher) str of
                     NoMatch newSndM ->
                       ModifyState (sndMatcher .~ newSndM) $
-                      Output (onData (BufferSlice.sliceTake (BS.length prevFst) bs0)) $
-                      Output (onFstEv lenFst) $
+                      consumer (onData (BufferSlice.sliceTake (BS.length prevFst) bs0)) $
+                      consumer (onFstEv lenFst) $
                       feedM newFstM
                             fstMatcher
                             onFstEv
                             (BufferSlice.sliceDrop (BS.length prevFst) bs0) $
-                      raceMatchersP
+                      raceMatchersP consumer
                     Match newSndM lenSnd prevSnd restSnd ->
                       if BS.length prevSnd < BS.length prevFst
                         then
                           ModifyState (sndMatcher .~ newSndM) $
-                          Output (onData (BufferSlice.sliceTake (BS.length prevSnd) bs0)) $
-                          Output (onSndEv lenSnd) $
+                          consumer (onData (BufferSlice.sliceTake (BS.length prevSnd) bs0)) $
+                          consumer (onSndEv lenSnd) $
                           feedM newSndM
                                 sndMatcher
                                 onSndEv
                                 ( bs0 & BufferSlice.sliceTake (BS.length prevFst)
                                       & BufferSlice.sliceDrop (BS.length prevSnd)) $
-                          Output (onFstEv lenFst) $
+                          consumer (onFstEv lenFst) $
                           go (BufferSlice.sliceDrop (BS.length prevFst) bs0)
                         else
                           ModifyState (fstMatcher .~ newFstM) $
-                          Output (onData (BufferSlice.sliceTake (BS.length prevFst) bs0)) $
-                          Output (onFstEv lenSnd) $
+                          consumer (onData (BufferSlice.sliceTake (BS.length prevFst) bs0)) $
+                          consumer (onFstEv lenSnd) $
                           feedM newFstM
                                 fstMatcher
                                 onFstEv
                                 (bs0 & BufferSlice.sliceTake (BS.length prevSnd)
                                      & BufferSlice.sliceDrop (BS.length prevFst)) $
-                          Output (onSndEv lenSnd) $
+                          consumer (onSndEv lenSnd) $
                           go (BufferSlice.sliceDrop (BS.length prevSnd) bs0)
    in WaitInput go
-{-# SPECIALIZE raceMatchersP :: forall m . Program PuppetState BufferSlice SegmentedOutput m #-}
+-- {-# SPECIALIZE raceMatchersP :: forall m . Program PuppetState BufferSlice SegmentedOutput m #-}
 
 maybeStartProcess :: Either (IO (Pair ProcessHandle ProcessID)) (Pair ProcessHandle ProcessID)
                   -> IO (Pair ProcessHandle ProcessID)
@@ -206,18 +207,17 @@ startProcesses mux = do
                                      st2 { _ps_process = Right b } ) },
              sortPup_ (_mst_currentPuppetIdx mux) (a :!: b) )
 
-accumCmdOutP :: Program PuppetState SegmentedOutput SliceList IO
-accumCmdOutP =
-  WaitInput $ \i ->
+accumCmdOutP :: SegmentedOutput -> ProgramCont' PuppetState inp SliceList IO
+accumCmdOutP i cont =
   GetState $ \st@PuppetState{..} ->
     case i of
       Data bs ->
         if st ^. ps_mode == PuppetModeRepl
           then
             PutState (st & ps_currCmdOut %~ (`BufferSlice.listAppendEnd` bs))
-            accumCmdOutP
+            cont
           else
-            accumCmdOutP
+            cont
       Prompt len ->
         if st ^. ps_mode == PuppetModeRepl
           then
@@ -225,23 +225,18 @@ accumCmdOutP =
             PutState (st { _ps_prevCmdOut = res,
                            _ps_currCmdOut = BufferSlice.listEmpty }) $
             Output res
-            accumCmdOutP
+            cont
           else
             PutState (st { _ps_mode = PuppetModeRepl })
-            accumCmdOutP
+            cont
       TuiMode ->
         if st ^. ps_mode == PuppetModeRepl
           then
             PutState (st { _ps_mode = PuppetModeTUI,
                            _ps_currCmdOut = BufferSlice.listEmpty })
-            accumCmdOutP
+            cont
           else
-            accumCmdOutP
-
-stripCmdOutP :: Program PuppetState SliceList CmdResultOutput IO
-stripCmdOutP =
-  WaitInput $ \i ->
-    Output (CmdResultOutput $ stripCmdOut i) stripCmdOutP
+            cont
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
 muxBody env st (TermInput (BufferSlice _ buf size)) = do
@@ -270,7 +265,7 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
             case mConsumer of
               Nothing -> loop Nothing prodCont Nothing
               Just consumer ->
-                feedInputM onOut (puppetIdx, o) consumer >>= \case
+                feedInputM onOut (puppetIdx, CmdResultOutput . stripCmdOut $ o) consumer >>= \case
                     Cont consCont -> loop Nothing prodCont (Just consCont)
                     Res r -> do
                       hPutStrLn stderr $ "Sync cwd terminated with: " <> show r

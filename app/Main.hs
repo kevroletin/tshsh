@@ -17,7 +17,6 @@ import Data.String.Conversions
 import Foreign
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
-import Lang.Coroutine.CPS
 import Matcher.ByteString
 import Protolude hiding (tryIO)
 import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBinaryMode, hSetBuffering)
@@ -134,7 +133,7 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
           _ps_mode = PuppetModeRepl,
           _ps_currCmdOut = BufferSlice.listEmpty,
           _ps_prevCmdOut = BufferSlice.listEmpty,
-          _ps_cmdOutP = raceMatchersP `Pipe` accumCmdOutP `Pipe` stripCmdOutP,
+          _ps_cmdOutP = raceMatchersP accumCmdOutP,
           _ps_process = Left startProcess
         }
     )
