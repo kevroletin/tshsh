@@ -198,10 +198,6 @@ main = do
     case pup1st ^. ps_process of
       Left startProc -> startProc
       Right pids -> pure pids
-  pup2pids <-
-    case pup2st ^. ps_process of
-      Left startProc -> startProc
-      Right pids -> pure pids
 
   let mux =
         Mux
@@ -209,7 +205,7 @@ main = do
             { _menv_puppets = pup1 :!: pup2
             }
           MuxState
-            { _mst_puppetSt = pup1st { _ps_process = Right pup1pids } :!: pup2st { _ps_process = Right pup2pids },
+            { _mst_puppetSt = pup1st { _ps_process = Right pup1pids } :!: pup2st,
               _mst_currentPuppetIdx = Puppet1,
               _mst_syncCwdP = Nothing
             }

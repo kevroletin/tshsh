@@ -312,9 +312,21 @@ muxBody env st WindowResize = do
   pure st
 muxBody env st0 SwitchPuppet = do
   let newIdx = nextPuppet (st0 ^. mst_currentPuppetIdx)
-  (st, currPid :!: prevPid)  <- startProcesses (st0 { _mst_currentPuppetIdx = newIdx })
+  let st = st0 { _mst_currentPuppetIdx = newIdx }
   let (toSt :!: fromSt) = st ^. mst_sortedPuppets
   let to = env ^. menv_currentPuppet st
+
+  let fromPid = case _ps_process fromSt of
+                  Left _ -> panic "Switching from a puppet which wasn't start"
+                  Right pid -> pid
+
+  (toPid, startedNewProc, newSt) <-
+    case _ps_process toSt of
+      Left startProc -> do
+        Protolude.putStrLn ("\n\rStarting a new process..\r" :: Text)
+        pid <- startProc
+        pure (pid, True, st & mst_currentPuppet . ps_process .~ Right pid )
+      Right pid -> pure (pid, False, st)
 
   -- TODO: a hack. Finxing paste fromSt X clipboard in ghci
   -- Paste stops working in GHCI if bracket mode is enabled. Zsh enables bracket paste
@@ -331,27 +343,31 @@ muxBody env st0 SwitchPuppet = do
             -- returning into tui
             -- send ESC in case it's vim and it's in input mode
             -- -> send C-l toSt with the hope that tui app will redraw itself
-            BS.hPut (to ^. pup_inputH) ("\ESC" :: BS.ByteString)
-            BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
-            BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
+            unless startedNewProc $ do
+              BS.hPut (to ^. pup_inputH) ("\ESC" :: BS.ByteString)
+              BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
+              BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
             pure False
           (PuppetModeRepl, PuppetModeRepl) -> do
             -- switching between repls -> send C-c with the hope that repl will render a prompt
-            signalProcess keyboardSignal (currPid ^. _2)
+            unless startedNewProc $
+              signalProcess keyboardSignal (toPid ^. _2)
             pure True
           (PuppetModeTUI, PuppetModeRepl) -> do
             -- clear tui interface, try toSt redraw repl prompt by sending C-c
             BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
             showCursor
-            signalProcess keyboardSignal (currPid ^. _2)
+            unless startedNewProc $
+              signalProcess keyboardSignal (toPid ^. _2)
             pure True
       program =
         preparePromptC $ \needSync ->
           case needSync of
             True ->
-              syncCwdP (currPid ^. _2 :!: prevPid ^. _2) env newIdx
+              WaitInput $ \_ ->
+              syncCwdP (toPid ^. _2 :!: fromPid ^. _2) env newIdx
               copyPrevCmdP
             False ->
               copyPrevCmdP
 
-  runMuxPrograms env (st & mst_syncCwdP .~ Just program) newIdx Nothing
+  runMuxPrograms env (newSt & mst_syncCwdP .~ Just program) newIdx Nothing
