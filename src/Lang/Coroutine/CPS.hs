@@ -19,6 +19,9 @@ module Lang.Coroutine.CPS
     _Cont,
     _Res,
     step,
+    unlessP,
+    liftP_,
+    finishP,
   )
 where
 
@@ -141,3 +144,16 @@ step (Just i) (st0 :!: Tee Nothing p1 p2) =
   step (Just i) (st0 :!: p1) >>= \case
     ContOut o (newSt :!: newP1) -> pure $ ContOut o (newSt :!: Tee (Just i) newP1 p2)
     ResOut res -> pure $ ResOut res
+
+unlessP :: Bool -> (a -> a) -> a -> a
+unlessP True _ cont = cont
+unlessP False act cont = act (cont)
+{-# INLINE unlessP #-}
+
+liftP_ :: m a -> Program st i o m -> Program st i o m
+liftP_ act cont = Lift act $ \_ -> cont
+{-# INLINE liftP_ #-}
+
+finishP :: Program st i o m
+finishP = Finish (Right ())
+{-# INLINE finishP #-}

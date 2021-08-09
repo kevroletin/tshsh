@@ -336,38 +336,36 @@ muxBody env st0 SwitchPuppet = do
 
   -- TODO: explicitly capture only required fields of a Puppet
   let copyPrevCmdC = Lift . copyToXClipboard . stripCmdOut $ st0 ^. mst_currentPuppet . ps_prevCmdOut
-      copyPrevCmdP = copyPrevCmdC $ \_ -> Finish (Right ())
-      preparePromptC = Lift $
+      copyPrevCmdP = copyPrevCmdC (const finishP)
+      syncCwdP = syncCwdC (toPid ^. _2 :!: fromPid ^. _2) env newIdx finishP
+      preparePromptC syncC =
         case (_ps_mode fromSt, _ps_mode toSt) of
-          (_, PuppetModeTUI) -> do
+          (_, PuppetModeTUI) ->
             -- returning into tui
             -- send ESC in case it's vim and it's in input mode
             -- -> send C-l toSt with the hope that tui app will redraw itself
-            unless startedNewProc $ do
-              BS.hPut (to ^. pup_inputH) ("\ESC" :: BS.ByteString)
-              BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
-              BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
-            pure False
-          (PuppetModeRepl, PuppetModeRepl) -> do
+            unlessP startedNewProc
+              ( liftP_ $ do
+                  BS.hPut (to ^. pup_inputH) ("\ESC" :: BS.ByteString)
+                  BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
+                  BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
+               )
+             finishP
+          (PuppetModeRepl, PuppetModeRepl) ->
             -- switching between repls -> send C-c with the hope that repl will render a prompt
-            unless startedNewProc $
-              signalProcess keyboardSignal (toPid ^. _2)
-            pure True
-          (PuppetModeTUI, PuppetModeRepl) -> do
+            unlessP startedNewProc
+              (liftP_ $ signalProcess keyboardSignal (toPid ^. _2))
+            syncC
+          (PuppetModeTUI, PuppetModeRepl) ->
             -- clear tui interface, try toSt redraw repl prompt by sending C-c
-            BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
-            showCursor
-            unless startedNewProc $
-              signalProcess keyboardSignal (toPid ^. _2)
-            pure True
+            liftP_
+              ( do BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
+                   showCursor
+                   unless startedNewProc $
+                     signalProcess keyboardSignal (toPid ^. _2)
+               )
+            syncC
       program =
-        preparePromptC $ \needSync ->
-          case needSync of
-            True ->
-              WaitInput $ \_ ->
-              syncCwdP (toPid ^. _2 :!: fromPid ^. _2) env newIdx
-              copyPrevCmdP
-            False ->
-              copyPrevCmdP
+        preparePromptC syncCwdP
 
   runMuxPrograms env (newSt & mst_syncCwdP .~ Just program) newIdx Nothing
