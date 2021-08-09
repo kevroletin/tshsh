@@ -338,7 +338,8 @@ muxBody env st0 SwitchPuppet = do
   -- see https://cirw.in/blog/bracketed-paste
   BS.hPut stdout ("\x1b[?2004l" :: BS.ByteString)
 
-  let copyPrevCmdC = liftP_ (copyToXClipboard . stripCmdOut $ _ps_prevCmdOut fromSt)
+  let waitPrompt cont = WaitInput $ \_ -> cont
+      copyPrevCmdC = liftP_ (copyToXClipboard . stripCmdOut $ _ps_prevCmdOut fromSt)
       syncCwdC' = syncCwdC (toPid ^. _2 :!: fromPid ^. _2) env newIdx
       preparePromptC syncC copyC =
         case (_ps_mode fromSt, _ps_mode toSt) of
@@ -352,12 +353,13 @@ muxBody env st0 SwitchPuppet = do
                   BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
                   BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
                ) $
-             copyC
-             finishP
+            copyC
+            finishP
           (PuppetModeRepl, PuppetModeRepl) ->
             -- switching between repls -> send C-c with the hope that repl will render a prompt
             unlessP startedNewProc
               (liftP_ $ signalProcess keyboardSignal (toPid ^. _2)) $
+            waitPrompt $
             syncC $
             copyC
             finishP
@@ -369,6 +371,7 @@ muxBody env st0 SwitchPuppet = do
                    unless startedNewProc $
                      signalProcess keyboardSignal (toPid ^. _2)
                ) $
+            waitPrompt $
             syncC $
             copyC
             finishP
