@@ -267,7 +267,15 @@ pipeInput env puppetIdx = loop
                   Res r -> do
                     hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
                     loop Nothing (prodCont :!: Nothing)
-        ContOut Nothing prodCont -> pure (prodCont :!: mConsumer)
+        ContOut Nothing prodCont ->
+          case mConsumer of
+            Nothing -> pure (prodCont :!: mConsumer)
+            Just consumer ->
+              eatOutputsM onOut consumer >>= \case
+                  Cont consCont -> pure (prodCont :!: Just consCont)
+                  Res r -> do
+                    hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
+                    pure (prodCont :!: Nothing)
         ResOut (_ :!: r) -> panic ("oops, input parser exited with " <> show r)
 
 runMuxPrograms :: MuxEnv -> MuxState -> PuppetIdx -> Maybe BufferSlice -> IO MuxState
@@ -303,8 +311,8 @@ muxBody env st WindowResize = do
   syncTerminalSize (pup ^. pup_pts)
   pure st
 muxBody env st0 SwitchPuppet = do
-  let idx = nextPuppet (st0 ^. mst_currentPuppetIdx)
-  (st, currPid :!: prevPid)  <- startProcesses (st0 { _mst_currentPuppetIdx = idx })
+  let newIdx = nextPuppet (st0 ^. mst_currentPuppetIdx)
+  (st, currPid :!: prevPid)  <- startProcesses (st0 { _mst_currentPuppetIdx = newIdx })
   let (toSt :!: fromSt) = st ^. mst_sortedPuppets
   let to = env ^. menv_currentPuppet st
 
@@ -316,7 +324,7 @@ muxBody env st0 SwitchPuppet = do
 
   let copyPrevCmdC = Lift . copyToXClipboard . stripCmdOut $ st0 ^. mst_currentPuppet . ps_prevCmdOut
       copyPrevCmd = copyPrevCmdC $ \_ -> Finish (Right ())
-      program = syncCwdP (currPid ^. _2 :!: prevPid ^. _2) env idx copyPrevCmd
+      program = syncCwdP (currPid ^. _2 :!: prevPid ^. _2) env newIdx copyPrevCmd
 
   mProgram <- case (_ps_mode fromSt, _ps_mode toSt) of
     (_, PuppetModeTUI) -> do
@@ -338,4 +346,4 @@ muxBody env st0 SwitchPuppet = do
       signalProcess keyboardSignal (currPid ^. _2)
       pure (Just program)
 
-  pure (st & mst_syncCwdP .~ mProgram)
+  runMuxPrograms env (st & mst_syncCwdP .~ mProgram) newIdx Nothing

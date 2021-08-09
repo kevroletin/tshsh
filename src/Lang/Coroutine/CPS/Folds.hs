@@ -6,6 +6,7 @@ module Lang.Coroutine.CPS.Folds
   ( evalProgramM,
     eatOutputsM,
     feedInputM,
+    feedInputUnsafeM,
   )
 where
 
