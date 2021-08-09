@@ -191,8 +191,8 @@ main = do
       "zsh"
       []
 
-  syncTerminalSize (pup1 ^. pup_pts)
-  syncTerminalSize (pup2 ^. pup_pts)
+  syncTtySize (pup1 ^. pup_pts)
+  syncTtySize (pup2 ^. pup_pts)
 
   pup1pids <-
     case pup1st ^. ps_process of

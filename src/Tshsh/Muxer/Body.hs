@@ -37,8 +37,8 @@ import Tshsh.Puppet
 
 import Spec.CPS.Folds
 
-syncTerminalSize :: String -> IO ()
-syncTerminalSize pts = do
+syncTtySize :: String -> IO ()
+syncTtySize pts = do
   Just (Window h w :: Window Int) <- size
   -- TODO: link c code
   _ <- system ("stty -F " <> pts <> " cols " <> show w <> " rows " <> show h)
@@ -53,6 +53,7 @@ copyToXClipboard str = do
 bsDropEnd :: Int -> ByteString -> ByteString
 bsDropEnd n xs = BS.take (BS.length xs - n) xs
 
+-- TODO: what about multiline commands?
 -- strip 1st and the last lines, strip ansi escape sequences
 stripCmdOut :: BufferSlice.SliceList -> Text
 stripCmdOut list =
@@ -308,7 +309,10 @@ muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = 
   runMuxPrograms env st puppetIdx (Just inp)
 muxBody env st WindowResize = do
   let pup = env ^. menv_currentPuppet st
-  syncTerminalSize (pup ^. pup_pts)
+  syncTtySize (pup ^. pup_pts)
+  case st ^? mst_currentPuppet . ps_process . _Right . _2 of
+    Nothing -> panic "Resizing terminal of a puppet which wasn't start"
+    Just pid -> system ("kill -WINCH -" <> show pid) -- deliver signal to a process group
   pure st
 muxBody env st0 SwitchPuppet = do
   let newIdx = nextPuppet (st0 ^. mst_currentPuppetIdx)
