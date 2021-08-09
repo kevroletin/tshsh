@@ -1,6 +1,7 @@
 module Matcher.Text
   ( SomeMatcher,
     MatchResult,
+    matcherReset,
     matchStr,
     matcherStep,
     mkSeqMatcher,
@@ -17,6 +18,10 @@ type SomeMatcher = U.SomeMatcher Text Char
 type MatchResult = R.MatchResult SomeMatcher Text
 
 type StepResult = R.StepResult SomeMatcher
+
+matcherReset :: SomeMatcher -> SomeMatcher
+matcherReset = U.matcherReset
+{-# INLINE matcherReset #-}
 
 matcherStep :: SomeMatcher -> Char -> StepResult
 matcherStep = U.matcherStep

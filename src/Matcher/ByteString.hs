@@ -5,6 +5,7 @@ module Matcher.ByteString
     matcherStep,
     mkSeqMatcher,
     mkBracketMatcher,
+    matcherReset
   )
 where
 
@@ -17,6 +18,10 @@ type SomeMatcher = U.SomeMatcher ByteString Word8
 type MatchResult = R.MatchResult SomeMatcher ByteString
 
 type StepResult = R.StepResult SomeMatcher
+
+matcherReset :: SomeMatcher -> SomeMatcher
+matcherReset = U.matcherReset
+{-# INLINE matcherReset #-}
 
 matcherStep :: SomeMatcher -> Word8 -> StepResult
 matcherStep = U.matcherStep

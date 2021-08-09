@@ -9,6 +9,7 @@ module Matcher.Unboxed
     MatcherI (..),
     MatcherArrI (..),
     applySomeMatcher,
+    matcherReset,
     matcherStep,
     matchStr,
     mkSeqMatcher,
@@ -56,6 +57,10 @@ instance (Eq a, CanUnbox a, ListLike list a) => MatcherArrI MS.Matcher list a wh
 
 instance (Eq a, CanUnbox a, ListLike list a) => MatcherArrI MB.Matcher list a where
   matchStrI = MB.matchStr
+
+matcherReset :: (Eq a, CanUnbox a) => SomeMatcher list a -> SomeMatcher list a
+matcherReset m0 = applySomeMatcher m0 (SomeMatcher . matcherResetI)
+{-# INLINE matcherReset #-}
 
 matcherStep :: (Eq a, CanUnbox a) => SomeMatcher list a -> a -> StepResult (SomeMatcher list a)
 matcherStep m0 c =
