@@ -33,10 +33,10 @@ runCmd :: MuxEnv -> PuppetIdx -> BS.ByteString -> ProgramCont () In Out IO Text
 runCmd env idx cmd cont =
   Output (idx, cmd <> "\n") $
     let loop = WaitInput $ \(inIdx, str) ->
-                 if inIdx == idx
-                   then cont (unCmdResultOutput str)
-                   else loop
-    in loop
+          if inIdx == idx
+            then cont (unCmdResultOutput str)
+            else loop
+     in loop
 
 getProcessCwd :: ProcessID -> IO ByteString
 getProcessCwd pid =
@@ -47,17 +47,28 @@ syncCwdC :: Pair ProcessID ProcessID -> MuxEnv -> PuppetIdx -> ProgramCont' () I
 syncCwdC (currPid :!: prevPid) env idx cont0 =
   let prevIdx = nextPuppet idx
       (currP :!: prevP) = env ^. menv_puppets . sortPup idx
-      getCwd cont =
+      getPrevCwd cont =
         case prevP ^. pup_getCwdCmd of
           GetCwdCommand cmd ->
             runCmd env prevIdx (cs cmd) $ \str ->
               cont (cs . T.strip . stripAnsiEscapeCodes $ cs str)
           GetCwdFromProcess ->
             Lift (getProcessCwd prevPid) cont
-   in
-    Lift (hPutStrLn stderr ("~ Sync env program started" :: Text)) $ \_ ->
-      getCwd $ \cwd' ->
+      tryGetCurrCwdFromProc cont =
+        case currP ^. pup_getCwdCmd of
+          GetCwdCommand cmd -> cont Nothing
+          GetCwdFromProcess ->
+            Lift (getProcessCwd currPid) $ \x -> cont (Just x)
+   in Lift (hPutStrLn stderr ("~ Sync env program started" :: Text)) $ \_ ->
+        getPrevCwd $ \cwd' ->
           let cwd = unquote cwd'
-          in Lift (hPutStrLn stderr ("~ SyncCwd: prev cwd " <> cwd)) $ \() ->
-                runCmd env idx (cs $ (currP ^. pup_mkCdCmd) (cs cwd)) $
-                  const cont0
+           in liftP_ (hPutStrLn stderr ("~ SyncCwd: prev cwd " <> cwd)) $
+                tryGetCurrCwdFromProc $ \mCurrCwd ->
+                  let same = case mCurrCwd of
+                        Nothing -> False
+                        Just x -> x == cwd
+                   in if same
+                        then cont0
+                        else
+                          runCmd env idx (cs $ (currP ^. pup_mkCdCmd) (cs cwd)) $
+                            const cont0

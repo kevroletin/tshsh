@@ -334,11 +334,9 @@ muxBody env st0 SwitchPuppet = do
   -- see https://cirw.in/blog/bracketed-paste
   BS.hPut stdout ("\x1b[?2004l" :: BS.ByteString)
 
-  -- TODO: explicitly capture only required fields of a Puppet
-  let copyPrevCmdC = Lift . copyToXClipboard . stripCmdOut $ st0 ^. mst_currentPuppet . ps_prevCmdOut
-      copyPrevCmdP = copyPrevCmdC (const finishP)
-      syncCwdP = syncCwdC (toPid ^. _2 :!: fromPid ^. _2) env newIdx finishP
-      preparePromptC syncC =
+  let copyPrevCmdC = liftP_ (copyToXClipboard . stripCmdOut $ _ps_prevCmdOut fromSt)
+      syncCwdC' = syncCwdC (toPid ^. _2 :!: fromPid ^. _2) env newIdx
+      preparePromptC syncC copyC =
         case (_ps_mode fromSt, _ps_mode toSt) of
           (_, PuppetModeTUI) ->
             -- returning into tui
@@ -349,13 +347,16 @@ muxBody env st0 SwitchPuppet = do
                   BS.hPut (to ^. pup_inputH) ("\ESC" :: BS.ByteString)
                   BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
                   BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
-               )
+               ) $
+             copyC
              finishP
           (PuppetModeRepl, PuppetModeRepl) ->
             -- switching between repls -> send C-c with the hope that repl will render a prompt
             unlessP startedNewProc
-              (liftP_ $ signalProcess keyboardSignal (toPid ^. _2))
-            syncC
+              (liftP_ $ signalProcess keyboardSignal (toPid ^. _2)) $
+            syncC $
+            copyC
+            finishP
           (PuppetModeTUI, PuppetModeRepl) ->
             -- clear tui interface, try toSt redraw repl prompt by sending C-c
             liftP_
@@ -363,9 +364,11 @@ muxBody env st0 SwitchPuppet = do
                    showCursor
                    unless startedNewProc $
                      signalProcess keyboardSignal (toPid ^. _2)
-               )
-            syncC
+               ) $
+            syncC $
+            copyC
+            finishP
       program =
-        preparePromptC syncCwdP
+        preparePromptC syncCwdC' copyPrevCmdC
 
   runMuxPrograms env (newSt & mst_syncCwdP .~ Just program) newIdx Nothing
