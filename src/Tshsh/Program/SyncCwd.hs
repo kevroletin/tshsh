@@ -24,6 +24,7 @@ type In = (PuppetIdx, CmdResultOutput)
 
 type Out = (PuppetIdx, BS.ByteString)
 
+-- TODO: what about a quoted " \" "?
 unquote :: ByteString -> ByteString
 unquote =
   let p = (\x -> x == '"' || x == '\'')

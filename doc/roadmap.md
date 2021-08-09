@@ -4,20 +4,23 @@
 
 * [Done] switch shells using a key binding
 * [Done] synchronize cwd 
+* [Done] lazy puppet startup
+* [Done] capture text output of a previous command
 * synchronize env variables after switching
 * synchronize xterm state (cursor visibility, background/foreground colors,
   etc.)
 * config file, the default configuration for popular shells
 * interactive configuration dialog, help writing a parser for a prompt
 * [Maybe] restore partially typed command
-* [Done] capture text output of a previous command
 * handle tui in a meaningful way (maybe send WINCH with the hope that the tui app will
   redraw itself, send ^R, ^L)
+* restart a puppet after it terminates
 
 ## Current problems
 
 * no config file
-* works only for non-tui shells; switching back/forth vim will not work
+* switching back/forth to TUI apps works for VIM and ranger but might not work
+  for other apps
 * signals processing is incomplete:
   * termination of puppets is not handled; so if one stops a puppet with ctrl+d
     then they need to close tshsh with ctrl+c;
@@ -28,3 +31,5 @@
   escaped sequences which try to configure terminal (especially bracket paste
   mode);
 * a few hard-coded hacks like disabling bracket paste mode.
+* no packaging procedure; executing shell commands like stty, xclip, kill
+* no user guide
