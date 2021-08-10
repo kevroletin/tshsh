@@ -40,7 +40,7 @@ muxLog a =
     Just h -> hPrint h a
 
 bufSize :: Int
-bufSize = 1024
+bufSize = 64*1024
 
 minBufSize :: Int
 minBufSize = 64
