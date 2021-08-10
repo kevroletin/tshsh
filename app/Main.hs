@@ -14,10 +14,9 @@ import Data.BufferSlice (BufferSlice (..))
 import qualified Data.BufferSlice as BufferSlice
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
+import qualified Data.Text.IO as T
 import Foreign
 import Lang.Coroutine.CPS
-import GHC.IO.Device
-import qualified GHC.IO.FD as FD
 import Matcher.ByteString
 import Protolude hiding (tryIO)
 import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBinaryMode, hSetBuffering)
@@ -84,7 +83,7 @@ readLoop fromH act = do
       loop bufSize buff buff
   pure ()
 
-forkPuppet ::
+createPuppetAndTty ::
   PuppetIdx ->
   BTChan MuxCmd ->
   SomeMatcher ->
@@ -93,7 +92,7 @@ forkPuppet ::
   FilePath ->
   [String] ->
   IO (Puppet, PuppetState)
-forkPuppet idx chan matcher getCwd cdCmd cmd args = do
+createPuppetAndTty idx chan matcher getCwd cdCmd cmd args = do
   (master, slave) <- openPseudoTerminal
   masterH <- fdToHandle master
   slaveH <- fdToHandle slave
@@ -147,33 +146,39 @@ stderrToFile fName = do
   closeFd logFileFd
   hSetBuffering stderr LineBuffering
 
-openMuxLog :: IO ()
-openMuxLog = do
-  muxF <- openFile "mux-log.txt" AppendMode
+openMuxLog :: String -> IO ()
+openMuxLog fName = do
+  muxF <- openFile fName AppendMode
   hSetBuffering muxF LineBuffering
   hSetBinaryMode muxF True
   putMVar muxLogFile muxF
 
-setStdinToRaw :: IO ()
-setStdinToRaw = do
-  -- Disable input processing
-  setRaw FD.stdin True
-  setEcho FD.stdin False
-  -- Disable output processing ~ stty -opost"
-  attr <- getTerminalAttributes stdInput
-  setTerminalAttributes stdInput (attr `withoutMode` ProcessOutput) WhenDrained
+saveTtyState :: IO Text
+saveTtyState = do
+  (_, Just sttyOut, _, _) <-
+    createProcess
+      (proc "stty" ["--save"])
+        { std_in = Inherit,
+          std_out = CreatePipe,
+          std_err = CreatePipe,
+          new_session = True
+        }
+  T.hGetContents sttyOut
+
+restoreTtyState :: Text -> IO ()
+restoreTtyState sttyState = do
+  _ <- system ("stty " <> cs sttyState)
+  pure ()
 
 main :: IO ()
 main = do
   stderrToFile "log.txt"
-  openMuxLog
-
-  setStdinToRaw
+  openMuxLog "mux-log.txt"
 
   muxChan <- newBTChanIO 10
 
   (pup1, pup1st) <-
-    forkPuppet
+    createPuppetAndTty
       Puppet1
       muxChan
       (mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ")
@@ -183,7 +188,7 @@ main = do
       []
 
   (pup2, pup2st) <-
-    forkPuppet
+    createPuppetAndTty
       Puppet2
       muxChan
       (mkSeqMatcher "\ESC[K\ESC[?2004h")
@@ -192,8 +197,12 @@ main = do
       "zsh"
       []
 
+  origTtyState <- saveTtyState
+  _ <- system ("stty -F " <> (pup1 ^. pup_pts) <> " $(stty --save)")
+  _ <- system ("stty -F " <> (pup2 ^. pup_pts) <> " $(stty --save)")
   syncTtySize (pup1 ^. pup_pts)
   syncTtySize (pup2 ^. pup_pts)
+  _ <- system "stty raw -echo isig susp ^Z intr '' eof '' quit '' erase '' kill '' eol '' eol2 '' swtch '' start '' stop '' rprnt '' werase '' lnext '' discard ''"
 
   pup1pids <-
     case pup1st ^. ps_process of
@@ -206,7 +215,7 @@ main = do
             { _menv_puppets = pup1 :!: pup2
             }
           MuxState
-            { _mst_puppetSt = pup1st { _ps_process = Right pup1pids } :!: pup2st,
+            { _mst_puppetSt = pup1st {_ps_process = Right pup1pids} :!: pup2st,
               _mst_currentPuppetIdx = Puppet1,
               _mst_syncCwdP = Nothing
             }
@@ -228,5 +237,7 @@ main = do
   _readThread <- forkIO $ readLoop stdin $ \str -> atomically . writeBTChan muxChan $ TermInput str
 
   _ <- waitForProcess (pup1pids ^. _1)
+
+  restoreTtyState origTtyState
 
   pure ()

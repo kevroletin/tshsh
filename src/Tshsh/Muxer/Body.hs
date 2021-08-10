@@ -343,7 +343,8 @@ muxBody env st0 SwitchPuppet = do
   -- see https://cirw.in/blog/bracketed-paste
   BS.hPut stdout ("\x1b[?2004l" :: BS.ByteString)
 
-  let waitPrompt cont = WaitInput $ \_ -> cont
+  let toPupH bs = BS.hPut (to ^. pup_inputH) bs
+      waitPrompt cont = WaitInput $ \_ -> cont
       copyPrevCmdC = liftP_ (copyToXClipboard . stripCmdOut $ _ps_prevCmdOut fromSt)
       syncCwdC' = syncCwdC (toPid ^. _2 :!: fromPid ^. _2) env newIdx
       preparePromptC syncC copyC =
@@ -354,16 +355,18 @@ muxBody env st0 SwitchPuppet = do
             -- -> send C-l toSt with the hope that tui app will redraw itself
             unlessP startedNewProc
               ( liftP_ $ do
-                  BS.hPut (to ^. pup_inputH) ("\ESC" :: BS.ByteString)
-                  BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
-                  BS.hPut (to ^. pup_inputH) ("\f" :: BS.ByteString)
+                  toPupH "\ESC"
+                  toPupH "\f"
+                  toPupH "\f"
                ) $
             copyC
             finishP
           (PuppetModeRepl, PuppetModeRepl) ->
             -- switching between repls -> send C-c with the hope that repl will render a prompt
             unlessP startedNewProc
-              (liftP_ $ signalProcess keyboardSignal (toPid ^. _2)) $
+              ( liftP_ $ do signalProcess keyboardSignal (toPid ^. _2)
+                            toPupH "\n"
+               ) $
             waitPrompt $
             syncC $
             copyC
@@ -373,8 +376,9 @@ muxBody env st0 SwitchPuppet = do
             liftP_
               ( do BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
                    showCursor
-                   unless startedNewProc $
+                   unless startedNewProc $ do
                      signalProcess keyboardSignal (toPid ^. _2)
+                     toPupH "\n"
                ) $
             waitPrompt $
             syncC $
