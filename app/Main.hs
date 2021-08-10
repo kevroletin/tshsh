@@ -15,6 +15,7 @@ import qualified Data.BufferSlice as BufferSlice
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import Foreign
+import Lang.Coroutine.CPS
 import GHC.IO.Device
 import qualified GHC.IO.FD as FD
 import Matcher.ByteString
@@ -133,7 +134,7 @@ forkPuppet idx chan matcher getCwd cdCmd cmd args = do
           _ps_mode = PuppetModeRepl,
           _ps_currCmdOut = BufferSlice.listEmpty,
           _ps_prevCmdOut = BufferSlice.listEmpty,
-          _ps_cmdOutP = raceMatchersP accumCmdOutP,
+          _ps_cmdOutP = raceMatchersP `Pipe` accumCmdOutP,
           _ps_process = Left startProcess
         }
     )
