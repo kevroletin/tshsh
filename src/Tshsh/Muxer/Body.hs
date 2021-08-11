@@ -369,7 +369,7 @@ switchPuppets env st0 = do
       program =
         preparePromptC mSyncCwdC copyPrevCmdC
 
-  Just <$> runMuxPrograms (newSt & mst_syncCwdP .~ Just program) newIdx Nothing
+  Just <$> runMuxPrograms (newSt & mst_syncCwdP ?~ program) newIdx Nothing
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
 muxBody _env st (TermInput (BufferSlice _ buf size)) = do
@@ -384,12 +384,8 @@ muxBody _env st (PuppetOutput puppetIdx inp@(BufferSlice _ buf size)) = do
       hPutBuf stdout ptr size
   Just <$> runMuxPrograms st puppetIdx (Just inp)
 muxBody _env st WindowResize = do
-  case st ^. mst_currentPuppet . ps_process of
-    Nothing -> pure ()
-    Just p -> do
-      -- deliver signal to a process group
-      _ <- system ("kill -WINCH -" <> show (_pp_pid p))
-      syncTtySize (_pp_pts p)
+  traverse_ syncTtySize (st ^? mst_currentPuppet . ps_process . _Just . pp_pts)
+  traverse_ syncTtySize (st ^? mst_otherPuppet . ps_process . _Just . pp_pts)
   pure (Just st)
 muxBody env st0 SwitchPuppet = switchPuppets env st0
 muxBody env st0 (ChildExited exitedPid) = do
