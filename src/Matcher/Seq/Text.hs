@@ -1,6 +1,8 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Matcher.Seq.Text
   ( mkMatcher,
-    U.matcherStep,
+    matcherStep,
     matchStr,
     Matcher,
     MatchResult,

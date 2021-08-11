@@ -1,7 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE ExplicitForAll #-}
-{-# LANGUAGE LambdaCase #-}
-
 module Lang.Coroutine.CPS.Folds
   ( evalProgramM,
     eatOutputsM,
@@ -42,10 +38,10 @@ eatResOutputsM f r = do
 eatOutputsM :: forall st i o m. Monad m => (o -> m ()) -> Pair st (Program st i o m) -> m (ContRes st i o m)
 eatOutputsM f c = eatResOutputsM f =<< step Nothing c
 
-feedInputUnsafeM :: forall st i o m r. Monad m => (o -> m ()) -> i -> Pair st (Program st i o m) -> m (ContRes st i o m)
+feedInputUnsafeM :: forall st i o m. Monad m => (o -> m ()) -> i -> Pair st (Program st i o m) -> m (ContRes st i o m)
 feedInputUnsafeM f i c = eatResOutputsM f =<< step (Just i) c
 
-feedInputM :: forall st i o m r. Monad m => (o -> m ()) -> i -> Pair st (Program st i o m) -> m (ContRes st i o m)
+feedInputM :: forall st i o m. Monad m => (o -> m ()) -> i -> Pair st (Program st i o m) -> m (ContRes st i o m)
 feedInputM f i c = do
   eatOutputsM f c >>= \case
     Cont c' -> feedInputUnsafeM f i c'

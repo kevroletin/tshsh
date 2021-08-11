@@ -5,9 +5,6 @@
 module Tshsh.Commands where
 
 import Data.BufferSlice (BufferSlice)
-import qualified Data.ByteString as BS
-import Foreign.C.Types (CChar)
-import GHC.ForeignPtr
 import Protolude
 import System.Posix (ProcessID)
 

@@ -12,6 +12,7 @@ module Tshsh.Muxer.Types
     mst_currentPuppetIdx,
     mux_env,
     mux_st,
+    mst_keepAlive,
     pupIdx,
     sortPup,
     sortPup_,
@@ -30,19 +31,13 @@ import Lang.Coroutine.CPS
 import Protolude hiding (hPutStrLn, log, tryIO)
 import Tshsh.Commands
 import Tshsh.Puppet
-import Data.BufferSlice (BufferSlice)
 
 newtype MuxEnv = MuxEnv
   { _menv_puppets :: Pair Puppet Puppet
   }
 
-type SyncCwdProgram = Program () (PuppetIdx, BS.ByteString) (PuppetIdx, BS.ByteString) IO
-
-type SyncCwdProgramSt = Pair () SyncCwdProgram
-
 data MuxState = MuxState
-  {
-    _mst_puppetSt :: Pair PuppetState PuppetState,
+  { _mst_puppetSt :: Pair PuppetState PuppetState,
     _mst_currentPuppetIdx :: PuppetIdx,
     _mst_syncCwdP :: Maybe (Program () (PuppetIdx, CmdResultOutput) (PuppetIdx, BS.ByteString) IO),
     _mst_keepAlive :: Bool

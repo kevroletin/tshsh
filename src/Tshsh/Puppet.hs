@@ -1,4 +1,3 @@
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Tshsh.Puppet
@@ -33,7 +32,6 @@ where
 
 import Control.Lens
 import Data.BufferSlice (BufferSlice, SliceList (..))
-import Data.Strict.Tuple
 import Lang.Coroutine.CPS
 import Matcher.ByteString
 import Protolude

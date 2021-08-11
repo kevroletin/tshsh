@@ -1,6 +1,4 @@
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- An implementation of coroutines. It's features are:
@@ -27,7 +25,7 @@ where
 
 import Control.Lens
 import Data.Strict.Tuple
-import Protolude
+import Protolude hiding (pi)
 import Prelude (Show (..))
 
 type Error = Text
@@ -53,9 +51,9 @@ data Program st i o m where
 
 type ProgramSt st i o m = Pair st (Program st i o m)
 
-type ProgramCont st i o m s = forall t. (s -> Program st i o m) -> Program st i o m
+type ProgramCont st i o m s = (s -> Program st i o m) -> Program st i o m
 
-type ProgramCont' st i o m = forall t. Program st i o m -> Program st i o m
+type ProgramCont' st i o m = Program st i o m -> Program st i o m
 
 data ContResOut st i o m
   = ContOut (Maybe o) (Pair st (Program st i o m))
@@ -79,17 +77,17 @@ instance (Show o) => Show (Program st i o m) where
   show (Output o _) = "Output " <> Protolude.show o
   show (Finish _) = "Finish"
   show (Pipe _ _) = "Pipe"
-  show Tee{} = "Tee"
+  show Tee {} = "Tee"
 
 deriving instance (Show st, Show i, Show o) => Show (ContResOut st i o m)
 
 deriving instance (Show st, Show i, Show o) => Show (ContRes st i o m)
 
-mightOutput :: forall st i o m r. Program st i o m -> Bool
-mightOutput WaitInput{} = False
+mightOutput :: forall st i o m. Program st i o m -> Bool
+mightOutput WaitInput {} = False
 mightOutput (Pipe p1 p2) = mightOutput p1 || mightOutput p2
 mightOutput (Tee Nothing p1 p2) = mightOutput p1 || mightOutput p2
-mightOutput (Tee (Just _) p1 p2) = True
+mightOutput (Tee (Just _) _ _) = True
 mightOutput _ = True
 
 step ::

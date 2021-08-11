@@ -1,6 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE RankNTypes #-}
-
 module Tshsh.Program.SyncCwd where
 
 import Control.Lens
@@ -11,8 +8,6 @@ import Data.String.AnsiEscapeCodes.Strip.Text
 import Data.String.Conversions
 import qualified Data.Text as T
 import Lang.Coroutine.CPS
-import Matcher.ByteString
-import Matcher.Result
 import Protolude
 import System.Posix (ProcessID)
 import System.Process (readProcess)
@@ -30,8 +25,8 @@ unquote =
   let p = (\x -> x == '"' || x == '\'')
    in C8.dropWhile p . C8.dropWhileEnd p
 
-runCmd :: MuxEnv -> PuppetIdx -> BS.ByteString -> ProgramCont () In Out IO Text
-runCmd env idx cmd cont =
+runCmd :: PuppetIdx -> BS.ByteString -> ProgramCont () In Out IO Text
+runCmd idx cmd cont =
   Output (idx, cmd <> "\n") $
     let loop = WaitInput $ \(inIdx, str) ->
           if inIdx == idx
@@ -51,13 +46,13 @@ syncCwdC (currPid :!: prevPid) env idx cont0 =
       getPrevCwd cont =
         case prevP ^. pup_getCwdCmd of
           GetCwdCommand cmd ->
-            runCmd env prevIdx (cs cmd) $ \str ->
+            runCmd prevIdx (cs cmd) $ \str ->
               cont (cs . T.strip . stripAnsiEscapeCodes $ cs str)
           GetCwdFromProcess ->
             Lift (getProcessCwd prevPid) cont
       tryGetCurrCwdFromProc cont =
         case currP ^. pup_getCwdCmd of
-          GetCwdCommand cmd -> cont Nothing
+          GetCwdCommand _ -> cont Nothing
           GetCwdFromProcess ->
             Lift (getProcessCwd currPid) $ \x -> cont (Just x)
    in Lift (hPutStrLn stderr ("~ SyncCwd program started" :: Text)) $ \_ ->
@@ -71,5 +66,5 @@ syncCwdC (currPid :!: prevPid) env idx cont0 =
                    in if same
                         then cont0
                         else
-                          runCmd env idx (cs $ (currP ^. pup_mkCdCmd) (cs cwd)) $
+                          runCmd idx (cs $ (currP ^. pup_mkCdCmd) (cs cwd)) $
                             const cont0

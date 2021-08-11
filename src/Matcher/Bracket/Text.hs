@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Matcher.Bracket.Text
   ( mkMatcher,
     matcherStep,
@@ -7,10 +9,8 @@ module Matcher.Bracket.Text
   )
 where
 
-import qualified Data.Text as T
 import qualified Matcher.Bracket.Unboxed as U
 import qualified Matcher.Result as R
-import qualified Matcher.Seq.Text as S
 import Protolude
 
 {-# SPECIALIZE INLINE U.matcherStep :: U.Matcher Char -> Char -> R.StepResult (U.Matcher Char) #-}

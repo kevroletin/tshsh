@@ -25,21 +25,18 @@ import Matcher.ByteString
 import Matcher.Result
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.ANSI
-import System.Console.Terminal.Size
+import qualified System.Console.Terminal.Size as TerminalSize
 import System.IO hiding (hPutStr)
 import System.Posix
-import System.Posix.Signals.Exts
 import System.Process
 import Tshsh.Commands
 import Tshsh.Muxer.Types
 import Tshsh.Program.SyncCwd
 import Tshsh.Puppet
 
-import Spec.CPS.Folds
-
 syncTtySize :: String -> IO ()
 syncTtySize pts = do
-  Just (Window h w :: Window Int) <- size
+  Just (TerminalSize.Window h w :: TerminalSize.Window Int) <- TerminalSize.size
   -- TODO: link c code
   _ <- system ("stty -F " <> pts <> " cols " <> show w <> " rows " <> show h)
   pure ()
@@ -56,8 +53,8 @@ bsDropEnd n xs = BS.take (BS.length xs - n) xs
 -- TODO: what about multiline commands?
 -- strip 1st and the last lines, strip ansi escape sequences
 stripCmdOut :: BufferSlice.SliceList -> Text
-stripCmdOut list =
-  let bs = BufferSlice.listConcat list
+stripCmdOut sl =
+  let bs = BufferSlice.listConcat sl
       bs' = BS.drop 1 . Protolude.snd . BS.break (== 10) . bsDropEnd 1 . Protolude.fst . BS.breakEnd (== 10) $ bs
    in T.strip . stripAnsiEscapeCodes $ cs bs'
 
@@ -66,7 +63,7 @@ data ParsePromptSt = ParsePromptSt
     _pps_clrScrMatcher :: SomeMatcher,
     _pps_mode :: PuppetMode
   }
-  deriving Show
+  deriving (Show)
 
 -- This config implemented as a class toSt be able toSt specialize
 class RaceMatchersDataCfg a where
@@ -121,11 +118,13 @@ instance RaceMatchersStateCfg (Pair SomeMatcher SomeMatcher) where
 -- than matching on strings due toSt memChr optimization). Or it would use
 -- matchStr, but would sometimes run matchStr several times on parts of the
 -- same input).
+
+{- ORMOLU_DISABLE -}
 raceMatchersP :: forall st out m .
   (RaceMatchersStateCfg st, RaceMatchersDataCfg out) =>
   Program st BufferSlice out m
 raceMatchersP =
-  let feedM m0 putSt onOut bs@(BufferSlice id buf size) cont =
+  let feedM m0 putSt onOut bs cont =
         let str = BufferSlice.sliceToByteString bs
          in case matchStr m0 str of
               NoMatch newM ->
@@ -133,12 +132,12 @@ raceMatchersP =
                 if BufferSlice.sliceNull bs
                    then cont
                    else Output (onData bs) cont
-              Match newM len prev rest ->
+              Match newM len prev _rest ->
                 ModifyState (putSt .~ newM) $
                 Output (onData $ BufferSlice.sliceTake (BS.length prev) bs) $
                 Output (onOut len) $
                 feedM newM putSt onOut (BufferSlice.sliceDrop (BS.length prev) bs) cont
-      go bs0@(BufferSlice id buf size) =
+      go bs0@(BufferSlice _ buf size) =
         let str = BS.fromForeignPtr buf 0 size
          in GetState $ \st ->
               case matchStr (st ^. fstMatcher) str of
@@ -149,7 +148,7 @@ raceMatchersP =
                         onSndEv
                         bs0 $
                   raceMatchersP
-                Match newFstM lenFst prevFst restFst ->
+                Match newFstM lenFst prevFst _restFst ->
                   ModifyState (fstMatcher .~ newFstM) $
                   case matchStr (st ^. sndMatcher) str of
                     NoMatch newSndM ->
@@ -161,7 +160,7 @@ raceMatchersP =
                             onFstEv
                             (BufferSlice.sliceDrop (BS.length prevFst) bs0) $
                       raceMatchersP
-                    Match newSndM lenSnd prevSnd restSnd ->
+                    Match newSndM lenSnd prevSnd _restSnd ->
                       if BS.length prevSnd < BS.length prevFst
                         then
                           ModifyState (sndMatcher .~ newSndM) $
@@ -187,7 +186,9 @@ raceMatchersP =
                           go (BufferSlice.sliceDrop (BS.length prevSnd) bs0)
    in WaitInput go
 {-# SPECIALIZE raceMatchersP :: forall m . Program PuppetState BufferSlice SegmentedOutput m #-}
+{- ORMOLU_ENABLE -}
 
+{- ORMOLU_DISABLE -}
 accumCmdOutP :: Program PuppetState SegmentedOutput SliceList IO
 accumCmdOutP =
   WaitInput $ \i ->
@@ -219,6 +220,7 @@ accumCmdOutP =
             accumCmdOutP
           else
             accumCmdOutP
+{- ORMOLU_ENABLE -}
 
 stripCmdOutP :: Program PuppetState SliceList CmdResultOutput IO
 stripCmdOutP =
@@ -227,24 +229,26 @@ stripCmdOutP =
 
 logSliceList :: Text -> Int -> SliceList -> IO ()
 logSliceList msg n bl = do
-    hPutStr stderr msg
-    hPutStr stderr (show $ BufferSlice.listConcat (BufferSlice.listTake n bl) :: Text)
-    when (BufferSlice.listLength bl > n) $
-      hPutStr stderr ("..." :: Text)
-    hPutStr stderr ("\n" :: Text)
+  hPutStr stderr msg
+  hPutStr stderr (show $ BufferSlice.listConcat (BufferSlice.listTake n bl) :: Text)
+  when (BufferSlice.listLength bl > n) $
+    hPutStr stderr ("..." :: Text)
+  hPutStr stderr ("\n" :: Text)
 
 -- manually loop over output of commands output parser and feed into sync cwd
 pipeInput ::
-  MuxEnv
-  -> MuxState
-  -> PuppetIdx
-  -> Maybe inp
-  -> Pair (ProgramSt st1 inp SliceList IO)
-          (Maybe (ProgramSt () (PuppetIdx, CmdResultOutput) (PuppetIdx, ByteString) IO))
-  -> IO (Pair
-          (ProgramSt st1 inp SliceList IO)
-          (Maybe (ProgramSt () (PuppetIdx, CmdResultOutput) (PuppetIdx, ByteString) IO)))
-pipeInput env st puppetIdx = loop
+  MuxState ->
+  PuppetIdx ->
+  Maybe inp ->
+  Pair
+    (ProgramSt st1 inp SliceList IO)
+    (Maybe (ProgramSt () (PuppetIdx, CmdResultOutput) (PuppetIdx, ByteString) IO)) ->
+  IO
+    ( Pair
+        (ProgramSt st1 inp SliceList IO)
+        (Maybe (ProgramSt () (PuppetIdx, CmdResultOutput) (PuppetIdx, ByteString) IO))
+    )
+pipeInput st puppetIdx = loop
   where
     onOut (i, x) = do
       hPutStr stderr $ "~> " <> (show (i, x) :: Text) <> "\n"
@@ -259,36 +263,36 @@ pipeInput env st puppetIdx = loop
             Nothing -> loop Nothing (prodCont :!: Nothing)
             Just consumer ->
               feedInputM onOut (puppetIdx, CmdResultOutput . stripCmdOut $ o) consumer >>= \case
-                  Cont consCont -> loop Nothing (prodCont :!: Just consCont)
-                  Res r -> do
-                    hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
-                    loop Nothing (prodCont :!: Nothing)
+                Cont consCont -> loop Nothing (prodCont :!: Just consCont)
+                Res r -> do
+                  hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
+                  loop Nothing (prodCont :!: Nothing)
         ContOut Nothing prodCont ->
           case mConsumer of
             Nothing -> pure (prodCont :!: mConsumer)
             Just consumer ->
               eatOutputsM onOut consumer >>= \case
-                  Cont consCont -> pure (prodCont :!: Just consCont)
-                  Res r -> do
-                    hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
-                    pure (prodCont :!: Nothing)
+                Cont consCont -> pure (prodCont :!: Just consCont)
+                Res r -> do
+                  hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
+                  pure (prodCont :!: Nothing)
         ResOut (_ :!: r) -> panic ("oops, input parser exited with " <> show r)
 
-runMuxPrograms :: MuxEnv -> MuxState -> PuppetIdx -> Maybe BufferSlice -> IO MuxState
-runMuxPrograms env st puppetIdx mInp = do
+runMuxPrograms :: MuxState -> PuppetIdx -> Maybe BufferSlice -> IO MuxState
+runMuxPrograms st puppetIdx mInp = do
   let thisPuppet = st ^. mst_puppetSt . pupIdx puppetIdx
   let cmdOutPSt = thisPuppet :!: thisPuppet ^. ps_cmdOutP
-      mSyncCwdPSt = (():!:) <$> _mst_syncCwdP st
+      mSyncCwdPSt = (() :!:) <$> _mst_syncCwdP st
   ((newThisPup :!: newCmdOutP) :!: newMuxProg) <-
     case mInp of
       Nothing ->
-        pipeInput env st puppetIdx Nothing (cmdOutPSt :!: mSyncCwdPSt)
+        pipeInput st puppetIdx Nothing (cmdOutPSt :!: mSyncCwdPSt)
       (Just inp) ->
-        pipeInput env st puppetIdx (Just inp) =<<
-          pipeInput env st puppetIdx Nothing (cmdOutPSt :!: mSyncCwdPSt)
+        pipeInput st puppetIdx (Just inp)
+          =<< pipeInput st puppetIdx Nothing (cmdOutPSt :!: mSyncCwdPSt)
   pure
     ( st & mst_puppetSt . pupIdx puppetIdx .~ (newThisPup & ps_cmdOutP .~ newCmdOutP)
-         & mst_syncCwdP .~ ((^. _2) <$> newMuxProg)
+        & mst_syncCwdP .~ ((^. _2) <$> newMuxProg)
     )
 
 whenJustP :: Maybe (a -> a) -> a -> a
@@ -298,10 +302,9 @@ whenJustP (Just act) cont = act cont
 switchPuppets :: MuxEnv -> MuxState -> IO (Maybe MuxState)
 switchPuppets env st0 = do
   let newIdx = nextPuppet (st0 ^. mst_currentPuppetIdx)
-  let st = st0 { _mst_currentPuppetIdx = newIdx }
+  let st = st0 {_mst_currentPuppetIdx = newIdx}
   let (toSt :!: fromSt) = st ^. mst_sortedPuppets
-  let (toPup :!: fromPup) = env ^. menv_sortedPuppets st
-  let to = env ^. menv_currentPuppet st
+  let (toPup :!: _) = env ^. menv_sortedPuppets st
 
   (toProc, startedNewProc, newSt) <-
     case _ps_process toSt of
@@ -324,6 +327,7 @@ switchPuppets env st0 = do
         case _ps_process fromSt of
           Nothing -> Nothing
           Just fromPid -> Just (syncCwdC (_pp_pid toProc :!: _pp_pid fromPid) env newIdx)
+      {- ORMOLU_DISABLE -}
       preparePromptC syncC copyC =
         case (_ps_mode fromSt, _ps_mode toSt) of
           (_, PuppetModeTUI) ->
@@ -361,28 +365,30 @@ switchPuppets env st0 = do
             whenJustP syncC $
             copyC
             finishP
+      {- ORMOLU_ENABLE -}
       program =
         preparePromptC mSyncCwdC copyPrevCmdC
 
-  Just <$> runMuxPrograms env (newSt & mst_syncCwdP .~ Just program) newIdx Nothing
+  Just <$> runMuxPrograms (newSt & mst_syncCwdP .~ Just program) newIdx Nothing
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
-muxBody env st (TermInput (BufferSlice _ buf size)) = do
+muxBody _env st (TermInput (BufferSlice _ buf size)) = do
   case st ^. mst_currentPuppet . ps_process of
     Nothing -> pure ()
     Just p ->
       withForeignPtr buf $ \ptr -> hPutBuf (_pp_inputH p) ptr size
   pure (Just st)
-muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = do
+muxBody _env st (PuppetOutput puppetIdx inp@(BufferSlice _ buf size)) = do
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     withForeignPtr buf $ \ptr -> do
       hPutBuf stdout ptr size
-  Just <$> runMuxPrograms env st puppetIdx (Just inp)
-muxBody env st WindowResize = do
+  Just <$> runMuxPrograms st puppetIdx (Just inp)
+muxBody _env st WindowResize = do
   case st ^. mst_currentPuppet . ps_process of
     Nothing -> pure ()
     Just p -> do
-      system ("kill -WINCH -" <> show (_pp_pid p)) -- deliver signal to a process group
+      -- deliver signal to a process group
+      _ <- system ("kill -WINCH -" <> show (_pp_pid p))
       syncTtySize (_pp_pts p)
   pure (Just st)
 muxBody env st0 SwitchPuppet = switchPuppets env st0
@@ -396,18 +402,19 @@ muxBody env st0 (ChildExited exitedPid) = do
         then
           if _mst_keepAlive st0 || isJust (_ps_process otherSt)
             then
-              switchPuppets env (st0 & mst_currentPuppet .~ _pup_initState currPup
-                                     & mst_syncCwdP .~ Nothing)
-            else
-              pure Nothing
-        else
-          case _ps_process otherSt of
-            Nothing ->
-              pure (Just st0)
-            Just otherPid ->
-              if _pp_pid otherPid == exitedPid
-                then
-                  pure . Just $ st0 & mst_otherPuppet .~ _pup_initState otherPup
-                                    & mst_syncCwdP .~ Nothing
-                else
-                  pure (Just st0)
+              switchPuppets
+                env
+                ( st0 & mst_currentPuppet .~ _pup_initState currPup
+                    & mst_syncCwdP .~ Nothing
+                )
+            else pure Nothing
+        else case _ps_process otherSt of
+          Nothing ->
+            pure (Just st0)
+          Just otherPid ->
+            if _pp_pid otherPid == exitedPid
+              then
+                pure . Just $
+                  st0 & mst_otherPuppet .~ _pup_initState otherPup
+                    & mst_syncCwdP .~ Nothing
+              else pure (Just st0)

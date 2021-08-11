@@ -1,14 +1,15 @@
-module Data.Strict.Tuple.Extended
-  (
-    module T,
-    Field1(..)
-  )
-  where
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
-import qualified Data.Strict.Tuple as T
-import Data.Strict.Tuple
+module Data.Strict.Tuple.Extended
+  ( module T,
+    Field1 (..),
+  )
+where
+
 import Control.Lens
 import Data.Functor
+import Data.Strict.Tuple
+import qualified Data.Strict.Tuple as T
 
 instance Field1 (Pair a b) (Pair a' b) a a' where
   _1 f (a :!: b) = (:!: b) <$> f a
