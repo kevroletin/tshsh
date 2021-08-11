@@ -2,6 +2,10 @@
 
 module Tshsh.Puppet
   ( GetCwd (..),
+    PuppetCfg (..),
+    pc_promptParser,
+    pc_getCwdCmd,
+    pc_mkCdCmd,
     Puppet (..),
     PuppetProcess (..),
     pp_handle,
@@ -79,6 +83,16 @@ data PuppetState = PuppetState
   }
 
 $(makeLenses 'PuppetState)
+
+data PuppetCfg = PuppetCfg
+  { _pc_cmd :: Text,
+    _pc_cmdArgs :: [Text],
+    _pc_promptParser :: SomeMatcher,
+    _pc_getCwdCmd :: GetCwd,
+    _pc_mkCdCmd :: Text -> Text
+  }
+
+$(makeLenses 'PuppetCfg)
 
 data Puppet = Puppet
   { _pup_idx :: PuppetIdx,

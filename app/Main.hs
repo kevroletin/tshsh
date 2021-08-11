@@ -69,13 +69,9 @@ readLoop name fromH act = do
 newPuppet ::
   PuppetIdx ->
   BTChan MuxCmd ->
-  SomeMatcher ->
-  GetCwd ->
-  (Text -> Text) ->
-  FilePath ->
-  [String] ->
+  PuppetCfg ->
   IO (Puppet, PuppetState)
-newPuppet idx chan matcher getCwd cdCmd cmd args = do
+newPuppet idx chan PuppetCfg {..} = do
   let startProcess = do
         (master, slave) <- openPseudoTerminal
         masterH <- fdToHandle master
@@ -90,7 +86,7 @@ newPuppet idx chan matcher getCwd cdCmd cmd args = do
             -- To implement jobs control a process needs
             -- 1. to become a session leader
             -- 2. to acquire a controlling terminal so that it's children inherit the same terminal
-            (proc "acquire_tty_wrapper" (cmd : args))
+            (proc "acquire_tty_wrapper" (fmap cs (_pc_cmd : _pc_cmdArgs)))
               { std_in = UseHandle slaveH,
                 std_out = UseHandle slaveH,
                 std_err = UseHandle slaveH
@@ -120,7 +116,7 @@ newPuppet idx chan matcher getCwd cdCmd cmd args = do
   let puppetState =
         PuppetState
           { _ps_idx = idx,
-            _ps_parser = matcher,
+            _ps_parser = _pc_promptParser,
             _ps_clrScrParser = clrScrParser,
             _ps_mode = PuppetModeRepl,
             _ps_currCmdOut = BufferSlice.listEmpty,
@@ -131,9 +127,9 @@ newPuppet idx chan matcher getCwd cdCmd cmd args = do
   pure
     ( Puppet
         { _pup_idx = idx,
-          _pup_promptParser = matcher,
-          _pup_getCwdCmd = getCwd,
-          _pup_mkCdCmd = cdCmd,
+          _pup_promptParser = _pc_promptParser,
+          _pup_getCwdCmd = _pc_getCwdCmd,
+          _pup_mkCdCmd = _pc_mkCdCmd,
           _pup_startProcess = startProcess,
           _pup_initState = puppetState
         },
@@ -179,25 +175,33 @@ main = do
 
   muxChan <- newBTChanIO 10
 
-  (pup1, pup1st) <-
-    newPuppet
-      Puppet1
-      muxChan
-      (mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ")
-      (GetCwdCommand "pwd")
-      (\dir -> "cd \"" <> dir <> "\"")
-      "shh"
-      []
+  let _pythonCfg =
+        PuppetCfg
+          { _pc_cmd = "python3",
+            _pc_cmdArgs = [],
+            _pc_promptParser = mkSeqMatcher ">>> ",
+            _pc_getCwdCmd = GetCwdFromProcess,
+            _pc_mkCdCmd = (\dir -> "import os; os.chdir('" <> dir <> "')")
+          }
+      _shhCfg =
+        PuppetCfg
+          { _pc_cmd = "shh",
+            _pc_cmdArgs = [],
+            _pc_promptParser = mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ",
+            _pc_getCwdCmd = GetCwdCommand "pwd",
+            _pc_mkCdCmd = (\dir -> "cd \"" <> dir <> "\"")
+          }
+      _zshCfg =
+        PuppetCfg
+          { _pc_cmd = "zsh",
+            _pc_cmdArgs = [],
+            _pc_promptParser = mkSeqMatcher "\ESC[K\ESC[?2004h",
+            _pc_getCwdCmd = GetCwdFromProcess,
+            _pc_mkCdCmd = (\dir -> " cd '" <> dir <> "'")
+          }
 
-  (pup2, pup2st) <-
-    newPuppet
-      Puppet2
-      muxChan
-      (mkSeqMatcher "\ESC[K\ESC[?2004h")
-      GetCwdFromProcess
-      (\dir -> " cd '" <> dir <> "'")
-      "zsh"
-      []
+  (pup1, pup1st) <- newPuppet Puppet1 muxChan _pythonCfg
+  (pup2, pup2st) <- newPuppet Puppet2 muxChan _zshCfg
 
   origTtyState <- saveTtyState
   _ <- system "stty raw -echo isig susp ^Z intr '' eof '' quit '' erase '' kill '' eol '' eol2 '' swtch '' start '' stop '' rprnt '' werase '' lnext '' discard ''"
