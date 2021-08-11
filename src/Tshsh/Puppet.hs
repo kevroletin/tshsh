@@ -4,15 +4,18 @@
 module Tshsh.Puppet
   ( GetCwd (..),
     Puppet (..),
+    PuppetProcess (..),
+    pp_handle,
+    pp_pid,
+    pp_inputH,
+    pp_pts,
+    pp_readThread,
     pup_idx,
     pup_promptParser,
-    pup_inputH,
-    pup_pts,
     pup_getCwdCmd,
     pup_mkCdCmd,
     pup_startProcess,
     pup_initState,
-    pup_readThread,
     PuppetState (..),
     ps_idx,
     ps_parser,
@@ -56,6 +59,16 @@ data PuppetMode
   | PuppetModeRepl
   deriving (Eq, Ord, Show)
 
+data PuppetProcess = PuppetProcess
+  { _pp_handle :: ProcessHandle,
+    _pp_pid :: ProcessID,
+    _pp_inputH :: Handle,
+    _pp_pts :: FilePath,
+    _pp_readThread :: ThreadId
+  }
+
+$(makeLenses 'PuppetProcess)
+
 data PuppetState = PuppetState
   { _ps_idx :: PuppetIdx,
     _ps_parser :: SomeMatcher,
@@ -64,7 +77,7 @@ data PuppetState = PuppetState
     _ps_currCmdOut :: SliceList,
     _ps_prevCmdOut :: SliceList,
     _ps_cmdOutP :: Program PuppetState BufferSlice SliceList IO,
-    _ps_process :: Maybe (Pair ProcessHandle ProcessID)
+    _ps_process :: Maybe PuppetProcess
   }
 
 $(makeLenses 'PuppetState)
@@ -72,13 +85,10 @@ $(makeLenses 'PuppetState)
 data Puppet = Puppet
   { _pup_idx :: PuppetIdx,
     _pup_promptParser :: SomeMatcher,
-    _pup_inputH :: Handle,
-    _pup_pts :: FilePath,
     _pup_getCwdCmd :: GetCwd,
     _pup_mkCdCmd :: Text -> Text,
-    _pup_startProcess :: IO (Pair ProcessHandle ProcessID),
-    _pup_initState :: PuppetState,
-    _pup_readThread :: ThreadId
+    _pup_startProcess :: IO PuppetProcess,
+    _pup_initState :: PuppetState
   }
 
 $(makeLenses 'Puppet)

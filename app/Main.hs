@@ -45,24 +45,6 @@ bufSize = 64*1024
 minBufSize :: Int
 minBufSize = 64
 
-newPuppet :: FilePath -> [String] -> IO (ProcessHandle, Handle, FilePath)
-newPuppet cmd args = do
-  (master, slave) <- openPseudoTerminal
-  masterH <- fdToHandle master
-  slaveH <- fdToHandle slave
-
-  (_, _, _, p) <-
-    createProcess
-      (proc cmd args)
-        { std_in = UseHandle slaveH,
-          std_out = UseHandle slaveH,
-          std_err = UseHandle slaveH,
-          new_session = True
-        }
-
-  pts <- getSlaveTerminalName master
-  pure (p, masterH, pts)
-
 readLoop :: Handle -> (BufferSlice -> IO ()) -> IO ()
 readLoop fromH act = do
   let loop !capacity buff0 dataPtr =
@@ -83,7 +65,7 @@ readLoop fromH act = do
       loop bufSize buff buff
   pure ()
 
-createPuppetAndTty ::
+newPuppet ::
   PuppetIdx ->
   BTChan MuxCmd ->
   SomeMatcher ->
@@ -92,13 +74,16 @@ createPuppetAndTty ::
   FilePath ->
   [String] ->
   IO (Puppet, PuppetState)
-createPuppetAndTty idx chan matcher getCwd cdCmd cmd args = do
-  (master, slave) <- openPseudoTerminal
-  masterH <- fdToHandle master
-  slaveH <- fdToHandle slave
-  pts <- getSlaveTerminalName master
-
+newPuppet idx chan matcher getCwd cdCmd cmd args = do
   let startProcess = do
+        (master, slave) <- openPseudoTerminal
+        masterH <- fdToHandle master
+        slaveH <- fdToHandle slave
+        pts <- getSlaveTerminalName master
+
+        -- _ <- system ("stty -F " <> pts <> " $(stty --save)")
+        syncTtySize pts
+
         (_, _, _, p) <-
           createProcess
             -- To implement jobs control a process needs
@@ -110,15 +95,23 @@ createPuppetAndTty idx chan matcher getCwd cdCmd cmd args = do
                 std_err = UseHandle slaveH
                 -- new_session = True,
                 -- create_group = False,
-                -- aquire_tty = True -- this one is not implemented in rts that why we wrote an acquire_tty_wrapper
+                -- this one is not implemented in rts that why we wrote an acquire_tty_wrapper
+                -- aquire_tty = True
               }
         -- TODO: handle process startup failures
         (Just pid) <- getPid p
-        hPutStrLn stderr ("Started: " <> (show pid :: Text))
-        pure (p :!: pid)
 
-  readThread <- forkIO . readLoop masterH $ \str ->
-    atomically . writeBTChan chan $ PuppetOutput idx str
+        readThread <- forkIO . readLoop masterH $ \str ->
+          atomically . writeBTChan chan $ PuppetOutput idx str
+
+        hPutStrLn stderr ("Started: " <> (show pid :: Text))
+        pure $ PuppetProcess
+               { _pp_handle = p,
+                 _pp_pid = pid,
+                 _pp_inputH = masterH,
+                 _pp_pts = pts,
+                 _pp_readThread = readThread
+               }
 
   let clrScrParser = mkSeqMatcher "\ESC[H\ESC[2J"
 
@@ -137,13 +130,10 @@ createPuppetAndTty idx chan matcher getCwd cdCmd cmd args = do
     ( Puppet
         { _pup_idx = idx,
           _pup_promptParser = matcher,
-          _pup_inputH = masterH,
-          _pup_pts = pts,
           _pup_getCwdCmd = getCwd,
           _pup_mkCdCmd = cdCmd,
           _pup_startProcess = startProcess,
-          _pup_initState = puppetState,
-          _pup_readThread = readThread
+          _pup_initState = puppetState
         },
       puppetState
     )
@@ -188,7 +178,7 @@ main = do
   muxChan <- newBTChanIO 10
 
   (pup1, pup1st) <-
-    createPuppetAndTty
+    newPuppet
       Puppet1
       muxChan
       (mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ")
@@ -198,7 +188,7 @@ main = do
       []
 
   (pup2, pup2st) <-
-    createPuppetAndTty
+    newPuppet
       Puppet2
       muxChan
       (mkSeqMatcher "\ESC[K\ESC[?2004h")
@@ -208,10 +198,6 @@ main = do
       []
 
   origTtyState <- saveTtyState
-  _ <- system ("stty -F " <> (pup1 ^. pup_pts) <> " $(stty --save)")
-  _ <- system ("stty -F " <> (pup2 ^. pup_pts) <> " $(stty --save)")
-  syncTtySize (pup1 ^. pup_pts)
-  syncTtySize (pup2 ^. pup_pts)
   _ <- system "stty raw -echo isig susp ^Z intr '' eof '' quit '' erase '' kill '' eol '' eol2 '' swtch '' start '' stop '' rprnt '' werase '' lnext '' discard ''"
 
   _ <- installHandler windowChange (Catch (atomically $ writeBTChan muxChan WindowResize)) Nothing
@@ -241,7 +227,8 @@ main = do
           MuxState
             { _mst_puppetSt = pup1st {_ps_process = Just pup1pids} :!: pup2st,
               _mst_currentPuppetIdx = Puppet1,
-              _mst_syncCwdP = Nothing
+              _mst_syncCwdP = Nothing,
+              _mst_keepAlive = False
             }
 
   let loop !env !st = do
