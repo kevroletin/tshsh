@@ -7,6 +7,8 @@ module Tshsh.Puppet
     pc_promptParser,
     pc_getCwdCmd,
     pc_mkCdCmd,
+    pc_cleanPromptC,
+    pc_restoreTuiC,
     Puppet (..),
     PuppetProcess (..),
     pp_handle,
@@ -21,6 +23,7 @@ module Tshsh.Puppet
     pup_startProcess,
     pup_initState,
     pup_cleanPromptC,
+    pup_restoreTuiC,
     PuppetState (..),
     ps_idx,
     ps_parser,
@@ -86,13 +89,16 @@ data PuppetState = PuppetState
 
 $(makeLenses 'PuppetState)
 
+type PuppetAction i o = PuppetProcess -> ProgramAdaptCont' i o () CmdResultOutput ByteString IO
+
 data PuppetCfg = PuppetCfg
   { _pc_cmd :: Text,
     _pc_cmdArgs :: [Text],
     _pc_promptParser :: SomeMatcher,
     _pc_getCwdCmd :: GetCwd,
     _pc_mkCdCmd :: Text -> Text,
-    _pc_cleanPromptC :: forall i o . PuppetProcess -> ProgramAdaptCont' i o () CmdResultOutput ByteString IO
+    _pc_cleanPromptC :: forall pi po. PuppetAction pi po,
+    _pc_restoreTuiC :: forall pi po. PuppetAction pi po
   }
 
 $(makeLenses 'PuppetCfg)
@@ -104,7 +110,8 @@ data Puppet = Puppet
     _pup_mkCdCmd :: Text -> Text,
     _pup_startProcess :: IO PuppetProcess,
     _pup_initState :: PuppetState,
-    _pup_cleanPromptC :: forall i o .PuppetProcess -> ProgramAdaptCont' i o () CmdResultOutput ByteString IO
+    _pup_cleanPromptC :: forall pi po. PuppetAction pi po,
+    _pup_restoreTuiC :: forall pi po. PuppetAction pi po
   }
 
 $(makeLenses 'Puppet)

@@ -133,7 +133,8 @@ newPuppet idx chan PuppetCfg {..} = do
           _pup_mkCdCmd = _pc_mkCdCmd,
           _pup_startProcess = startProcess,
           _pup_initState = puppetState,
-          _pup_cleanPromptC = _pc_cleanPromptC
+          _pup_cleanPromptC = _pc_cleanPromptC,
+          _pup_restoreTuiC = _pc_restoreTuiC
         },
       puppetState
     )
@@ -193,6 +194,11 @@ main = do
                         BS.hPut (_pp_inputH pp) "\n"
                     )
                     cont
+              ),
+            _pc_restoreTuiC =
+              ( \pp _ _ cont ->
+                  liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f")
+                  cont
               )
           }
       _shhCfg =
@@ -206,10 +212,16 @@ main = do
               ( \pp _ _ cont ->
                   liftP_
                     ( do
+                        BS.hPut stdout "\x1b[?2004l"   -- disable bracket paste mode
                         BS.hPut stdout "\ESC[2K\ESC[A" -- erase the current line, go up
                         signalProcess keyboardSignal (_pp_pid pp)
                     )
                     cont
+              ),
+            _pc_restoreTuiC =
+              ( \pp _ _ cont ->
+                  liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f")
+                  cont
               )
           }
       _zshCfg =
@@ -227,6 +239,31 @@ main = do
                         signalProcess keyboardSignal (_pp_pid pp)
                     )
                     cont
+              ),
+            _pc_restoreTuiC =
+              ( \pp _ _ cont ->
+                  liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f")
+                  cont
+              )
+          }
+      _rangerCfg =
+        PuppetCfg
+          { _pc_cmd = "ranger",
+            _pc_cmdArgs = [],
+            -- TODO: need a dummy matcher
+            _pc_promptParser = mkSeqMatcher "\ESC[K\ESC[?2004h",
+            _pc_getCwdCmd = GetCwdFromProcess,
+            -- TODO: need a program here
+            _pc_mkCdCmd = (\_ -> ""),
+            _pc_cleanPromptC = ( \_ _ _ cont -> cont),
+            _pc_restoreTuiC =
+              ( \pp _ _ cont ->
+                  liftP_
+                  ( do BS.hPut (_pp_inputH pp) "\ESC"
+                       BS.hPut (_pp_inputH pp) "\f"
+                       BS.hPut (_pp_inputH pp) "\f"
+                   )
+                  cont
               )
           }
 

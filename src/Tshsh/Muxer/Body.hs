@@ -314,14 +314,7 @@ switchPuppets env st0 = do
         pid <- _pup_startProcess toPup
         pure (pid, True, st & mst_currentPuppet . ps_process .~ Just pid)
 
-  -- TODO: a hack. Finxing paste fromSt X clipboard in ghci
-  -- Paste stops working in GHCI if bracket mode is enabled. Zsh enables bracket paste
-  -- mode each time it prints a prompt (at least in our setup with zprezto).
-  -- see https://cirw.in/blog/bracketed-paste
-  BS.hPut stdout ("\x1b[?2004l" :: BS.ByteString)
-
-  let toPupH bs = BS.hPut (toProc ^. pp_inputH) bs
-      waitPrompt cont = WaitInput $ \_ -> cont
+  let waitPrompt cont = WaitInput $ \_ -> cont
       copyPrevCmdC = liftP_ (copyToXClipboard . stripCmdOut $ _ps_prevCmdOut fromSt)
       mSyncCwdC =
         case _ps_process fromSt of
@@ -329,42 +322,27 @@ switchPuppets env st0 = do
           Just fromPid -> Just (syncCwdC (_pp_pid toProc :!: _pp_pid fromPid) env newIdx)
       selectInp (idx, x) = if idx == newIdx then Just x else Nothing
       clearPromptC = _pup_cleanPromptC toPup toProc selectInp (newIdx,)
+      restoreTuiC = _pup_restoreTuiC toPup toProc selectInp (newIdx,)
       {- ORMOLU_DISABLE -}
-      preparePromptC syncC copyC cleanC =
+      program =
         case (_ps_mode fromSt, _ps_mode toSt) of
           (_, PuppetModeTUI) ->
-            -- returning into tui
-            -- send ESC in case it's vim and it's in input mode
-            -- -> send C-l toSt with the hope that tui app will redraw itself
-            unlessP startedNewProc
-              ( liftP_ $ do
-                  toPupH "\ESC"
-                  toPupH "\f"
-                  toPupH "\f"
-               ) $
-            copyC
+            unlessP startedNewProc restoreTuiC $
+            copyPrevCmdC
             finishP
-          (PuppetModeRepl, PuppetModeRepl) ->
-            unlessP startedNewProc cleanC $
+          (fromMode, PuppetModeRepl) ->
+            whenP (fromMode == PuppetModeTUI)
+              ( liftP_                              -- clear tui interface
+                ( do BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
+                     showCursor
+                 )
+              ) $
+            unlessP startedNewProc clearPromptC $
             waitPrompt $
-            whenJustP syncC $
-            copyC
-            finishP
-          (PuppetModeTUI, PuppetModeRepl) ->
-            -- clear tui interface
-            liftP_
-              ( do BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
-                   showCursor
-               ) $
-            unlessP startedNewProc cleanC $
-            waitPrompt $
-            whenJustP syncC $
-            copyC
+            whenJustP mSyncCwdC $
+            copyPrevCmdC
             finishP
       {- ORMOLU_ENABLE -}
-      program =
-        preparePromptC mSyncCwdC copyPrevCmdC clearPromptC
-
   Just <$> runMuxPrograms (newSt & mst_syncCwdP ?~ program) newIdx Nothing
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)

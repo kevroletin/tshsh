@@ -19,6 +19,7 @@ module Lang.Coroutine.CPS
     _Cont,
     _Res,
     step,
+    whenP,
     unlessP,
     liftP_,
     finishP,
@@ -125,9 +126,14 @@ step mi (st0 :!: Pipe p1_ p2_) =
         Just i ->
           feedP1 st0 p1_ p2_ (Just i)
 
+whenP :: Bool -> (a -> a) -> a -> a
+whenP False _ cont = cont
+whenP True act cont = act cont
+{-# INLINE whenP #-}
+
 unlessP :: Bool -> (a -> a) -> a -> a
 unlessP True _ cont = cont
-unlessP False act cont = act (cont)
+unlessP False act cont = act cont
 {-# INLINE unlessP #-}
 
 liftP_ :: m a -> Program st i o m -> Program st i o m
