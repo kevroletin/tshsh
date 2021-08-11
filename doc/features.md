@@ -4,9 +4,7 @@
 
 ## C-z to switch between interactive shells
 
-Here we hit Ctrl+z a couple of times to switch between python and zsh. Note:
-`KeyboardInterrupt` message in python repl is an artifact of a demo (because we
-send Ctrl-c press to force python repl to redraw its prompt).
+Here we hit Ctrl+z a couple of times to switch between python and zsh.
 
 By itself, this feature is not very impressive. Usually, one can press
 `Ctrl+z` to suspend python repl and then type `%` to resume it afterward.
