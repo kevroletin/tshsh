@@ -9,6 +9,7 @@ import qualified Data.ByteString as BS
 import Foreign.C.Types (CChar)
 import GHC.ForeignPtr
 import Protolude
+import System.Posix (ProcessID)
 
 data PuppetIdx = Puppet1 | Puppet2 deriving (Eq, Ord, Show, Enum)
 
@@ -21,4 +22,5 @@ data MuxCmd
   | PuppetOutput PuppetIdx BufferSlice
   | WindowResize
   | SwitchPuppet
+  | ChildExited ProcessID
   deriving (Show)

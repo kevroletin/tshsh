@@ -16,7 +16,7 @@ module Tshsh.Muxer.Types
     sortPup,
     sortPup_,
     mst_currentPuppet,
-    mst_backgroundPuppet,
+    mst_otherPuppet,
     mst_sortedPuppets,
     mst_syncCwdP,
     Mux (..),
@@ -70,8 +70,8 @@ mst_currentPuppet f m =
       ls = mst_puppetSt . pupIdx idx
    in (\x -> m & ls .~ x) <$> f (m ^. ls)
 
-mst_backgroundPuppet :: Lens' MuxState PuppetState
-mst_backgroundPuppet f m =
+mst_otherPuppet :: Lens' MuxState PuppetState
+mst_otherPuppet f m =
   let idx = nextPuppet (m ^. mst_currentPuppetIdx)
       ls = mst_puppetSt . pupIdx idx
    in (\x -> m & ls .~ x) <$> f (m ^. ls)

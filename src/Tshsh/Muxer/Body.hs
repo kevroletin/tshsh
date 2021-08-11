@@ -188,25 +188,6 @@ raceMatchersP =
    in WaitInput go
 {-# SPECIALIZE raceMatchersP :: forall m . Program PuppetState BufferSlice SegmentedOutput m #-}
 
-maybeStartProcess :: Either (IO (Pair ProcessHandle ProcessID)) (Pair ProcessHandle ProcessID)
-                  -> IO (Pair ProcessHandle ProcessID)
-maybeStartProcess x =
-    case x of
-      Left startProc -> startProc
-      Right pids -> pure pids
-
-startProcesses :: MuxState -> IO (MuxState, Pair (Pair ProcessHandle ProcessID) (Pair ProcessHandle ProcessID))
-startProcesses mux = do
-  let (st1 :!: st2) = _mst_puppetSt mux
-  case (_ps_process st1, _ps_process st2) of
-    (Right a, Right b) -> pure (mux, sortPup_ (_mst_currentPuppetIdx mux) (a :!: b))
-    (ma, mb) -> do
-      a <- maybeStartProcess ma
-      b <- maybeStartProcess mb
-      pure ( mux { _mst_puppetSt = ( st1 { _ps_process = Right a } :!:
-                                     st2 { _ps_process = Right b } ) },
-             sortPup_ (_mst_currentPuppetIdx mux) (a :!: b) )
-
 accumCmdOutP :: Program PuppetState SegmentedOutput SliceList IO
 accumCmdOutP =
   WaitInput $ \i ->
@@ -301,41 +282,25 @@ runMuxPrograms env st puppetIdx mInp = do
          & mst_syncCwdP .~ ((^. _2) <$> newMuxProg)
     )
 
-muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO MuxState
-muxBody env st (TermInput (BufferSlice _ buf size)) = do
-  let h = env ^. menv_currentPuppet st . pup_inputH
-  withForeignPtr buf $ \ptr -> do
-    hPutBuf h ptr size
-    pure st
-muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = do
-  when (puppetIdx == st ^. mst_currentPuppetIdx) $
-    withForeignPtr buf $ \ptr -> do
-      hPutBuf stdout ptr size
-  runMuxPrograms env st puppetIdx (Just inp)
-muxBody env st WindowResize = do
-  let pup = env ^. menv_currentPuppet st
-  syncTtySize (pup ^. pup_pts)
-  case st ^? mst_currentPuppet . ps_process . _Right . _2 of
-    Nothing -> panic "Resizing terminal of a puppet which wasn't start"
-    Just pid -> system ("kill -WINCH -" <> show pid) -- deliver signal to a process group
-  pure st
-muxBody env st0 SwitchPuppet = do
+whenJustP :: Maybe (a -> a) -> a -> a
+whenJustP Nothing cont = cont
+whenJustP (Just act) cont = act cont
+
+switchPuppets :: MuxEnv -> MuxState -> IO (Maybe MuxState)
+switchPuppets env st0 = do
   let newIdx = nextPuppet (st0 ^. mst_currentPuppetIdx)
   let st = st0 { _mst_currentPuppetIdx = newIdx }
   let (toSt :!: fromSt) = st ^. mst_sortedPuppets
+  let (toPup :!: fromPup) = env ^. menv_sortedPuppets st
   let to = env ^. menv_currentPuppet st
-
-  let fromPid = case _ps_process fromSt of
-                  Left _ -> panic "Switching from a puppet which wasn't start"
-                  Right pid -> pid
 
   (toPid, startedNewProc, newSt) <-
     case _ps_process toSt of
-      Left startProc -> do
+      Just pid -> pure (pid, False, st)
+      Nothing -> do
         Protolude.putStrLn ("\n\rStarting a new process..\r" :: Text)
-        pid <- startProc
-        pure (pid, True, st & mst_currentPuppet . ps_process .~ Right pid )
-      Right pid -> pure (pid, False, st)
+        pid <- _pup_startProcess toPup
+        pure (pid, True, st & mst_currentPuppet . ps_process .~ Just pid )
 
   -- TODO: a hack. Finxing paste fromSt X clipboard in ghci
   -- Paste stops working in GHCI if bracket mode is enabled. Zsh enables bracket paste
@@ -346,7 +311,10 @@ muxBody env st0 SwitchPuppet = do
   let toPupH bs = BS.hPut (to ^. pup_inputH) bs
       waitPrompt cont = WaitInput $ \_ -> cont
       copyPrevCmdC = liftP_ (copyToXClipboard . stripCmdOut $ _ps_prevCmdOut fromSt)
-      syncCwdC' = syncCwdC (toPid ^. _2 :!: fromPid ^. _2) env newIdx
+      mSyncCwdC =
+        case _ps_process fromSt of
+          Nothing -> Nothing
+          Just fromPid -> Just (syncCwdC (toPid ^. _2 :!: fromPid ^. _2) env newIdx)
       preparePromptC syncC copyC =
         case (_ps_mode fromSt, _ps_mode toSt) of
           (_, PuppetModeTUI) ->
@@ -368,7 +336,7 @@ muxBody env st0 SwitchPuppet = do
                             toPupH "\n"
                ) $
             waitPrompt $
-            syncC $
+            whenJustP syncC $
             copyC
             finishP
           (PuppetModeTUI, PuppetModeRepl) ->
@@ -381,10 +349,53 @@ muxBody env st0 SwitchPuppet = do
                      toPupH "\n"
                ) $
             waitPrompt $
-            syncC $
+            whenJustP syncC $
             copyC
             finishP
       program =
-        preparePromptC syncCwdC' copyPrevCmdC
+        preparePromptC mSyncCwdC copyPrevCmdC
 
-  runMuxPrograms env (newSt & mst_syncCwdP .~ Just program) newIdx Nothing
+  Just <$> runMuxPrograms env (newSt & mst_syncCwdP .~ Just program) newIdx Nothing
+
+muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
+muxBody env st (TermInput (BufferSlice _ buf size)) = do
+  let h = env ^. menv_currentPuppet st . pup_inputH
+  withForeignPtr buf $ \ptr -> do
+    hPutBuf h ptr size
+    pure (Just st)
+muxBody env st (PuppetOutput puppetIdx inp@(BufferSlice inpSliceId buf size)) = do
+  when (puppetIdx == st ^. mst_currentPuppetIdx) $
+    withForeignPtr buf $ \ptr -> do
+      hPutBuf stdout ptr size
+  Just <$> runMuxPrograms env st puppetIdx (Just inp)
+muxBody env st WindowResize = do
+  let pup = env ^. menv_currentPuppet st
+  syncTtySize (pup ^. pup_pts)
+  case st ^? mst_currentPuppet . ps_process . _Just . _2 of
+    Nothing -> panic "Resizing terminal of a puppet which wasn't start"
+    Just pid -> system ("kill -WINCH -" <> show pid) -- deliver signal to a process group
+  pure (Just st)
+muxBody env st0 SwitchPuppet = switchPuppets env st0
+muxBody env st0 (ChildExited exitedPid) = do
+  let (currSt :!: otherSt) = st0 ^. mst_sortedPuppets
+  let (currPup :!: otherPup) = env ^. menv_sortedPuppets st0
+  case _ps_process currSt of
+    Nothing -> pure Nothing
+    Just (_ :!: currPid) ->
+      if currPid == exitedPid
+        then
+          case _ps_process otherSt of
+            Nothing ->
+              pure Nothing
+            Just (_ :!: otherPid) ->
+              switchPuppets env (st0 & mst_currentPuppet .~ _pup_initState currPup)
+        else
+          case _ps_process otherSt of
+            Nothing ->
+              pure (Just st0)
+            Just (_ :!: otherPid) ->
+              if otherPid == exitedPid
+                then
+                  pure . Just $ st0 & mst_otherPuppet .~ _pup_initState otherPup
+                else
+                  pure (Just st0)

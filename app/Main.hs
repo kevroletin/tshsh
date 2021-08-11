@@ -122,6 +122,17 @@ createPuppetAndTty idx chan matcher getCwd cdCmd cmd args = do
 
   let clrScrParser = mkSeqMatcher "\ESC[H\ESC[2J"
 
+  let puppetState =
+        PuppetState
+          { _ps_idx = idx,
+            _ps_parser = matcher,
+            _ps_clrScrParser = clrScrParser,
+            _ps_mode = PuppetModeRepl,
+            _ps_currCmdOut = BufferSlice.listEmpty,
+            _ps_prevCmdOut = BufferSlice.listEmpty,
+            _ps_cmdOutP = raceMatchersP `Pipe` accumCmdOutP,
+            _ps_process = Nothing
+          }
   pure
     ( Puppet
         { _pup_idx = idx,
@@ -129,19 +140,12 @@ createPuppetAndTty idx chan matcher getCwd cdCmd cmd args = do
           _pup_inputH = masterH,
           _pup_pts = pts,
           _pup_getCwdCmd = getCwd,
-          _pup_mkCdCmd = cdCmd
+          _pup_mkCdCmd = cdCmd,
+          _pup_startProcess = startProcess,
+          _pup_initState = puppetState,
+          _pup_readThread = readThread
         },
-      PuppetState
-        { _ps_idx = idx,
-          _ps_parser = matcher,
-          _ps_readThread = readThread,
-          _ps_clrScrParser = clrScrParser,
-          _ps_mode = PuppetModeRepl,
-          _ps_currCmdOut = BufferSlice.listEmpty,
-          _ps_prevCmdOut = BufferSlice.listEmpty,
-          _ps_cmdOutP = raceMatchersP `Pipe` accumCmdOutP,
-          _ps_process = Left startProcess
-        }
+      puppetState
     )
 
 stderrToFile :: Text -> IO ()
@@ -210,10 +214,24 @@ main = do
   syncTtySize (pup2 ^. pup_pts)
   _ <- system "stty raw -echo isig susp ^Z intr '' eof '' quit '' erase '' kill '' eol '' eol2 '' swtch '' start '' stop '' rprnt '' werase '' lnext '' discard ''"
 
+  _ <- installHandler windowChange (Catch (atomically $ writeBTChan muxChan WindowResize)) Nothing
+  let suspendSig = atomically $ writeBTChan muxChan SwitchPuppet
+  _ <- installHandler keyboardStop (Catch suspendSig) Nothing
+
+  _ <- setStoppedChildFlag True
+  let onChildSig :: SignalInfo -> IO ()
+      onChildSig (SignalInfo _ _ NoSignalSpecificInfo) = pure ()
+      onChildSig (SignalInfo _ _ SigChldInfo{..}) = do
+        hPutStrLn stderr ("=== Child status: " <> show siginfoPid <> " -> " <> show siginfoStatus :: Text)
+        atomically $ writeBTChan muxChan (ChildExited siginfoPid)
+  _ <- installHandler processStatusChanged (CatchInfo onChildSig) Nothing
+
+  _readThread <- forkIO $ readLoop stdin $ \str -> atomically . writeBTChan muxChan $ TermInput str
+
   pup1pids <-
     case pup1st ^. ps_process of
-      Left startProc -> startProc
-      Right pids -> pure pids
+      Nothing -> _pup_startProcess pup1
+      Just pids -> pure pids
 
   let mux =
         Mux
@@ -221,28 +239,18 @@ main = do
             { _menv_puppets = pup1 :!: pup2
             }
           MuxState
-            { _mst_puppetSt = pup1st {_ps_process = Right pup1pids} :!: pup2st,
+            { _mst_puppetSt = pup1st {_ps_process = Just pup1pids} :!: pup2st,
               _mst_currentPuppetIdx = Puppet1,
               _mst_syncCwdP = Nothing
             }
 
-  _muxThread <- forkIO $ do
-    let loop !env !st = do
-          cmd <- atomically (readBTChan muxChan)
-          muxLog cmd
-          newSt <- muxBody env st cmd
-          loop env newSt
-    loop (mux ^. mux_env) (mux ^. mux_st)
-
-  _ <- installHandler windowChange (Catch (atomically $ writeBTChan muxChan WindowResize)) Nothing
-
-  -- switch to the other puppet here
-  let suspendSig = atomically $ writeBTChan muxChan SwitchPuppet
-  _ <- installHandler keyboardStop (Catch suspendSig) Nothing
-
-  _readThread <- forkIO $ readLoop stdin $ \str -> atomically . writeBTChan muxChan $ TermInput str
-
-  _ <- waitForProcess (pup1pids ^. _1)
+  let loop !env !st = do
+        cmd <- atomically (readBTChan muxChan)
+        muxLog cmd
+        muxBody env st cmd >>= \case
+          Just newSt -> loop env newSt
+          Nothing -> pure ()
+  loop (mux ^. mux_env) (mux ^. mux_st)
 
   restoreTtyState origTtyState
 
