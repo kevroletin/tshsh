@@ -9,7 +9,9 @@ module Lang.Coroutine.CPS
   ( Program (..),
     ProgramSt,
     ProgramCont,
+    ProgramAdaptCont,
     ProgramCont',
+    ProgramAdaptCont',
     ContResOut (..),
     _ContOut,
     _ResOut,
@@ -52,7 +54,11 @@ type ProgramSt st i o m = Pair st (Program st i o m)
 
 type ProgramCont st i o m s = (s -> Program st i o m) -> Program st i o m
 
+type ProgramAdaptCont pi po st i o m s = (pi -> Maybe i) -> (o -> po) -> ProgramCont () pi po m s
+
 type ProgramCont' st i o m = Program st i o m -> Program st i o m
+
+type ProgramAdaptCont' pi po st i o m = (pi -> Maybe i) -> (o -> po) -> ProgramCont' () pi po m
 
 data ContResOut st i o m
   = ContOut (Maybe o) (Pair st (Program st i o m))

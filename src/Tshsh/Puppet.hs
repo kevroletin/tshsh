@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Tshsh.Puppet
   ( GetCwd (..),
@@ -19,6 +20,7 @@ module Tshsh.Puppet
     pup_mkCdCmd,
     pup_startProcess,
     pup_initState,
+    pup_cleanPromptC,
     PuppetState (..),
     ps_idx,
     ps_parser,
@@ -89,7 +91,8 @@ data PuppetCfg = PuppetCfg
     _pc_cmdArgs :: [Text],
     _pc_promptParser :: SomeMatcher,
     _pc_getCwdCmd :: GetCwd,
-    _pc_mkCdCmd :: Text -> Text
+    _pc_mkCdCmd :: Text -> Text,
+    _pc_cleanPromptC :: forall i o . PuppetProcess -> ProgramAdaptCont' i o () CmdResultOutput ByteString IO
   }
 
 $(makeLenses 'PuppetCfg)
@@ -100,7 +103,8 @@ data Puppet = Puppet
     _pup_getCwdCmd :: GetCwd,
     _pup_mkCdCmd :: Text -> Text,
     _pup_startProcess :: IO PuppetProcess,
-    _pup_initState :: PuppetState
+    _pup_initState :: PuppetState,
+    _pup_cleanPromptC :: forall i o .PuppetProcess -> ProgramAdaptCont' i o () CmdResultOutput ByteString IO
   }
 
 $(makeLenses 'Puppet)

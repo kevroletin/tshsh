@@ -12,6 +12,7 @@ import Control.Lens
 import Control.Monad
 import Data.BufferSlice (BufferSlice (..))
 import qualified Data.BufferSlice as BufferSlice
+import qualified Data.ByteString as BS
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text.IO as T
@@ -131,7 +132,8 @@ newPuppet idx chan PuppetCfg {..} = do
           _pup_getCwdCmd = _pc_getCwdCmd,
           _pup_mkCdCmd = _pc_mkCdCmd,
           _pup_startProcess = startProcess,
-          _pup_initState = puppetState
+          _pup_initState = puppetState,
+          _pup_cleanPromptC = _pc_cleanPromptC
         },
       puppetState
     )
@@ -181,7 +183,17 @@ main = do
             _pc_cmdArgs = [],
             _pc_promptParser = mkSeqMatcher ">>> ",
             _pc_getCwdCmd = GetCwdFromProcess,
-            _pc_mkCdCmd = (\dir -> "import os; os.chdir('" <> dir <> "')")
+            _pc_mkCdCmd = (\dir -> "import os; os.chdir('" <> dir <> "')"),
+            _pc_cleanPromptC =
+              ( \pp _ _ cont ->
+                  liftP_
+                    ( do
+                        BS.hPut stdout "\ESC[2K\ESC[A" -- erase the current line, go up
+                        BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
+                        BS.hPut (_pp_inputH pp) "\n"
+                    )
+                    cont
+              )
           }
       _shhCfg =
         PuppetCfg
@@ -189,7 +201,16 @@ main = do
             _pc_cmdArgs = [],
             _pc_promptParser = mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ",
             _pc_getCwdCmd = GetCwdCommand "pwd",
-            _pc_mkCdCmd = (\dir -> "cd \"" <> dir <> "\"")
+            _pc_mkCdCmd = (\dir -> "cd \"" <> dir <> "\""),
+            _pc_cleanPromptC =
+              ( \pp _ _ cont ->
+                  liftP_
+                    ( do
+                        BS.hPut stdout "\ESC[2K\ESC[A" -- erase the current line, go up
+                        signalProcess keyboardSignal (_pp_pid pp)
+                    )
+                    cont
+              )
           }
       _zshCfg =
         PuppetCfg
@@ -197,7 +218,16 @@ main = do
             _pc_cmdArgs = [],
             _pc_promptParser = mkSeqMatcher "\ESC[K\ESC[?2004h",
             _pc_getCwdCmd = GetCwdFromProcess,
-            _pc_mkCdCmd = (\dir -> " cd '" <> dir <> "'")
+            _pc_mkCdCmd = (\dir -> " cd '" <> dir <> "'"),
+            _pc_cleanPromptC =
+              ( \pp _ _ cont ->
+                  liftP_
+                    ( do
+                        BS.hPut stdout "\ESC[2K\ESC[A" -- erase the current line, go up
+                        signalProcess keyboardSignal (_pp_pid pp)
+                    )
+                    cont
+              )
           }
 
   (pup1, pup1st) <- newPuppet Puppet1 muxChan _pythonCfg

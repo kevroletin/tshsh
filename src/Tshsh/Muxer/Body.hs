@@ -327,8 +327,10 @@ switchPuppets env st0 = do
         case _ps_process fromSt of
           Nothing -> Nothing
           Just fromPid -> Just (syncCwdC (_pp_pid toProc :!: _pp_pid fromPid) env newIdx)
+      selectInp (idx, x) = if idx == newIdx then Just x else Nothing
+      clearPromptC = _pup_cleanPromptC toPup toProc selectInp (newIdx,)
       {- ORMOLU_DISABLE -}
-      preparePromptC syncC copyC =
+      preparePromptC syncC copyC cleanC =
         case (_ps_mode fromSt, _ps_mode toSt) of
           (_, PuppetModeTUI) ->
             -- returning into tui
@@ -343,31 +345,25 @@ switchPuppets env st0 = do
             copyC
             finishP
           (PuppetModeRepl, PuppetModeRepl) ->
-            -- switching between repls -> send C-c with the hope that repl will render a prompt
-            unlessP startedNewProc
-              ( liftP_ $ do signalProcess keyboardSignal (_pp_pid toProc)
-                            toPupH "\n"
-               ) $
+            unlessP startedNewProc cleanC $
             waitPrompt $
             whenJustP syncC $
             copyC
             finishP
           (PuppetModeTUI, PuppetModeRepl) ->
-            -- clear tui interface, try toSt redraw repl prompt by sending C-c
+            -- clear tui interface
             liftP_
               ( do BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
                    showCursor
-                   unless startedNewProc $ do
-                     signalProcess keyboardSignal (_pp_pid toProc)
-                     toPupH "\n"
                ) $
+            unlessP startedNewProc cleanC $
             waitPrompt $
             whenJustP syncC $
             copyC
             finishP
       {- ORMOLU_ENABLE -}
       program =
-        preparePromptC mSyncCwdC copyPrevCmdC
+        preparePromptC mSyncCwdC copyPrevCmdC clearPromptC
 
   Just <$> runMuxPrograms (newSt & mst_syncCwdP ?~ program) newIdx Nothing
 
