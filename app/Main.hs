@@ -76,7 +76,7 @@ readLoop fromH act = do
                 act (BufferSlice buff0 dataPtr n)
                 loop (capacity - n) buff0 (plusForeignPtr dataPtr n)
               _ -> pure ()
-  -- ignore io errors
+  -- TODO: log io errors
   _ <-
     tryIO $ do
       buff <- mallocForeignPtrBytes bufSize
@@ -101,12 +101,18 @@ createPuppetAndTty idx chan matcher getCwd cdCmd cmd args = do
   let startProcess = do
         (_, _, _, p) <-
           createProcess
-            (proc cmd args)
+            -- To implement jobs control a process needs
+            -- 1. to become a session leader
+            -- 2. to acquire a controlling terminal so that it's children inherit the same terminal
+            (proc "acquire_tty_wrapper" (cmd : args))
               { std_in = UseHandle slaveH,
                 std_out = UseHandle slaveH,
-                std_err = UseHandle slaveH,
-                new_session = True
+                std_err = UseHandle slaveH
+                -- new_session = True,
+                -- create_group = False,
+                -- aquire_tty = True -- this one is not implemented in rts that why we wrote an acquire_tty_wrapper
               }
+        -- TODO: handle process startup failures
         (Just pid) <- getPid p
         hPutStrLn stderr ("Started: " <> (show pid :: Text))
         pure (p :!: pid)
