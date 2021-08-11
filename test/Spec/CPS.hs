@@ -137,20 +137,3 @@ spec = do
               [1 ..]
               (([], 0) :!: p)
     out `shouldBe` [6, 15, 24, 33, 42, 51, 60, 69, 78, 87]
-
-  it "tee" $ do
-    let producer =
-          WaitInput $ \i -> Output i producer
-    let consumer x =
-          WaitInput $ \i ->
-            let loop 0 = consumer x
-                loop n = Output x (loop (n-1))
-            in loop i
-    let p = producer `Pipe` Tee Nothing (consumer 1) (consumer 2)
-    let (out, _) =
-          rid $
-            accumProgram @() @Int @Int @_
-              [1 .. 3]
-              (() :!: p)
-
-    out `shouldBe` [1, 2, 1, 1, 2, 2, 1, 1, 1, 2, 2, 2]
