@@ -60,7 +60,7 @@ syncCwdC (currPid :!: prevPid) env idx cont0 =
           GetCwdCommand cmd -> cont Nothing
           GetCwdFromProcess ->
             Lift (getProcessCwd currPid) $ \x -> cont (Just x)
-   in Lift (hPutStrLn stderr ("~ Sync env program started" :: Text)) $ \_ ->
+   in Lift (hPutStrLn stderr ("~ SyncCwd program started" :: Text)) $ \_ ->
         getPrevCwd $ \cwd' ->
           let cwd = unquote cwd'
            in liftP_ (hPutStrLn stderr ("~ SyncCwd: prev cwd " <> cwd)) $

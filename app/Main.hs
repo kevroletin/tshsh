@@ -40,13 +40,13 @@ muxLog a =
     Just h -> hPrint h a
 
 bufSize :: Int
-bufSize = 64*1024
+bufSize = 64 * 1024
 
 minBufSize :: Int
 minBufSize = 64
 
-readLoop :: Handle -> (BufferSlice -> IO ()) -> IO ()
-readLoop fromH act = do
+readLoop :: Text -> Handle -> (BufferSlice -> IO ()) -> IO ()
+readLoop name fromH act = do
   let loop !capacity buff0 dataPtr =
         if capacity < minBufSize
           then do
@@ -58,12 +58,13 @@ readLoop fromH act = do
                 act (BufferSlice buff0 dataPtr n)
                 loop (capacity - n) buff0 (plusForeignPtr dataPtr n)
               _ -> pure ()
-  -- TODO: log io errors
-  _ <-
+  res <-
     tryIO $ do
       buff <- mallocForeignPtrBytes bufSize
       loop bufSize buff buff
-  pure ()
+  case res of
+    Left err -> hPutStrLn stderr (name <> " " <> show err)
+    Right _ -> pure ()
 
 newPuppet ::
   PuppetIdx ->
@@ -101,17 +102,18 @@ newPuppet idx chan matcher getCwd cdCmd cmd args = do
         -- TODO: handle process startup failures
         (Just pid) <- getPid p
 
-        readThread <- forkIO . readLoop masterH $ \str ->
+        readThread <- forkIO . readLoop "[Read puppet output thread]" masterH $ \str ->
           atomically . writeBTChan chan $ PuppetOutput idx str
 
         hPutStrLn stderr ("Started: " <> (show pid :: Text))
-        pure $ PuppetProcess
-               { _pp_handle = p,
-                 _pp_pid = pid,
-                 _pp_inputH = masterH,
-                 _pp_pts = pts,
-                 _pp_readThread = readThread
-               }
+        pure $
+          PuppetProcess
+            { _pp_handle = p,
+              _pp_pid = pid,
+              _pp_inputH = masterH,
+              _pp_pts = pts,
+              _pp_readThread = readThread
+            }
 
   let clrScrParser = mkSeqMatcher "\ESC[H\ESC[2J"
 
@@ -207,12 +209,14 @@ main = do
   _ <- setStoppedChildFlag True
   let onChildSig :: SignalInfo -> IO ()
       onChildSig (SignalInfo _ _ NoSignalSpecificInfo) = pure ()
-      onChildSig (SignalInfo _ _ SigChldInfo{..}) = do
-        hPutStrLn stderr ("=== Child status: " <> show siginfoPid <> " -> " <> show siginfoStatus :: Text)
+      onChildSig (SignalInfo _ _ SigChldInfo {..}) = do
+        hPutStr stderr ("Sig> Child status: " <> show siginfoPid <> " -> " <> show siginfoStatus <> "\n" :: Text)
         atomically $ writeBTChan muxChan (ChildExited siginfoPid)
   _ <- installHandler processStatusChanged (CatchInfo onChildSig) Nothing
 
-  _readThread <- forkIO $ readLoop stdin $ \str -> atomically . writeBTChan muxChan $ TermInput str
+  _readThread <- forkIO $
+    readLoop "[Read stdin thread]" stdin $ \str ->
+      atomically . writeBTChan muxChan $ TermInput str
 
   pup1pids <-
     case pup1st ^. ps_process of

@@ -225,6 +225,14 @@ stripCmdOutP =
   WaitInput $ \i ->
     Output (CmdResultOutput $ stripCmdOut i) stripCmdOutP
 
+logSliceList :: Text -> Int -> SliceList -> IO ()
+logSliceList msg n bl = do
+    hPutStr stderr msg
+    hPutStr stderr (show $ BufferSlice.listConcat (BufferSlice.listTake n bl) :: Text)
+    when (BufferSlice.listLength bl > n) $
+      hPutStr stderr ("..." :: Text)
+    hPutStr stderr ("\n" :: Text)
+
 -- manually loop over output of commands output parser and feed into sync cwd
 pipeInput ::
   MuxEnv
@@ -239,15 +247,14 @@ pipeInput ::
 pipeInput env st puppetIdx = loop
   where
     onOut (i, x) = do
-      hPutStr stderr $ "-> Send " <> (show (i, x) :: Text) <> "\n"
+      hPutStr stderr $ "~> " <> (show (i, x) :: Text) <> "\n"
       case st ^. mst_puppetSt . pupIdx i . ps_process of
         Just p -> BS.hPut (_pp_inputH p) x
         Nothing -> pure ()
     loop i (producer :!: mConsumer) =
       step i producer >>= \case
         ContOut (Just o) prodCont -> do
-          hPutStr stderr ("-> " :: Text)
-          hPrint stderr o
+          logSliceList (show puppetIdx <> "> ") 40 o
           case mConsumer of
             Nothing -> loop Nothing (prodCont :!: Nothing)
             Just consumer ->
