@@ -181,37 +181,14 @@ main = do
 
   muxChan <- newBTChanIO 10
 
-  let _pythonCfg =
+  let defCfg =
         PuppetCfg
-          { _pc_cmd = "python3",
+          { _pc_cmd = "",
             _pc_cmdArgs = [],
-            _pc_promptParser = mkSeqMatcher ">>> ",
+            _pc_promptParser = mkBracketMatcher "sh-" "$ ",
             _pc_getCwdCmd = GetCwdFromProcess,
-            _pc_mkCdCmd = (\dir -> "import os; os.chdir('" <> dir <> "')"),
+            _pc_mkCdCmd = (\dir -> "cd '" <> dir <> "'"),
             _pc_switchEnterHook = pure (),
-            _pc_switchExitHook = pure (),
-            _pc_cleanPromptC =
-              ( \pp _ _ cont ->
-                  liftP_
-                    ( do
-                        BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
-                        BS.hPut (_pp_inputH pp) "\n"
-                    )
-                    $ WaitInput $ \_ -> cont
-              ),
-            _pc_restoreTuiC =
-              ( \pp _ _ ->
-                  liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f")
-              )
-          }
-      _shhCfg =
-        PuppetCfg
-          { _pc_cmd = "shh",
-            _pc_cmdArgs = [],
-            _pc_promptParser = mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ",
-            _pc_getCwdCmd = GetCwdCommand "pwd",
-            _pc_mkCdCmd = (\dir -> "cd \"" <> dir <> "\""),
-            _pc_switchEnterHook = BS.hPut stdout "\x1b[?2004l", -- disable bracket paste mode
             _pc_switchExitHook = pure (),
             _pc_cleanPromptC =
               ( \pp _ _ cont ->
@@ -223,25 +200,49 @@ main = do
                   liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f")
               )
           }
-      _zshCfg =
-        PuppetCfg
-          { _pc_cmd = "zsh",
-            _pc_cmdArgs = [],
-            _pc_promptParser = mkSeqMatcher "\ESC[K\ESC[?2004h",
-            _pc_getCwdCmd = GetCwdFromProcess,
-            _pc_mkCdCmd = (\dir -> " cd '" <> dir <> "'"),
-            _pc_switchEnterHook = pure (),
-            _pc_switchExitHook = pure (),
+      shCfg =
+        defCfg
+          {
+            _pc_cmd = "sh",
             _pc_cleanPromptC =
-              ( \pp _ _ ->
-                  liftP_ (BS.hPut (_pp_inputH pp) "\ETX") -- Ctrl-C
-              ),
-            _pc_restoreTuiC =
-              ( \pp _ _ ->
-                  liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f")
+              ( \pp _ _ cont ->
+                  liftP_
+                    ( do
+                        BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
+                        BS.hPut (_pp_inputH pp) "\n"
+                    )
+                    $ WaitInput $ \_ -> cont
               )
           }
-      _rangerCfg =
+      pythonCfg =
+        defCfg
+          { _pc_cmd = "python3",
+            _pc_promptParser = mkSeqMatcher ">>> ",
+            _pc_mkCdCmd = (\dir -> "import os; os.chdir('" <> dir <> "')"),
+            _pc_cleanPromptC =
+              ( \pp _ _ cont ->
+                  liftP_
+                    ( do
+                        BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
+                        BS.hPut (_pp_inputH pp) "\n"
+                    )
+                    $ WaitInput $ \_ -> cont
+              )
+          }
+      shhCfg =
+        defCfg
+          { _pc_cmd = "shh",
+            _pc_promptParser = mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ",
+            _pc_getCwdCmd = GetCwdCommand "pwd",
+            _pc_mkCdCmd = (\dir -> "cd \"" <> dir <> "\""),
+            _pc_switchEnterHook = BS.hPut stdout "\x1b[?2004l" -- disable bracket paste mode
+          }
+      zshCfg =
+        defCfg
+          { _pc_cmd = "zsh",
+            _pc_promptParser = mkSeqMatcher "\ESC[K\ESC[?2004h"
+          }
+      rangerCfg =
         PuppetCfg
           { _pc_cmd = "ranger",
             _pc_cmdArgs = [],
@@ -267,15 +268,16 @@ main = do
 
   let cfg =
         Map.fromList
-          [ ("python", _pythonCfg),
-            ("ranger", _rangerCfg),
-            ("shh", _shhCfg),
-            ("zsh", _zshCfg)
+          [ ("python", pythonCfg),
+            ("ranger", rangerCfg),
+            ("shh", shhCfg),
+            ("zsh", zshCfg),
+            ("sh", shCfg)
           ]
 
   args <- getArgs
-  let cfg1 = fromMaybe _shhCfg $ join ((`Map.lookup` cfg) <$> (args ^? ix 0))
-  let cfg2 = fromMaybe _zshCfg $ join ((`Map.lookup` cfg) <$> (args ^? ix 1))
+  let cfg1 = fromMaybe shhCfg $ join ((`Map.lookup` cfg) <$> (args ^? ix 0))
+  let cfg2 = fromMaybe zshCfg $ join ((`Map.lookup` cfg) <$> (args ^? ix 1))
 
   (pup1, pup1st) <- newPuppet Puppet1 muxChan cfg1
   (pup2, pup2st) <- newPuppet Puppet2 muxChan cfg2
