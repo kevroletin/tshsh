@@ -311,7 +311,7 @@ switchPuppets env st0 = do
     case _ps_process toSt of
       Just pid -> pure (pid, False, st)
       Nothing -> do
-        Protolude.putStrLn ("\n\rStarting a new process..\r" :: Text)
+        Protolude.putStrLn ("\r\nStarting " <> show (_pup_cmd toPup) <> " ..\r\n" :: Text)
         pid <- _pup_startProcess toPup
         pure (pid, True, st & mst_currentPuppet . ps_process .~ Just pid)
 

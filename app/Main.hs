@@ -21,6 +21,7 @@ import Foreign
 import Lang.Coroutine.CPS
 import Matcher.ByteString
 import Protolude hiding (tryIO)
+import System.Directory
 import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBinaryMode, hSetBuffering)
 import System.IO.Unsafe
 import System.Posix
@@ -129,6 +130,8 @@ newPuppet idx chan PuppetCfg {..} = do
   pure
     ( Puppet
         { _pup_idx = idx,
+          _pup_cmd = _pc_cmd,
+          _pup_cmdArgs = _pc_cmdArgs,
           _pup_promptParser = _pc_promptParser,
           _pup_getCwdCmd = _pc_getCwdCmd,
           _pup_mkCdCmd = _pc_mkCdCmd,
@@ -174,13 +177,16 @@ restoreTtyState sttyState = do
   _ <- system ("stty " <> cs sttyState)
   pure ()
 
+ensureCmdExits :: Text -> IO ()
+ensureCmdExits cmd = do
+  findExecutable (cs cmd) >>= \case
+    Nothing -> do
+      putStrLn ("Error: can't find executable " <> show cmd :: Text)
+      exitFailure
+    Just _ -> pure ()
+
 main :: IO ()
 main = do
-  stderrToFile "log.txt"
-  openMuxLog "mux-log.txt"
-
-  muxChan <- newBTChanIO 10
-
   let defCfg =
         PuppetCfg
           { _pc_cmd = "",
@@ -202,8 +208,7 @@ main = do
           }
       shCfg =
         defCfg
-          {
-            _pc_cmd = "sh",
+          { _pc_cmd = "sh",
             _pc_cleanPromptC =
               ( \pp _ _ cont ->
                   liftP_
@@ -265,6 +270,10 @@ main = do
                     cont
               )
           }
+      errorCfg =
+        defCfg
+          { _pc_cmd = "non existing"
+          }
 
   let cfg =
         Map.fromList
@@ -272,12 +281,29 @@ main = do
             ("ranger", rangerCfg),
             ("shh", shhCfg),
             ("zsh", zshCfg),
-            ("sh", shCfg)
+            ("sh", shCfg),
+            ("error", errorCfg)
           ]
 
   args <- getArgs
   let cfg1 = fromMaybe shhCfg $ join ((`Map.lookup` cfg) <$> (args ^? ix 0))
   let cfg2 = fromMaybe zshCfg $ join ((`Map.lookup` cfg) <$> (args ^? ix 1))
+
+  -- TODO: this check doesn't save us from the situation when provided argument
+  -- cause a program startup failure. We need to test this scenario
+  traverse_
+    ensureCmdExits
+    [ "acquire_tty_wrapper",
+      "stty",
+      "xclip",
+      (_pc_cmd cfg1),
+      (_pc_cmd cfg2)
+    ]
+
+  stderrToFile "log.txt"
+  openMuxLog "mux-log.txt"
+
+  muxChan <- newBTChanIO 10
 
   (pup1, pup1st) <- newPuppet Puppet1 muxChan cfg1
   (pup2, pup2st) <- newPuppet Puppet2 muxChan cfg2

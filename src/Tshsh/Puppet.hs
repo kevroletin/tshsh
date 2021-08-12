@@ -19,6 +19,8 @@ module Tshsh.Puppet
     pp_pts,
     pp_readThread,
     pup_idx,
+    pup_cmd,
+    pup_cmdArgs,
     pup_promptParser,
     pup_getCwdCmd,
     pup_mkCdCmd,
@@ -111,6 +113,8 @@ $(makeLenses 'PuppetCfg)
 
 data Puppet = Puppet
   { _pup_idx :: PuppetIdx,
+    _pup_cmd :: Text,
+    _pup_cmdArgs :: [Text],
     _pup_promptParser :: SomeMatcher,
     _pup_getCwdCmd :: GetCwd,
     _pup_mkCdCmd :: Text -> Text,

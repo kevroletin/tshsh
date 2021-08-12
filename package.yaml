@@ -52,6 +52,7 @@ dependencies:
 - bounded-tchan
 - strict
 - ListLike
+- directory
 
 default-extensions:
 - StrictData
