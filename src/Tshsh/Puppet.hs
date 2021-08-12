@@ -95,7 +95,7 @@ data PuppetState = PuppetState
 
 $(makeLenses 'PuppetState)
 
-type PuppetAction i o = PuppetProcess -> ProgramAdaptCont' i o () CmdResultOutput ByteString IO
+type PuppetAction = PuppetProcess -> Program () CmdResultOutput ByteString IO
 
 data PuppetCfg = PuppetCfg
   { _pc_cmd :: Text,
@@ -105,8 +105,8 @@ data PuppetCfg = PuppetCfg
     _pc_mkCdCmd :: Text -> Text,
     _pc_switchEnterHook :: IO (),
     _pc_switchExitHook :: IO (),
-    _pc_cleanPromptC :: forall pi po. PuppetAction pi po,
-    _pc_restoreTuiC :: forall pi po. PuppetAction pi po
+    _pc_cleanPromptC :: PuppetAction,
+    _pc_restoreTuiC :: PuppetAction
   }
 
 $(makeLenses 'PuppetCfg)
@@ -125,10 +125,10 @@ data Puppet = Puppet
     -- + remove partially entered command
     -- + cause a shell to output a prompt
     -- + wait for a prompt
-    _pup_cleanPromptC :: forall pi po. PuppetAction pi po,
+    _pup_cleanPromptC :: PuppetAction,
     -- + force a tui app to redraw it's interface
     -- + wait until it's done
-    _pup_restoreTuiC :: forall pi po. PuppetAction pi po
+    _pup_restoreTuiC :: PuppetAction
   }
 
 $(makeLenses 'Puppet)

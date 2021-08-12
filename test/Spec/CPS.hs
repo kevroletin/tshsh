@@ -137,3 +137,23 @@ spec = do
               [1 ..]
               (([], 0) :!: p)
     out `shouldBe` [6, 15, 24, 33, 42, 51, 60, 69, 78, 87]
+
+  let echo = WaitInput $ \i -> Output i finishP
+
+  it "(andThen a b) terminates" $ do
+    let p = AndThen echo echo
+
+    let (out, _) = rid (accumProgram @() @Int @Int [1, 2, 3 :: Int] (() :!: p))
+    out `shouldBe` [1, 2]
+
+  it "andThen (andThen a b) c terminates" $ do
+    let p = AndThen (AndThen echo echo) echo
+
+    let (out, _) = rid (accumProgram @() @Int @Int [1, 2, 3 :: Int] (() :!: p))
+    out `shouldBe` [1, 2, 3]
+
+  it "andThen a (andThen a c) terminates" $ do
+    let p = AndThen echo (AndThen echo echo)
+
+    let (out, _) = rid (accumProgram @() @Int @Int [1, 2, 3 :: Int] (() :!: p))
+    out `shouldBe` [1, 2, 3]

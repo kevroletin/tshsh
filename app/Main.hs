@@ -197,26 +197,29 @@ main = do
             _pc_switchEnterHook = pure (),
             _pc_switchExitHook = pure (),
             _pc_cleanPromptC =
-              ( \pp _ _ cont ->
+              ( \pp ->
                   liftP_ (BS.hPut (_pp_inputH pp) "\ETX") $ -- Ctrl-C
-                    WaitInput $ \_ -> cont
+                  waitInputP_
+                  finishP
               ),
             _pc_restoreTuiC =
-              ( \pp _ _ ->
-                  liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f")
+              ( \pp ->
+                  liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f") $
+                  finishP
               )
           }
       shCfg =
         defCfg
           { _pc_cmd = "sh",
             _pc_cleanPromptC =
-              ( \pp _ _ cont ->
+              ( \pp ->
                   liftP_
                     ( do
                         BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
                         BS.hPut (_pp_inputH pp) "\n"
-                    )
-                    $ WaitInput $ \_ -> cont
+                    ) $
+                  waitInputP_
+                  finishP
               )
           }
       pythonCfg =
@@ -225,13 +228,14 @@ main = do
             _pc_promptParser = mkSeqMatcher ">>> ",
             _pc_mkCdCmd = (\dir -> "import os; os.chdir('" <> dir <> "')"),
             _pc_cleanPromptC =
-              ( \pp _ _ cont ->
+              ( \ pp ->
                   liftP_
                     ( do
                         BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
                         BS.hPut (_pp_inputH pp) "\n"
-                    )
-                    $ WaitInput $ \_ -> cont
+                    ) $
+                  waitInputP_
+                  finishP
               )
           }
       shhCfg =
@@ -256,18 +260,18 @@ main = do
             _pc_getCwdCmd = GetCwdFromProcess,
             -- TODO: need a program here
             _pc_mkCdCmd = (\_ -> ""),
-            _pc_cleanPromptC = (\_ _ _ cont -> cont),
+            _pc_cleanPromptC = \_ -> Finish (Right ()),
             _pc_switchEnterHook = pure (),
             _pc_switchExitHook = pure (),
             _pc_restoreTuiC =
-              ( \pp _ _ cont ->
+              ( \pp ->
                   liftP_
                     ( do
                         BS.hPut (_pp_inputH pp) "\ESC"
                         BS.hPut (_pp_inputH pp) "\f"
                         BS.hPut (_pp_inputH pp) "\f"
-                    )
-                    cont
+                    ) $
+                  Finish (Right ())
               )
           }
       errorCfg =

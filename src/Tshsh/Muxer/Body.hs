@@ -317,10 +317,13 @@ switchPuppets env st0 = do
 
   let copyPrevCmdC = liftP_ (copyToXClipboard . stripCmdOut $ _ps_prevCmdOut fromSt)
       selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
-      adapt p idx = p (selectInp toIdx) (toIdx,)
-      clearPromptToC =
-        _pup_cleanPromptC toPup toProc (selectInp fromIdx) (fromIdx,)
-      restoreTuiC = _pup_restoreTuiC toPup toProc `adapt` toIdx
+      adapt idx p = Adapter (selectInp idx) (idx,) p
+      clearPromptToC = AndThen (adapt toIdx $ _pup_cleanPromptC toPup toProc)
+      restoreTuiC = AndThen (adapt toIdx $ _pup_restoreTuiC toPup toProc)
+
+  hPrint stderr "== DEBUG =="
+  hPrint stderr (_ps_mode fromSt, _ps_mode toSt)
+  hPrint stderr startedNewProc
 
   {- ORMOLU_DISABLE -}
   let mSyncCwdC =
@@ -329,32 +332,39 @@ switchPuppets env st0 = do
           Just fromProc ->
             Just
               ( \cont ->
-                  _pup_cleanPromptC fromPup fromProc `adapt` fromIdx $
+                  AndThen (adapt fromIdx $ _pup_cleanPromptC fromPup fromProc) $
                   syncCwdC (_pp_pid toProc :!: _pp_pid fromProc) env toIdx $
                   cont
               )
       program =
-        case (_ps_mode fromSt, _ps_mode toSt) of
-          (_, PuppetModeTUI) ->
-            unlessP startedNewProc restoreTuiC $
-              copyPrevCmdC
-              finishP
-          (fromMode, PuppetModeRepl) ->
-            whenP (fromMode == PuppetModeTUI)
-              ( liftP_ -- clear tui interface
-                  ( do
-                      BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
-                      showCursor
-                  )
-              ) $
-            -- clear the current line and until the end of screen
-            liftP_ (do _pup_switchExitHook toPup
-                       _pup_switchEnterHook toPup
-                       BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
-            unlessP startedNewProc clearPromptToC $
-            whenJustP mSyncCwdC $
-            copyPrevCmdC
-            finishP
+        liftP_
+          ( do hPutStrLn stderr "~ Switch puppets program started"
+               _pup_switchExitHook toPup
+               _pup_switchEnterHook toPup
+           ) $
+        ( \cont ->
+            case (_ps_mode fromSt, _ps_mode toSt) of
+              (_, PuppetModeTUI) ->
+                unlessP startedNewProc restoreTuiC
+                cont
+              (fromMode, PuppetModeRepl) ->
+                whenP (fromMode == PuppetModeTUI)
+                  ( liftP_ -- clear tui interface
+                      ( do
+                          BS.hPut stdout "\ESC[J\ESC[2K\ESC[A"
+                          BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor to (0,0) clearScreen
+                          showCursor
+                      )
+                  ) $
+                -- clear the current line and until the end of screen
+                liftP_ (BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
+                unlessP startedNewProc clearPromptToC $
+                whenJustP mSyncCwdC
+                cont
+          ) $
+        copyPrevCmdC $
+        liftP_ (hPutStrLn stderr "~ Switch puppets program finished")
+        finishP
   {- ORMOLU_ENABLE -}
   Just <$> runMuxPrograms (newSt & mst_syncCwdP ?~ program) toIdx Nothing
 

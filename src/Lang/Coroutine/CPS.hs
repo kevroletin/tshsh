@@ -1,17 +1,45 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- An implementation of coroutines. It's features are:
--- + simple implementation under 100loc
 -- + interprets to a monadic value, provides Lift operation
 -- + built-in state
+-- + two ways of composition:
+--   + continuation passing style
+--   + using `AndThen` construction
+--
+-- Although we provide AndThen combinator, and it should be quite fast, in
+-- many cases it can be replaces with CPS style of programming. One area
+-- where CPS fails is composing programs with different state/input/output
+-- types. In this case one can use Adapter, AdapterSt and AndThen.
+--
+-- We've optimized AndThen so that both constructing programs (similar to
+-- monodic >>=) and evaluating a single node should have O(1) amortized
+-- complexity (worst case is O(n), but consecutive calls will be O(1)).
+--
+-- While evaluating a program we rotate nested `andThen` like this:
+--
+-- (3)    b->c                   a->b
+--       /    \                 /   \
+-- (2) a->b    c    into       a    b->c
+--     /  \                         / \
+-- (1)a    b                       b   c
+--
+-- This improves complexity of evaluating a program into a coroutine.
+-- Coroutine interpreter evaluates one node at a time and returns the rest
+-- of program tree intact. We always evaluate leftmost leave; evaluating one
+-- node rebuilds all the nodes on the path to the root. In the example above if
+-- (1) yields then interpreter will rebuild (2) and (3). This leads to O(d^2)
+-- complexity where d is depth of an evaluated node.
+--
+-- Doing transformation above can be viewed as using a zipper to focus on the
+-- currently evaluated node.
 module Lang.Coroutine.CPS
   ( Program (..),
     ProgramSt,
     ProgramCont,
-    ProgramAdaptCont,
     ProgramCont',
-    ProgramAdaptCont',
     ContResOut (..),
     _ContOut,
     _ResOut,
@@ -23,6 +51,7 @@ module Lang.Coroutine.CPS
     unlessP,
     liftP_,
     finishP,
+    waitInputP_,
   )
 where
 
@@ -50,16 +79,15 @@ data Program st i o m where
   -- currently outputting program in focus (similarly to what we did
   -- with AndThen
   Pipe :: Program st i o' m -> Program st o' o m -> Program st i o m
+  AdapterSt :: Lens' st st' -> (i -> Maybe i') -> (o' -> o) -> Program st' i' o' m -> Program st i o m
+  Adapter :: (i -> Maybe i') -> (o' -> o) -> Program st i' o' m -> Program st i o m
+  AndThen :: Program st i o m -> Program st i o m -> Program st i o m
 
 type ProgramSt st i o m = Pair st (Program st i o m)
 
 type ProgramCont st i o m s = (s -> Program st i o m) -> Program st i o m
 
-type ProgramAdaptCont pi po st i o m s = (pi -> Maybe i) -> (o -> po) -> ProgramCont () pi po m s
-
 type ProgramCont' st i o m = Program st i o m -> Program st i o m
-
-type ProgramAdaptCont' pi po st i o m = (pi -> Maybe i) -> (o -> po) -> ProgramCont' () pi po m
 
 data ContResOut st i o m
   = ContOut (Maybe o) (Pair st (Program st i o m))
@@ -73,7 +101,6 @@ data ContRes st i o m
 
 $(makePrisms 'Res)
 
--- TODO: fix this show instance
 instance (Show o) => Show (Program st i o m) where
   show (Lift _ _) = "Lift"
   show (GetState _) = "GetState"
@@ -83,6 +110,9 @@ instance (Show o) => Show (Program st i o m) where
   show (Output o _) = "Output " <> Protolude.show o
   show (Finish _) = "Finish"
   show (Pipe _ _) = "Pipe"
+  show Adapter {} = "Adapter"
+  show AdapterSt {} = "AdapterSt"
+  show AndThen {} = "AndThen"
 
 deriving instance (Show st, Show i, Show o) => Show (ContResOut st i o m)
 
@@ -125,6 +155,23 @@ step mi (st0 :!: Pipe p1_ p2_) =
           feedP2 st0 p1_ p2_ Nothing
         Just i ->
           feedP1 st0 p1_ p2_ (Just i)
+step mi (st :!: Adapter proj inj p) =
+  step (proj =<< mi) (st :!: p) >>= \case
+    ContOut o (newSt :!: newP) ->
+      pure $ ContOut (inj <$> o) (newSt :!: Adapter proj inj newP)
+    ResOut res -> pure $ ResOut res
+step mi (st :!: AdapterSt stLens proj inj p) =
+  step (proj =<< mi) (st ^. stLens :!: p) >>= \case
+    ContOut o (newSt :!: newP) ->
+      pure $ ContOut (inj <$> o) ((st & stLens .~ newSt) :!: AdapterSt stLens proj inj newP)
+    ResOut (newSt :!: res) ->
+      pure $ ResOut ((st & stLens .~ newSt) :!: res)
+step i (st :!: AndThen (AndThen a b) c) = step i (st :!: AndThen a (AndThen b c))
+step i (st :!: AndThen p1 p2) =
+  step i (st :!: p1) >>= \case
+    ContOut o (newSt :!: newP1) -> pure $ ContOut o (newSt :!: AndThen newP1 p2)
+    ResOut (newSt :!: Left err) -> pure $ ResOut (newSt :!: Left err)
+    ResOut (newSt :!: Right ()) -> step Nothing (newSt :!: p2)
 
 whenP :: Bool -> (a -> a) -> a -> a
 whenP False _ cont = cont
@@ -137,9 +184,13 @@ unlessP False act cont = act cont
 {-# INLINE unlessP #-}
 
 liftP_ :: m a -> Program st i o m -> Program st i o m
-liftP_ act cont = Lift act $ \_ -> cont
+liftP_ act cont = Lift act $ const cont
 {-# INLINE liftP_ #-}
 
 finishP :: Program st i o m
 finishP = Finish (Right ())
 {-# INLINE finishP #-}
+
+waitInputP_ :: ProgramCont' st i o m
+waitInputP_ cont = WaitInput $ \_ -> cont
+{-# INLINE waitInputP_ #-}
