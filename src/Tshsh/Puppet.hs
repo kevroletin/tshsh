@@ -7,6 +7,8 @@ module Tshsh.Puppet
     pc_promptParser,
     pc_getCwdCmd,
     pc_mkCdCmd,
+    pc_switchEnterHook,
+    pc_switchExitHook,
     pc_cleanPromptC,
     pc_restoreTuiC,
     Puppet (..),
@@ -22,6 +24,8 @@ module Tshsh.Puppet
     pup_mkCdCmd,
     pup_startProcess,
     pup_initState,
+    pup_switchEnterHook,
+    pup_switchExitHook,
     pup_cleanPromptC,
     pup_restoreTuiC,
     PuppetState (..),
@@ -97,6 +101,8 @@ data PuppetCfg = PuppetCfg
     _pc_promptParser :: SomeMatcher,
     _pc_getCwdCmd :: GetCwd,
     _pc_mkCdCmd :: Text -> Text,
+    _pc_switchEnterHook :: IO (),
+    _pc_switchExitHook :: IO (),
     _pc_cleanPromptC :: forall pi po. PuppetAction pi po,
     _pc_restoreTuiC :: forall pi po. PuppetAction pi po
   }
@@ -110,7 +116,14 @@ data Puppet = Puppet
     _pup_mkCdCmd :: Text -> Text,
     _pup_startProcess :: IO PuppetProcess,
     _pup_initState :: PuppetState,
+    _pup_switchEnterHook :: IO (),
+    _pup_switchExitHook :: IO (),
+    -- + remove partially entered command
+    -- + cause a shell to output a prompt
+    -- + wait for a prompt
     _pup_cleanPromptC :: forall pi po. PuppetAction pi po,
+    -- + force a tui app to redraw it's interface
+    -- + wait until it's done
     _pup_restoreTuiC :: forall pi po. PuppetAction pi po
   }
 

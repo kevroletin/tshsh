@@ -13,6 +13,7 @@ import Control.Monad
 import Data.BufferSlice (BufferSlice (..))
 import qualified Data.BufferSlice as BufferSlice
 import qualified Data.ByteString as BS
+import Data.Map as Map
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text.IO as T
@@ -133,6 +134,8 @@ newPuppet idx chan PuppetCfg {..} = do
           _pup_mkCdCmd = _pc_mkCdCmd,
           _pup_startProcess = startProcess,
           _pup_initState = puppetState,
+          _pup_switchEnterHook = _pc_switchEnterHook,
+          _pup_switchExitHook = _pc_switchExitHook,
           _pup_cleanPromptC = _pc_cleanPromptC,
           _pup_restoreTuiC = _pc_restoreTuiC
         },
@@ -185,20 +188,20 @@ main = do
             _pc_promptParser = mkSeqMatcher ">>> ",
             _pc_getCwdCmd = GetCwdFromProcess,
             _pc_mkCdCmd = (\dir -> "import os; os.chdir('" <> dir <> "')"),
+            _pc_switchEnterHook = pure (),
+            _pc_switchExitHook = pure (),
             _pc_cleanPromptC =
               ( \pp _ _ cont ->
                   liftP_
                     ( do
-                        BS.hPut stdout "\ESC[2K\ESC[A" -- erase the current line, go up
                         BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
                         BS.hPut (_pp_inputH pp) "\n"
                     )
-                    cont
+                    $ WaitInput $ \_ -> cont
               ),
             _pc_restoreTuiC =
-              ( \pp _ _ cont ->
+              ( \pp _ _ ->
                   liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f")
-                  cont
               )
           }
       _shhCfg =
@@ -208,20 +211,16 @@ main = do
             _pc_promptParser = mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ",
             _pc_getCwdCmd = GetCwdCommand "pwd",
             _pc_mkCdCmd = (\dir -> "cd \"" <> dir <> "\""),
+            _pc_switchEnterHook = BS.hPut stdout "\x1b[?2004l", -- disable bracket paste mode
+            _pc_switchExitHook = pure (),
             _pc_cleanPromptC =
               ( \pp _ _ cont ->
-                  liftP_
-                    ( do
-                        BS.hPut stdout "\x1b[?2004l"   -- disable bracket paste mode
-                        BS.hPut stdout "\ESC[2K\ESC[A" -- erase the current line, go up
-                        signalProcess keyboardSignal (_pp_pid pp)
-                    )
-                    cont
+                  liftP_ (BS.hPut (_pp_inputH pp) "\ETX") $ -- Ctrl-C
+                    WaitInput $ \_ -> cont
               ),
             _pc_restoreTuiC =
-              ( \pp _ _ cont ->
+              ( \pp _ _ ->
                   liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f")
-                  cont
               )
           }
       _zshCfg =
@@ -231,19 +230,15 @@ main = do
             _pc_promptParser = mkSeqMatcher "\ESC[K\ESC[?2004h",
             _pc_getCwdCmd = GetCwdFromProcess,
             _pc_mkCdCmd = (\dir -> " cd '" <> dir <> "'"),
+            _pc_switchEnterHook = pure (),
+            _pc_switchExitHook = pure (),
             _pc_cleanPromptC =
-              ( \pp _ _ cont ->
-                  liftP_
-                    ( do
-                        BS.hPut stdout "\ESC[2K\ESC[A" -- erase the current line, go up
-                        signalProcess keyboardSignal (_pp_pid pp)
-                    )
-                    cont
+              ( \pp _ _ ->
+                  liftP_ (BS.hPut (_pp_inputH pp) "\ETX") -- Ctrl-C
               ),
             _pc_restoreTuiC =
-              ( \pp _ _ cont ->
+              ( \pp _ _ ->
                   liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f")
-                  cont
               )
           }
       _rangerCfg =
@@ -255,20 +250,35 @@ main = do
             _pc_getCwdCmd = GetCwdFromProcess,
             -- TODO: need a program here
             _pc_mkCdCmd = (\_ -> ""),
-            _pc_cleanPromptC = ( \_ _ _ cont -> cont),
+            _pc_cleanPromptC = (\_ _ _ cont -> cont),
+            _pc_switchEnterHook = pure (),
+            _pc_switchExitHook = pure (),
             _pc_restoreTuiC =
               ( \pp _ _ cont ->
                   liftP_
-                  ( do BS.hPut (_pp_inputH pp) "\ESC"
-                       BS.hPut (_pp_inputH pp) "\f"
-                       BS.hPut (_pp_inputH pp) "\f"
-                   )
-                  cont
+                    ( do
+                        BS.hPut (_pp_inputH pp) "\ESC"
+                        BS.hPut (_pp_inputH pp) "\f"
+                        BS.hPut (_pp_inputH pp) "\f"
+                    )
+                    cont
               )
           }
 
-  (pup1, pup1st) <- newPuppet Puppet1 muxChan _pythonCfg
-  (pup2, pup2st) <- newPuppet Puppet2 muxChan _zshCfg
+  let cfg =
+        Map.fromList
+          [ ("python", _pythonCfg),
+            ("ranger", _rangerCfg),
+            ("shh", _shhCfg),
+            ("zsh", _zshCfg)
+          ]
+
+  args <- getArgs
+  let cfg1 = fromMaybe _shhCfg $ join ((`Map.lookup` cfg) <$> (args ^? ix 0))
+  let cfg2 = fromMaybe _zshCfg $ join ((`Map.lookup` cfg) <$> (args ^? ix 1))
+
+  (pup1, pup1st) <- newPuppet Puppet1 muxChan cfg1
+  (pup2, pup2st) <- newPuppet Puppet2 muxChan cfg2
 
   origTtyState <- saveTtyState
   _ <- system "stty raw -echo isig susp ^Z intr '' eof '' quit '' erase '' kill '' eol '' eol2 '' swtch '' start '' stop '' rprnt '' werase '' lnext '' discard ''"

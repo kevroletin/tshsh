@@ -301,10 +301,11 @@ whenJustP (Just act) cont = act cont
 
 switchPuppets :: MuxEnv -> MuxState -> IO (Maybe MuxState)
 switchPuppets env st0 = do
-  let newIdx = nextPuppet (st0 ^. mst_currentPuppetIdx)
-  let st = st0 {_mst_currentPuppetIdx = newIdx}
+  let fromIdx = st0 ^. mst_currentPuppetIdx
+  let toIdx = nextPuppet (st0 ^. mst_currentPuppetIdx)
+  let st = st0 {_mst_currentPuppetIdx = toIdx}
   let (toSt :!: fromSt) = st ^. mst_sortedPuppets
-  let (toPup :!: _) = env ^. menv_sortedPuppets st
+  let (toPup :!: fromPup) = env ^. menv_sortedPuppets st
 
   (toProc, startedNewProc, newSt) <-
     case _ps_process toSt of
@@ -314,36 +315,48 @@ switchPuppets env st0 = do
         pid <- _pup_startProcess toPup
         pure (pid, True, st & mst_currentPuppet . ps_process .~ Just pid)
 
-  let waitPrompt cont = WaitInput $ \_ -> cont
-      copyPrevCmdC = liftP_ (copyToXClipboard . stripCmdOut $ _ps_prevCmdOut fromSt)
-      mSyncCwdC =
+  let copyPrevCmdC = liftP_ (copyToXClipboard . stripCmdOut $ _ps_prevCmdOut fromSt)
+      selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
+      adapt p idx = p (selectInp toIdx) (toIdx,)
+      clearPromptToC =
+        _pup_cleanPromptC toPup toProc (selectInp fromIdx) (fromIdx,)
+      restoreTuiC = _pup_restoreTuiC toPup toProc `adapt` toIdx
+
+  {- ORMOLU_DISABLE -}
+  let mSyncCwdC =
         case _ps_process fromSt of
           Nothing -> Nothing
-          Just fromPid -> Just (syncCwdC (_pp_pid toProc :!: _pp_pid fromPid) env newIdx)
-      selectInp (idx, x) = if idx == newIdx then Just x else Nothing
-      clearPromptC = _pup_cleanPromptC toPup toProc selectInp (newIdx,)
-      restoreTuiC = _pup_restoreTuiC toPup toProc selectInp (newIdx,)
-      {- ORMOLU_DISABLE -}
+          Just fromProc ->
+            Just
+              ( \cont ->
+                  _pup_cleanPromptC fromPup fromProc `adapt` fromIdx $
+                  syncCwdC (_pp_pid toProc :!: _pp_pid fromProc) env toIdx $
+                  cont
+              )
       program =
         case (_ps_mode fromSt, _ps_mode toSt) of
           (_, PuppetModeTUI) ->
             unlessP startedNewProc restoreTuiC $
-            copyPrevCmdC
-            finishP
+              copyPrevCmdC
+              finishP
           (fromMode, PuppetModeRepl) ->
             whenP (fromMode == PuppetModeTUI)
-              ( liftP_                              -- clear tui interface
-                ( do BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
-                     showCursor
-                 )
+              ( liftP_ -- clear tui interface
+                  ( do
+                      BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor toSt (0,0) clearScreen
+                      showCursor
+                  )
               ) $
-            unlessP startedNewProc clearPromptC $
-            waitPrompt $
+            -- clear the current line and until the end of screen
+            liftP_ (do _pup_switchExitHook toPup
+                       _pup_switchEnterHook toPup
+                       BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
+            unlessP startedNewProc clearPromptToC $
             whenJustP mSyncCwdC $
             copyPrevCmdC
             finishP
-      {- ORMOLU_ENABLE -}
-  Just <$> runMuxPrograms (newSt & mst_syncCwdP ?~ program) newIdx Nothing
+  {- ORMOLU_ENABLE -}
+  Just <$> runMuxPrograms (newSt & mst_syncCwdP ?~ program) toIdx Nothing
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
 muxBody _env st (TermInput (BufferSlice _ buf size)) = do
