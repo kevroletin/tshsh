@@ -26,13 +26,17 @@ copy-paste between two shells `¯\_(ツ)_/¯`.
 ## Features
 
 Here is one of the demos to demonstrate: 
-* switching between `python` and `zsh` by pressing Ctrl-z;
+* switching between `python` and `sh` by pressing Ctrl-z;
+* automatic synchronization of a working directory
 * copying of a previous command output to clipboard;
 
-We execute an expressions in a `python` repl, switch to `zsh` and the result of
-evaluating a python expression is now available from a clipboard:
+First, we switch between `python` and `sh` by pressing Ctrl-z. Then we change
+directory and discover that after switching `tshsh` evaluates `cd` command to
+synchronize the current working directory. Then we evaluate "1+2" in python, switch
+to `sh` and discover that the clipboard contains the result of the last
+expression evaluated in `python`:
 
-![Clipboard](./assets/demo_copy_out.svg?raw=true "Title")
+![Demo](./assets/main_page_demo.svg?raw=true "Demo")
 
 For more details see [Features](./doc/features.md) and [Roadmap](./doc/features.md).
 
