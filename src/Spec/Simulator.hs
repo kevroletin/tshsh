@@ -63,14 +63,14 @@ accumUntillPrompt shell cont = loop []
         Prompt -> cont (T.concat . reverse $ res)
         TextInput x -> loop (x : res)
 
-expect :: Shell -> Text -> ProgramCont' st (Shell, Input) m o
+expect :: Shell -> Text -> ProgramCont_ st (Shell, Input) m o
 expect shell exp cont =
   accumUntillPrompt shell $ \str ->
     if stripAnsiEscapes str == exp
       then cont
       else Finish . Left $ "expectation failed: " <> str <> " /= " <> exp
 
-runCmdNoOut :: Shell -> Text -> ProgramCont' st (Shell, Input) (Shell, Text) m
+runCmdNoOut :: Shell -> Text -> ProgramCont_ st (Shell, Input) (Shell, Text) m
 runCmdNoOut shell cmd cont =
   Output (shell, cmd) $
     expect shell (cmd) cont
@@ -87,13 +87,13 @@ runCmd shell cmd cont =
                 then (cont (T.drop 1 b))
                 else Finish . Left $ ("expectation failed: " <> a <> "\n /= " <> cmd)
 
-setEnv :: Shell -> [(Text, Text)] -> ProgramCont' st (Shell, Input) (Shell, Text) m
+setEnv :: Shell -> [(Text, Text)] -> ProgramCont_ st (Shell, Input) (Shell, Text) m
 setEnv _ [] cont = cont
 setEnv shell ((a, b) : es) cont =
   runCmdNoOut shell ("export " <> a <> "=" <> b <> "\n") $
     setEnv shell es cont
 
-setCwd :: Shell -> Text -> ProgramCont' st (Shell, Input) (Shell, Text) m
+setCwd :: Shell -> Text -> ProgramCont_ st (Shell, Input) (Shell, Text) m
 setCwd shell cwd cont =
   runCmdNoOut shell ("cd '" <> cwd <> "'\n") cont
 

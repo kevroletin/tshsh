@@ -9,8 +9,12 @@
 --   + continuation passing style
 --   + using `AndThen` construction
 --
--- Although we provide AndThen combinator, and it should be quite fast, in
--- many cases it can be replaces with CPS style of programming. One area
+-- Unlike conventional Monad-based composition, Program doesn't return a value
+-- so 'm a -> (a -> m b) -> m b' style of composition can be achieved using CPS
+-- style composition.
+--
+-- Although we provide AndThen combinator, and it should be quite fast, in many
+-- cases it can be replaces with CPS style of programming. However, one area
 -- where CPS fails is composing programs with different state/input/output
 -- types. In this case one can use Adapter, AdapterSt and AndThen.
 --
@@ -39,7 +43,7 @@ module Lang.Coroutine.CPS
   ( Program (..),
     ProgramSt,
     ProgramCont,
-    ProgramCont',
+    ProgramCont_,
     ContResOut (..),
     _ContOut,
     _ResOut,
@@ -47,11 +51,11 @@ module Lang.Coroutine.CPS
     _Cont,
     _Res,
     step,
-    whenP,
-    unlessP,
+    whenC,
+    unlessC,
     liftP_,
     finishP,
-    waitInputP_,
+    waitInputC_,
   )
 where
 
@@ -87,7 +91,7 @@ type ProgramSt st i o m = Pair st (Program st i o m)
 
 type ProgramCont st i o m s = (s -> Program st i o m) -> Program st i o m
 
-type ProgramCont' st i o m = Program st i o m -> Program st i o m
+type ProgramCont_ st i o m = Program st i o m -> Program st i o m
 
 data ContResOut st i o m
   = ContOut (Maybe o) (Pair st (Program st i o m))
@@ -173,15 +177,15 @@ step i (st :!: AndThen p1 p2) =
     ResOut (newSt :!: Left err) -> pure $ ResOut (newSt :!: Left err)
     ResOut (newSt :!: Right ()) -> step Nothing (newSt :!: p2)
 
-whenP :: Bool -> (a -> a) -> a -> a
-whenP False _ cont = cont
-whenP True act cont = act cont
-{-# INLINE whenP #-}
+whenC :: Bool -> (a -> a) -> a -> a
+whenC False _ cont = cont
+whenC True act cont = act cont
+{-# INLINE whenC #-}
 
-unlessP :: Bool -> (a -> a) -> a -> a
-unlessP True _ cont = cont
-unlessP False act cont = act cont
-{-# INLINE unlessP #-}
+unlessC :: Bool -> (a -> a) -> a -> a
+unlessC True _ cont = cont
+unlessC False act cont = act cont
+{-# INLINE unlessC #-}
 
 liftP_ :: m a -> Program st i o m -> Program st i o m
 liftP_ act cont = Lift act $ const cont
@@ -191,6 +195,6 @@ finishP :: Program st i o m
 finishP = Finish (Right ())
 {-# INLINE finishP #-}
 
-waitInputP_ :: ProgramCont' st i o m
-waitInputP_ cont = WaitInput $ \_ -> cont
-{-# INLINE waitInputP_ #-}
+waitInputC_ :: ProgramCont_ st i o m
+waitInputC_ cont = WaitInput $ \_ -> cont
+{-# INLINE waitInputC_ #-}

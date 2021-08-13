@@ -1,58 +1,47 @@
 name:                tshsh
-version:             0.1.0.0
-github:              "githubuser/tshsh"
+version:             0.0.0.0
+github:              "kevroletin/tshsh"
 license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2021 Author name here"
+author:              "Vasiliy Kevroletin"
+maintainer:          "kevroletin@gmail.com"
+copyright:           "2021 Vasiliy Kevroletin"
 
 extra-source-files:
 - README.md
-- ChangeLog.md
 
-# Metadata used when publishing your package
-# synopsis:            Short description of your package
-# category:            Web
+synopsis:            A terminal multiplexer that allows switching between two interactive shells.
+                     It doesn't render the tui interface but instead passes all the data from
+                     shells to the "real" terminal. It parses shell output to determine the
+                     boundaries between shell commands and uses it to synchronize some states
+                     between shells.
 
-# To avoid duplicated efforts in documentation and dealing with the
-# complications of embedding Haddock markup inside cabal files, it is
-# common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/tshsh#readme>
+category:            program, terminal
+
+description:         Please see the README on GitHub at <https://github.com/kevroletin/tshsh#readme>
 
 dependencies:
 - base >= 4.7 && < 5
-- text
-- bytestring
-- unix
-- protolude
-- process
-- safe-exceptions
-- terminal-size
-- attoparsec
-- stm
-- string-conversions
-- containers
-
-- shh
-- shh-extras
-- lens
-- lens-regex-pcre
-- pretty-simple
-- lens-aeson
-- raw-strings-qq
-- ansi-terminal
-
-- array
-- random
-- mtl
-- hspec-expectations-lens
-- profunctors
-- gauge
-- strip-ansi-escape
-- bounded-tchan
-- strict
 - ListLike
+- ansi-terminal
+- array
+- bounded-tchan
+- bytestring
+- containers
 - directory
+- gauge
+- hspec-expectations-lens
+- lens
+- mtl
+- process
+- protolude
+- safe-exceptions
+- stm
+- strict
+- string-conversions
+- strip-ansi-escape
+- terminal-size
+- text
+- unix
 
 default-extensions:
 - StrictData

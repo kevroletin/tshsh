@@ -1,4 +1,4 @@
-module Tshsh.Program.SyncCwd where
+module Tshsh.Muxer.SyncCwd where
 
 import Control.Lens
 import qualified Data.ByteString as BS
@@ -15,7 +15,7 @@ import Tshsh.Commands
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
 
-type In = (PuppetIdx, CmdResultOutput)
+type In = (PuppetIdx, StrippedCmdResult)
 
 type Out = (PuppetIdx, BS.ByteString)
 
@@ -30,7 +30,7 @@ runCmd idx cmd cont =
   Output (idx, cmd <> "\n") $
     let loop = WaitInput $ \(inIdx, str) ->
           if inIdx == idx
-            then cont (unCmdResultOutput str)
+            then cont (unStrippedCmdResult str)
             else loop
      in loop
 
@@ -39,7 +39,7 @@ getProcessCwd pid =
   C8.strip . C8.pack <$> readProcess "readlink" ["/proc/" <> show pid <> "/cwd"] []
 
 -- TODO: too many cs conversions
-syncCwdC :: Pair ProcessID ProcessID -> MuxEnv -> PuppetIdx -> ProgramCont' () In Out IO
+syncCwdC :: Pair ProcessID ProcessID -> MuxEnv -> PuppetIdx -> ProgramCont_ () In Out IO
 syncCwdC (currPid :!: prevPid) env idx cont0 =
   let prevIdx = nextPuppet idx
       (currP :!: prevP) = env ^. menv_puppets . sortPup idx

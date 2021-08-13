@@ -1,7 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE StrictData #-}
-
 module Main where
 
 import Control.Concurrent
@@ -12,8 +8,6 @@ import Control.Lens
 import Control.Monad
 import Data.BufferSlice (BufferSlice (..))
 import qualified Data.BufferSlice as BufferSlice
-import qualified Data.ByteString as BS
-import Data.Map as Map
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text.IO as T
@@ -21,6 +15,7 @@ import Foreign
 import Lang.Coroutine.CPS
 import Matcher.ByteString
 import Protolude hiding (tryIO)
+import ShellConfig
 import System.Directory
 import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBinaryMode, hSetBuffering)
 import System.IO.Unsafe
@@ -29,6 +24,7 @@ import System.Posix.Signals.Exts
 import System.Process
 import Tshsh.Commands
 import Tshsh.Muxer
+import Tshsh.Muxer.ShellOutputParser
 import Tshsh.Puppet
 import Prelude (String)
 
@@ -119,12 +115,12 @@ newPuppet idx chan PuppetCfg {..} = do
   let puppetState =
         PuppetState
           { _ps_idx = idx,
-            _ps_parser = _pc_promptParser,
-            _ps_clrScrParser = clrScrParser,
+            _ps_promptMatcher = _pc_promptMatcher,
+            _ps_clrScrMatcher = clrScrParser,
             _ps_mode = PuppetModeRepl,
-            _ps_currCmdOut = BufferSlice.listEmpty,
-            _ps_prevCmdOut = BufferSlice.listEmpty,
-            _ps_cmdOutP = raceMatchersP `Pipe` accumCmdOutP,
+            _ps_currCmdOut = RawCmdResult BufferSlice.listEmpty,
+            _ps_prevCmdOut = RawCmdResult BufferSlice.listEmpty,
+            _ps_outputParser = raceMatchersP `Pipe` accumCmdOutP,
             _ps_process = Nothing
           }
   pure
@@ -132,15 +128,15 @@ newPuppet idx chan PuppetCfg {..} = do
         { _pup_idx = idx,
           _pup_cmd = _pc_cmd,
           _pup_cmdArgs = _pc_cmdArgs,
-          _pup_promptParser = _pc_promptParser,
+          _pup_promptMatcher = _pc_promptMatcher,
           _pup_getCwdCmd = _pc_getCwdCmd,
           _pup_mkCdCmd = _pc_mkCdCmd,
           _pup_startProcess = startProcess,
           _pup_initState = puppetState,
           _pup_switchEnterHook = _pc_switchEnterHook,
           _pup_switchExitHook = _pc_switchExitHook,
-          _pup_cleanPromptC = _pc_cleanPromptC,
-          _pup_restoreTuiC = _pc_restoreTuiC
+          _pup_cleanPromptP = _pc_cleanPromptP,
+          _pup_restoreTuiP = _pc_restoreTuiP
         },
       puppetState
     )
@@ -187,111 +183,9 @@ ensureCmdExits cmd = do
 
 main :: IO ()
 main = do
-  let defCfg =
-        PuppetCfg
-          { _pc_cmd = "",
-            _pc_cmdArgs = [],
-            _pc_promptParser = mkBracketMatcher "sh-" "$ ",
-            _pc_getCwdCmd = GetCwdFromProcess,
-            _pc_mkCdCmd = (\dir -> "cd '" <> dir <> "'"),
-            _pc_switchEnterHook = pure (),
-            _pc_switchExitHook = pure (),
-            _pc_cleanPromptC =
-              ( \pp ->
-                  liftP_ (BS.hPut (_pp_inputH pp) "\ETX") $ -- Ctrl-C
-                  waitInputP_
-                  finishP
-              ),
-            _pc_restoreTuiC =
-              ( \pp ->
-                  liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f") $
-                  finishP
-              )
-          }
-      shCfg =
-        defCfg
-          { _pc_cmd = "sh",
-            _pc_cleanPromptC =
-              ( \pp ->
-                  liftP_
-                    ( do
-                        BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
-                        BS.hPut (_pp_inputH pp) "\n"
-                    ) $
-                  waitInputP_
-                  finishP
-              )
-          }
-      pythonCfg =
-        defCfg
-          { _pc_cmd = "python3",
-            _pc_promptParser = mkSeqMatcher ">>> ",
-            _pc_mkCdCmd = (\dir -> "import os; os.chdir('" <> dir <> "')"),
-            _pc_cleanPromptC =
-              ( \ pp ->
-                  liftP_
-                    ( do
-                        BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
-                        BS.hPut (_pp_inputH pp) "\n"
-                    ) $
-                  waitInputP_
-                  finishP
-              )
-          }
-      shhCfg =
-        defCfg
-          { _pc_cmd = "shh",
-            _pc_promptParser = mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ",
-            _pc_getCwdCmd = GetCwdCommand "pwd",
-            _pc_mkCdCmd = (\dir -> "cd \"" <> dir <> "\""),
-            _pc_switchEnterHook = BS.hPut stdout "\x1b[?2004l" -- disable bracket paste mode
-          }
-      zshCfg =
-        defCfg
-          { _pc_cmd = "zsh",
-            _pc_promptParser = mkSeqMatcher "\ESC[K\ESC[?2004h"
-          }
-      rangerCfg =
-        PuppetCfg
-          { _pc_cmd = "ranger",
-            _pc_cmdArgs = [],
-            -- TODO: need a dummy matcher
-            _pc_promptParser = mkSeqMatcher "\ESC[K\ESC[?2004h",
-            _pc_getCwdCmd = GetCwdFromProcess,
-            -- TODO: need a program here
-            _pc_mkCdCmd = (\_ -> ""),
-            _pc_cleanPromptC = \_ -> Finish (Right ()),
-            _pc_switchEnterHook = pure (),
-            _pc_switchExitHook = pure (),
-            _pc_restoreTuiC =
-              ( \pp ->
-                  liftP_
-                    ( do
-                        BS.hPut (_pp_inputH pp) "\ESC"
-                        BS.hPut (_pp_inputH pp) "\f"
-                        BS.hPut (_pp_inputH pp) "\f"
-                    ) $
-                  Finish (Right ())
-              )
-          }
-      errorCfg =
-        defCfg
-          { _pc_cmd = "non existing"
-          }
-
-  let cfg =
-        Map.fromList
-          [ ("python", pythonCfg),
-            ("ranger", rangerCfg),
-            ("shh", shhCfg),
-            ("zsh", zshCfg),
-            ("sh", shCfg),
-            ("error", errorCfg)
-          ]
-
   args <- getArgs
-  let cfg1 = fromMaybe shhCfg $ join ((`Map.lookup` cfg) <$> (args ^? ix 0))
-  let cfg2 = fromMaybe zshCfg $ join ((`Map.lookup` cfg) <$> (args ^? ix 1))
+  let cfg1 = maybe "shh" cs (args ^? ix 0) `getPuppetCfg` shhCfg
+  let cfg2 = maybe "zsh" cs (args ^? ix 1) `getPuppetCfg` zshCfg
 
   -- TODO: this check doesn't save us from the situation when provided argument
   -- cause a program startup failure. We need to test this scenario
@@ -308,12 +202,13 @@ main = do
   openMuxLog "mux-log.txt"
 
   muxChan <- newBTChanIO 10
-
   (pup1, pup1st) <- newPuppet Puppet1 muxChan cfg1
   (pup2, pup2st) <- newPuppet Puppet2 muxChan cfg2
 
   origTtyState <- saveTtyState
-  _ <- system "stty raw -echo isig susp ^Z intr '' eof '' quit '' erase '' kill '' eol '' eol2 '' swtch '' start '' stop '' rprnt '' werase '' lnext '' discard ''"
+  -- disable all the signale except for susp
+  let sttySignals = ["intr", "eof", "quit", "erase", "kill", "eol", "eol2", "swtch", "start", "stop", "rprnt", "werase", "lnext", "discard"]
+  _ <- callCommand ("stty raw -echo isig susp ^Z "<> mconcat [x <> " '' " | x <- sttySignals])
 
   _ <- installHandler windowChange (Catch (atomically $ writeBTChan muxChan WindowResize)) Nothing
   let suspendSig = atomically $ writeBTChan muxChan SwitchPuppet

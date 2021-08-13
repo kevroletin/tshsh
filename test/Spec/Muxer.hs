@@ -10,7 +10,7 @@ import Protolude
 import Test.Hspec
 import Test.Hspec.Core.Spec
 import Data.Strict.Tuple
-import Tshsh.Muxer.Body
+import Tshsh.Muxer.ShellOutputParser
 import Data.BufferSlice (BufferSlice)
 import qualified Data.BufferSlice as BufferSlice
 import Matcher.ByteString

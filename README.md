@@ -1,11 +1,6 @@
 # tshsh
 
-Currently, a toy project to play with Haskell memory management, profiling, Linux
-system programming and simple DSLs.
-
----
-
-tshsh (Terminal, SHell, SHell) lets you switch between two interactive shells
+tshsh (**T**erminal, **SH**ell, **SH**ell) lets you switch between two interactive shells
 while working in a single terminal.
 
 ## Problem statement

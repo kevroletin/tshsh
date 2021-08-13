@@ -4,13 +4,13 @@
 module Tshsh.Puppet
   ( GetCwd (..),
     PuppetCfg (..),
-    pc_promptParser,
+    pc_promptMatcher,
     pc_getCwdCmd,
     pc_mkCdCmd,
     pc_switchEnterHook,
     pc_switchExitHook,
-    pc_cleanPromptC,
-    pc_restoreTuiC,
+    pc_cleanPromptP,
+    pc_restoreTuiP,
     Puppet (..),
     PuppetProcess (..),
     pp_handle,
@@ -21,27 +21,28 @@ module Tshsh.Puppet
     pup_idx,
     pup_cmd,
     pup_cmdArgs,
-    pup_promptParser,
+    pup_promptMatcher,
     pup_getCwdCmd,
     pup_mkCdCmd,
     pup_startProcess,
     pup_initState,
     pup_switchEnterHook,
     pup_switchExitHook,
-    pup_cleanPromptC,
-    pup_restoreTuiC,
+    pup_cleanPromptP,
+    pup_restoreTuiP,
     PuppetState (..),
     ps_idx,
-    ps_parser,
-    ps_clrScrParser,
+    ps_promptMatcher,
+    ps_clrScrMatcher,
     ps_mode,
     ps_currCmdOut,
     ps_prevCmdOut,
-    ps_cmdOutP,
+    ps_outputParser,
     ps_process,
     PuppetMode (..),
-    SegmentedOutput (..),
-    CmdResultOutput (..),
+    ShellModeAndOutput (..),
+    RawCmdResult (..),
+    StrippedCmdResult (..),
   )
 where
 
@@ -54,13 +55,16 @@ import System.Posix (ProcessID)
 import System.Process (ProcessHandle)
 import Tshsh.Commands
 
-data SegmentedOutput
+data ShellModeAndOutput
   = Data BufferSlice
   | Prompt Int
   | TuiMode
   deriving (Show)
 
-newtype CmdResultOutput = CmdResultOutput { unCmdResultOutput :: Text }
+newtype RawCmdResult = RawCmdResult { unRawCmdResult :: SliceList }
+  deriving (Show)
+
+newtype StrippedCmdResult = StrippedCmdResult { unStrippedCmdResult :: Text }
   deriving (Show)
 
 data GetCwd
@@ -84,29 +88,29 @@ $(makeLenses 'PuppetProcess)
 
 data PuppetState = PuppetState
   { _ps_idx :: PuppetIdx,
-    _ps_parser :: SomeMatcher,
-    _ps_clrScrParser :: SomeMatcher,
+    _ps_promptMatcher :: SomeMatcher,
+    _ps_clrScrMatcher :: SomeMatcher,
     _ps_mode :: PuppetMode,
-    _ps_currCmdOut :: SliceList,
-    _ps_prevCmdOut :: SliceList,
-    _ps_cmdOutP :: Program PuppetState BufferSlice SliceList IO,
+    _ps_currCmdOut :: RawCmdResult,
+    _ps_prevCmdOut :: RawCmdResult,
+    _ps_outputParser :: Program PuppetState BufferSlice RawCmdResult IO,
     _ps_process :: Maybe PuppetProcess
   }
 
 $(makeLenses 'PuppetState)
 
-type PuppetAction = PuppetProcess -> Program () CmdResultOutput ByteString IO
+type PuppetAction = PuppetProcess -> Program () StrippedCmdResult ByteString IO
 
 data PuppetCfg = PuppetCfg
   { _pc_cmd :: Text,
     _pc_cmdArgs :: [Text],
-    _pc_promptParser :: SomeMatcher,
+    _pc_promptMatcher :: SomeMatcher,
     _pc_getCwdCmd :: GetCwd,
     _pc_mkCdCmd :: Text -> Text,
     _pc_switchEnterHook :: IO (),
     _pc_switchExitHook :: IO (),
-    _pc_cleanPromptC :: PuppetAction,
-    _pc_restoreTuiC :: PuppetAction
+    _pc_cleanPromptP :: PuppetAction,
+    _pc_restoreTuiP :: PuppetAction
   }
 
 $(makeLenses 'PuppetCfg)
@@ -115,7 +119,7 @@ data Puppet = Puppet
   { _pup_idx :: PuppetIdx,
     _pup_cmd :: Text,
     _pup_cmdArgs :: [Text],
-    _pup_promptParser :: SomeMatcher,
+    _pup_promptMatcher :: SomeMatcher,
     _pup_getCwdCmd :: GetCwd,
     _pup_mkCdCmd :: Text -> Text,
     _pup_startProcess :: IO PuppetProcess,
@@ -125,10 +129,10 @@ data Puppet = Puppet
     -- + remove partially entered command
     -- + cause a shell to output a prompt
     -- + wait for a prompt
-    _pup_cleanPromptC :: PuppetAction,
+    _pup_cleanPromptP :: PuppetAction,
     -- + force a tui app to redraw it's interface
     -- + wait until it's done
-    _pup_restoreTuiC :: PuppetAction
+    _pup_restoreTuiP :: PuppetAction
   }
 
 $(makeLenses 'Puppet)
