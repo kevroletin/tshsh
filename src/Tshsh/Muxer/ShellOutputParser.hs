@@ -18,7 +18,7 @@ import Data.Coerce
 
 data ParsePromptSt = ParsePromptSt
   { _pps_promptMatcher :: SomeMatcher,
-    _pps_clrScrMatcher :: SomeMatcher,
+    _pps_tuiModeMatcher :: SomeMatcher,
     _pps_mode :: PuppetMode
   }
   deriving (Show)
@@ -40,7 +40,7 @@ instance RaceMatchersDataCfg ShellModeAndOutput where
 
 instance RaceMatchersStateCfg PuppetState where
   fstMatcher = ps_promptMatcher
-  sndMatcher = ps_clrScrMatcher
+  sndMatcher = ps_tuiModeMatcher
 
 instance RaceMatchersStateCfg (Pair SomeMatcher SomeMatcher) where
   fstMatcher f (a :!: b) = (:!: b) <$> f a
@@ -48,32 +48,32 @@ instance RaceMatchersStateCfg (Pair SomeMatcher SomeMatcher) where
 
 -- | Split input based on matches fromSt given matchers
 --
--- Let's say we have two matchers toSt detect a prompt $ and a clear screen sequence.
+-- Let's say we have two matchers to detect a prompt $ and a clear screen sequence.
 -- raceMatchersP splits input into smaller chunks each time the first or the
--- second matcher fires. In between it inserts messages toSt indicate that a match
+-- second matcher fires. In between it inserts messages to indicate that a match
 -- happened. For example given input (1) it produces a sequence (2)
--- (1) [ |   $     $   \ESC[H\ESC[2J | ]
+-- (1) [ |   $     $   \ESC[?1049h | ]
 -- (2) [ |   $|
 --     ,     PromptDetected
 --     ,     |     $|
 --     ,           PromptDetected
---     ,           |   \ESC[H\ESC[2J|
---     ,                            ClrScrDetected
---     ,                            | |
+--     ,           |   \ESC[?1049h|
+--     ,                         TuiModeDetected
+--     ,                         | |
 --     ]
 --
--- the difficult part of the implementation is toSt avoid running the same matcher
+-- the difficult part of the implementation is to avoid running the same matcher
 -- more than once on the same input
 --
--- in the case of (1) we run prompt matcher and clrScr matcher one after the
+-- in the case of (1) we run prompt matcher and tuiMode matcher one after the
 -- other and discover that both matched, but a prompt appeared earlier in
--- the input. That means that in the portion of the input until clrScr match
--- there might be multiple occurrences of a prompt but no occurrences of clrScr.
+-- the input. That means that in the portion of the input until tuiMode match
+-- there might be multiple occurrences of a prompt but no occurrences of tuiMode.
 --
 -- The implementation would be simple if we would combine two matchers into
 -- a single one. But it likely would be less efficient because it would either
 -- use matcherStep and consume the input element by element (which is slower
--- than matching on strings due toSt memChr optimization). Or it would use
+-- than matching on strings due to memChr optimization). Or it would use
 -- matchStr, but would sometimes run matchStr several times on parts of the
 -- same input).
 

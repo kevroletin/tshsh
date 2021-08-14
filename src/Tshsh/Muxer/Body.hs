@@ -40,6 +40,13 @@ syncTtySize pts = do
   _ <- callCommand ("stty -F " <> pts <> " cols " <> show w <> " rows " <> show h)
   pure ()
 
+jiggleTtySize :: String -> IO ()
+jiggleTtySize pts = do
+  Just (TerminalSize.Window h w :: TerminalSize.Window Int) <- TerminalSize.size
+  _ <- callCommand ("stty -F " <> pts <> " cols " <> show (w + 1) <> " rows " <> show h)
+  _ <- callCommand ("stty -F " <> pts <> " cols " <> show w <> " rows " <> show h)
+  pure ()
+
 copyToXClipboard :: Text -> IO ()
 copyToXClipboard str = do
   (Just inP, _, _, _) <- createProcess $ (proc "xclip" ["-selection", "clipboard", "-in"]) {std_in = CreatePipe}
@@ -138,11 +145,6 @@ switchPuppets env st0 = do
       selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
       adapt idx p = Adapter (selectInp idx) (idx,) p
       clearPromptToC = AndThen (adapt toIdx $ _pup_cleanPromptP toPup toProc)
-      restoreTuiC = AndThen (adapt toIdx $ _pup_restoreTuiP toPup toProc)
-
-  hPrint stderr "== DEBUG =="
-  hPrint stderr (_ps_mode fromSt, _ps_mode toSt)
-  hPrint stderr startedNewProc
 
   {- ORMOLU_DISABLE -}
   let mSyncCwdC =
@@ -163,18 +165,21 @@ switchPuppets env st0 = do
            ) $
         ( \cont ->
             case (_ps_mode fromSt, _ps_mode toSt) of
-              (_, PuppetModeTUI) ->
-                unlessC startedNewProc restoreTuiC
+              (fromMode, PuppetModeTUI) ->
+                unlessC startedNewProc
+                  ( liftP_ $ do
+                      when (fromMode == PuppetModeRepl)
+                        (BS.hPut stdout "\ESC[?1049h")   -- enable alternative screen buffer ("TUI" mode)
+                      jiggleTtySize (_pp_pts toProc)     -- a hack to force a TUI app to redraw it's interface
+                   )
                 cont
               (fromMode, PuppetModeRepl) ->
                 whenC (fromMode == PuppetModeTUI)
                   ( liftP_ -- clear tui interface
-                      ( do
-                          BS.hPut stdout "\ESC[J\ESC[2K\ESC[A"
-                          BS.hPut stdout "\ESC[H\ESC[2J" -- move cursor to (0,0) clearScreen
+                      (do BS.hPut stdout "\ESC[?1049l" -- disable alternative screen buffer (disable "TUI" mode)
                           showCursor
-                      )
-                  ) $
+                       )
+                   ) $
                 -- clear the current line and until the end of screen
                 liftP_ (BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
                 unlessC startedNewProc clearPromptToC $

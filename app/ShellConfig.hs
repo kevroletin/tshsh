@@ -32,11 +32,6 @@ defShellCfg =
             liftP_ (BS.hPut (_pp_inputH pp) "\ETX") $ -- Ctrl-C
               waitInputC_
                 finishP
-        ),
-      _pc_restoreTuiP =
-        ( \pp ->
-            liftP_ (BS.hPut (_pp_inputH pp) "\ESC\f") $
-              finishP
         )
     }
 
@@ -103,17 +98,7 @@ rangerCfg =
       _pc_mkCdCmd = (\_ -> ""),
       _pc_cleanPromptP = \_ -> Finish (Right ()),
       _pc_switchEnterHook = pure (),
-      _pc_switchExitHook = pure (),
-      _pc_restoreTuiP =
-        ( \pp ->
-            liftP_
-              ( do
-                  BS.hPut (_pp_inputH pp) "\ESC"
-                  BS.hPut (_pp_inputH pp) "\f"
-                  BS.hPut (_pp_inputH pp) "\f"
-              )
-              $ Finish (Right ())
-        )
+      _pc_switchExitHook = pure ()
     }
 
 errorCfg :: PuppetCfg

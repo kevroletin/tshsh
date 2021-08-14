@@ -10,7 +10,6 @@ module Tshsh.Puppet
     pc_switchEnterHook,
     pc_switchExitHook,
     pc_cleanPromptP,
-    pc_restoreTuiP,
     Puppet (..),
     PuppetProcess (..),
     pp_handle,
@@ -29,11 +28,10 @@ module Tshsh.Puppet
     pup_switchEnterHook,
     pup_switchExitHook,
     pup_cleanPromptP,
-    pup_restoreTuiP,
     PuppetState (..),
     ps_idx,
     ps_promptMatcher,
-    ps_clrScrMatcher,
+    ps_tuiModeMatcher,
     ps_mode,
     ps_currCmdOut,
     ps_prevCmdOut,
@@ -89,7 +87,7 @@ $(makeLenses 'PuppetProcess)
 data PuppetState = PuppetState
   { _ps_idx :: PuppetIdx,
     _ps_promptMatcher :: SomeMatcher,
-    _ps_clrScrMatcher :: SomeMatcher,
+    _ps_tuiModeMatcher :: SomeMatcher,
     _ps_mode :: PuppetMode,
     _ps_currCmdOut :: RawCmdResult,
     _ps_prevCmdOut :: RawCmdResult,
@@ -109,8 +107,7 @@ data PuppetCfg = PuppetCfg
     _pc_mkCdCmd :: Text -> Text,
     _pc_switchEnterHook :: IO (),
     _pc_switchExitHook :: IO (),
-    _pc_cleanPromptP :: PuppetAction,
-    _pc_restoreTuiP :: PuppetAction
+    _pc_cleanPromptP :: PuppetAction
   }
 
 $(makeLenses 'PuppetCfg)
@@ -129,10 +126,7 @@ data Puppet = Puppet
     -- + remove partially entered command
     -- + cause a shell to output a prompt
     -- + wait for a prompt
-    _pup_cleanPromptP :: PuppetAction,
-    -- + force a tui app to redraw it's interface
-    -- + wait until it's done
-    _pup_restoreTuiP :: PuppetAction
+    _pup_cleanPromptP :: PuppetAction
   }
 
 $(makeLenses 'Puppet)

@@ -110,13 +110,13 @@ newPuppet idx chan PuppetCfg {..} = do
               _pp_readThread = readThread
             }
 
-  let clrScrParser = mkSeqMatcher "\ESC[H\ESC[2J"
+  let tuiModeMatcher = mkSeqMatcher "\ESC[?1049h"
 
   let puppetState =
         PuppetState
           { _ps_idx = idx,
             _ps_promptMatcher = _pc_promptMatcher,
-            _ps_clrScrMatcher = clrScrParser,
+            _ps_tuiModeMatcher = tuiModeMatcher,
             _ps_mode = PuppetModeRepl,
             _ps_currCmdOut = RawCmdResult BufferSlice.listEmpty,
             _ps_prevCmdOut = RawCmdResult BufferSlice.listEmpty,
@@ -135,8 +135,7 @@ newPuppet idx chan PuppetCfg {..} = do
           _pup_initState = puppetState,
           _pup_switchEnterHook = _pc_switchEnterHook,
           _pup_switchExitHook = _pc_switchExitHook,
-          _pup_cleanPromptP = _pc_cleanPromptP,
-          _pup_restoreTuiP = _pc_restoreTuiP
+          _pup_cleanPromptP = _pc_cleanPromptP
         },
       puppetState
     )
