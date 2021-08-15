@@ -1,40 +1,40 @@
 module Matcher.Text
   ( SomeMatcher,
     MatchResult,
-    matcherReset,
     matchStr,
     matcherStep,
     mkSeqMatcher,
     mkBracketMatcher,
+    matcherReset
   )
 where
 
 import qualified Matcher.Result as R
-import qualified Matcher.Unboxed as U
+import qualified Matcher.Base as B
 import Protolude
 
-type SomeMatcher = U.SomeMatcher Text Char
+type SomeMatcher = B.SomeMatcher Text Char
 
-type MatchResult = R.MatchResult SomeMatcher Text
+type MatchResult a = R.MatchResult (SomeMatcher a) Text a
 
-type StepResult = R.StepResult SomeMatcher
+type StepResult a = R.StepResult (SomeMatcher a) a
 
-matcherReset :: SomeMatcher -> SomeMatcher
-matcherReset = U.matcherReset
+matcherReset :: SomeMatcher a -> SomeMatcher a
+matcherReset = B.matcherReset
 {-# INLINE matcherReset #-}
 
-matcherStep :: SomeMatcher -> Char -> StepResult
-matcherStep = U.matcherStep
+matcherStep :: SomeMatcher a -> Char -> StepResult a
+matcherStep = B.matcherStep
 {-# INLINE matcherStep #-}
 
-matchStr :: SomeMatcher -> Text -> MatchResult
-matchStr = U.matchStr
+matchStr :: SomeMatcher a -> Text -> MatchResult a
+matchStr = B.matchStr
 {-# INLINE matchStr #-}
 
-mkSeqMatcher :: Text -> SomeMatcher
-mkSeqMatcher = U.mkSeqMatcher
+mkSeqMatcher :: Show a => a -> Text -> SomeMatcher a
+mkSeqMatcher = B.mkSeqMatcher
 {-# INLINE mkSeqMatcher #-}
 
-mkBracketMatcher :: Text -> Text -> SomeMatcher
-mkBracketMatcher = U.mkBracketMatcher
+mkBracketMatcher :: Show a => a -> Text -> Text -> SomeMatcher a
+mkBracketMatcher = B.mkBracketMatcher
 {-# INLINE mkBracketMatcher #-}

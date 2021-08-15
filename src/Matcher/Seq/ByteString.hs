@@ -10,24 +10,24 @@ module Matcher.Seq.ByteString
 where
 
 import qualified Matcher.Result as R
-import qualified Matcher.Seq.Unboxed as U
+import qualified Matcher.Seq.Base as B
 import Protolude
 
-{-# SPECIALIZE INLINE U.matcherStep :: U.Matcher Word8 -> Word8 -> R.StepResult (U.Matcher Word8) #-}
+{-# SPECIALIZE INLINE B.matcherStep :: B.SeqMatcher Word8 a -> Word8 -> R.StepResult (B.SeqMatcher Word8 a) a #-}
 
-{-# SPECIALIZE U.matchStr :: U.Matcher Word8 -> ByteString -> R.MatchResult (U.Matcher Word8) ByteString #-}
+{-# SPECIALIZE B.matchStr :: B.SeqMatcher Word8 a -> ByteString -> R.MatchResult (B.SeqMatcher Word8 a) ByteString a #-}
 
-type Matcher = U.Matcher Word8
+type Matcher a = B.SeqMatcher Word8 a
 
-type MatchResult = R.MatchResult Matcher ByteString
+type MatchResult a = R.MatchResult (Matcher a) ByteString a
 
-type StepResult = R.StepResult Matcher
+type StepResult a = R.StepResult (Matcher a) a
 
-mkMatcher :: ByteString -> Matcher
-mkMatcher = U.mkMatcher
+mkMatcher :: a -> ByteString -> Matcher a
+mkMatcher = B.mkMatcher
 
-matchStr :: Matcher -> ByteString -> MatchResult
-matchStr = U.matchStr
+matchStr :: Matcher a -> ByteString -> MatchResult a
+matchStr = B.matchStr
 
-matcherStep :: Matcher -> Word8 -> StepResult
-matcherStep = U.matcherStep
+matcherStep :: Matcher a -> Word8 -> StepResult a
+matcherStep = B.matcherStep

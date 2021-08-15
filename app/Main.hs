@@ -110,7 +110,7 @@ newPuppet idx chan PuppetCfg {..} = do
               _pp_readThread = readThread
             }
 
-  let tuiModeMatcher = mkSeqMatcher "\ESC[?1049h"
+  let tuiModeMatcher = mkSeqMatcher () "\ESC[?1049h"
 
   let puppetState =
         PuppetState

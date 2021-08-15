@@ -17,8 +17,8 @@ import Data.String.Conversions
 import Data.Coerce
 
 data ParsePromptSt = ParsePromptSt
-  { _pps_promptMatcher :: SomeMatcher,
-    _pps_tuiModeMatcher :: SomeMatcher,
+  { _pps_promptMatcher :: SomeMatcher (),
+    _pps_tuiModeMatcher :: SomeMatcher (),
     _pps_mode :: PuppetMode
   }
   deriving (Show)
@@ -30,8 +30,8 @@ class RaceMatchersDataCfg a where
   onSndEv :: Int -> a
 
 class RaceMatchersStateCfg st where
-  fstMatcher :: Lens' st SomeMatcher
-  sndMatcher :: Lens' st SomeMatcher
+  fstMatcher :: Lens' st (SomeMatcher ())
+  sndMatcher :: Lens' st (SomeMatcher ())
 
 instance RaceMatchersDataCfg ShellModeAndOutput where
   onData = Data
@@ -42,7 +42,7 @@ instance RaceMatchersStateCfg PuppetState where
   fstMatcher = ps_promptMatcher
   sndMatcher = ps_tuiModeMatcher
 
-instance RaceMatchersStateCfg (Pair SomeMatcher SomeMatcher) where
+instance RaceMatchersStateCfg (Pair (SomeMatcher ()) (SomeMatcher ())) where
   fstMatcher f (a :!: b) = (:!: b) <$> f a
   sndMatcher f (a :!: b) = (a :!:) <$> f b
 
@@ -90,7 +90,7 @@ raceMatchersP =
                 if BufferSlice.sliceNull bs
                    then cont
                    else Output (onData bs) cont
-              Match newM len prev _rest ->
+              Match newM len prev _rest () ->
                 ModifyState (putSt .~ newM) $
                 Output (onData $ BufferSlice.sliceTake (BS.length prev) bs) $
                 Output (onOut len) $
@@ -106,7 +106,7 @@ raceMatchersP =
                         onSndEv
                         bs0 $
                   raceMatchersP
-                Match newFstM lenFst prevFst _restFst ->
+                Match newFstM lenFst prevFst _restFst () ->
                   ModifyState (fstMatcher .~ newFstM) $
                   case matchStr (st ^. sndMatcher) str of
                     NoMatch newSndM ->
@@ -118,7 +118,7 @@ raceMatchersP =
                             onFstEv
                             (BufferSlice.sliceDrop (BS.length prevFst) bs0) $
                       raceMatchersP
-                    Match newSndM lenSnd prevSnd _restSnd ->
+                    Match newSndM lenSnd prevSnd _restSnd () ->
                       if BS.length prevSnd < BS.length prevFst
                         then
                           ModifyState (sndMatcher .~ newSndM) $

@@ -10,24 +10,24 @@ module Matcher.Seq.Text
 where
 
 import qualified Matcher.Result as R
-import qualified Matcher.Seq.Unboxed as U
+import qualified Matcher.Seq.Base as B
 import Protolude
 
-{-# SPECIALIZE INLINE U.matcherStep :: U.Matcher Char -> Char -> R.StepResult (U.Matcher Char) #-}
+{-# SPECIALIZE INLINE B.matcherStep :: B.SeqMatcher Char a -> Char -> R.StepResult (B.SeqMatcher Char a) a #-}
 
-{-# SPECIALIZE U.matchStr :: U.Matcher Char -> Text -> R.MatchResult (U.Matcher Char) Text #-}
+{-# SPECIALIZE B.matchStr :: B.SeqMatcher Char a -> Text -> R.MatchResult (B.SeqMatcher Char a) Text a #-}
 
-type Matcher = U.Matcher Char
+type Matcher a = B.SeqMatcher Char a
 
-type MatchResult = R.MatchResult Matcher Text
+type MatchResult a = R.MatchResult (Matcher a) Text a
 
-type StepResult = R.StepResult Matcher
+type StepResult a = R.StepResult (Matcher a) a
 
-mkMatcher :: Text -> Matcher
-mkMatcher = U.mkMatcher
+mkMatcher :: a -> Text -> Matcher a
+mkMatcher = B.mkMatcher
 
-matchStr :: Matcher -> Text -> MatchResult
-matchStr = U.matchStr
+matchStr :: Matcher a -> Text -> MatchResult a
+matchStr = B.matchStr
 
-matcherStep :: Matcher -> Char -> StepResult
-matcherStep = U.matcherStep
+matcherStep :: Matcher a -> Char -> StepResult a
+matcherStep = B.matcherStep

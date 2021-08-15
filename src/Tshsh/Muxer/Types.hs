@@ -20,6 +20,7 @@ module Tshsh.Muxer.Types
     mst_otherPuppet,
     mst_sortedPuppets,
     mst_syncCwdP,
+    mst_leaderKeyPressed,
     Mux (..),
   )
 where
@@ -40,7 +41,8 @@ data MuxState = MuxState
   { _mst_puppetSt :: Pair PuppetState PuppetState,
     _mst_currentPuppetIdx :: PuppetIdx,
     _mst_syncCwdP :: Maybe (Program () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
-    _mst_keepAlive :: Bool
+    _mst_keepAlive :: Bool,
+    _mst_leaderKeyPressed :: Bool
   }
 
 data Mux = Mux {_mux_env :: MuxEnv, _mux_st :: MuxState}

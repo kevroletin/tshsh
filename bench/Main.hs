@@ -24,26 +24,26 @@ countMatchesBS_ !res p str
 countMatchesBS :: ByteString -> ByteString -> Int
 countMatchesBS = countMatchesBS_ 0
 
-countMatches_ :: Int -> SeqM.Matcher -> ByteString -> Int
+countMatches_ :: Int -> SeqM.Matcher a -> ByteString -> Int
 countMatches_ !res m str
   | BS.null str = res
   | otherwise =
     case SeqM.matchStr m str of
-      Match m' _ _ r -> countMatches_ (res + 1) m' r
+      Match m' _ _ r _ -> countMatches_ (res + 1) m' r
       NoMatch _ -> res
 
-countMatchesSeq :: SeqM.Matcher -> ByteString -> Int
+countMatchesSeq :: SeqM.Matcher a -> ByteString -> Int
 countMatchesSeq = countMatches_ 0
 
-countMatchesSomeM_ :: Int -> SomeM.SomeMatcher -> ByteString -> Int
+countMatchesSomeM_ :: Int -> SomeM.SomeMatcher a -> ByteString -> Int
 countMatchesSomeM_ !res m str
   | BS.null str = res
   | otherwise =
     case SomeM.matchStr m str of
-      Match m' _ _ r -> countMatchesSomeM_ (res + 1) m' r
+      Match m' _ _ r _ -> countMatchesSomeM_ (res + 1) m' r
       NoMatch _ -> res
 
-countMatchesSomeM :: SomeM.SomeMatcher -> ByteString -> Int
+countMatchesSomeM :: SomeM.SomeMatcher a -> ByteString -> Int
 countMatchesSomeM = countMatchesSomeM_ 0
 
 manySubstrings :: Int -> ByteString -> ByteString
@@ -73,11 +73,11 @@ main = do
         [ bench "BS" $
             whnf (countMatchesBS prompt) str,
           bench "SeqM.Matcher.Seq" $
-            whnf (countMatchesSeq (SeqM.mkMatcher prompt)) str,
+            whnf (countMatchesSeq (SeqM.mkMatcher () prompt)) str,
           bench "SeqM.Matcher seq" $
-            whnf (countMatchesSomeM (SomeM.mkSeqMatcher prompt)) str,
+            whnf (countMatchesSomeM (SomeM.mkSeqMatcher () prompt)) str,
           bench "SeqM.Matcher bracket" $
-            whnf (countMatchesSomeM (SomeM.mkBracketMatcher "[[" "]]")) str,
+            whnf (countMatchesSomeM (SomeM.mkBracketMatcher () "[[" "]]")) str,
           bench "dummy BS.foldl'" $
             whnf (BS.foldl' (+) 0) str
         ],
@@ -86,9 +86,9 @@ main = do
         [ bench "BS" $
             whnf (countMatchesBS longsubstring) str2,
           bench "SeqM.Matcher.Seq" $
-            whnf (countMatchesSeq (SeqM.mkMatcher longsubstring)) str2,
+            whnf (countMatchesSeq (SeqM.mkMatcher () longsubstring)) str2,
           bench "SeqM.Matcher seq" $
-            whnf (countMatchesSomeM (SomeM.mkSeqMatcher longsubstring)) str2,
+            whnf (countMatchesSomeM (SomeM.mkSeqMatcher () longsubstring)) str2,
           bench "dummy BS.foldl'" $
             whnf (BS.foldl' (+) 0) str2
         ],

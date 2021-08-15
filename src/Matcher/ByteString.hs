@@ -10,31 +10,31 @@ module Matcher.ByteString
 where
 
 import qualified Matcher.Result as R
-import qualified Matcher.Unboxed as U
+import qualified Matcher.Base as B
 import Protolude
 
-type SomeMatcher = U.SomeMatcher ByteString Word8
+type SomeMatcher = B.SomeMatcher ByteString Word8
 
-type MatchResult = R.MatchResult SomeMatcher ByteString
+type MatchResult a = R.MatchResult (SomeMatcher a) ByteString a
 
-type StepResult = R.StepResult SomeMatcher
+type StepResult a = R.StepResult (SomeMatcher a) a
 
-matcherReset :: SomeMatcher -> SomeMatcher
-matcherReset = U.matcherReset
+matcherReset :: SomeMatcher a -> SomeMatcher a
+matcherReset = B.matcherReset
 {-# INLINE matcherReset #-}
 
-matcherStep :: SomeMatcher -> Word8 -> StepResult
-matcherStep = U.matcherStep
+matcherStep :: SomeMatcher a -> Word8 -> StepResult a
+matcherStep = B.matcherStep
 {-# INLINE matcherStep #-}
 
-matchStr :: SomeMatcher -> ByteString -> MatchResult
-matchStr = U.matchStr
+matchStr :: SomeMatcher a -> ByteString -> MatchResult a
+matchStr = B.matchStr
 {-# INLINE matchStr #-}
 
-mkSeqMatcher :: ByteString -> SomeMatcher
-mkSeqMatcher = U.mkSeqMatcher
+mkSeqMatcher :: Show a => a -> ByteString -> SomeMatcher a
+mkSeqMatcher = B.mkSeqMatcher
 {-# INLINE mkSeqMatcher #-}
 
-mkBracketMatcher :: ByteString -> ByteString -> SomeMatcher
-mkBracketMatcher = U.mkBracketMatcher
+mkBracketMatcher :: Show a =>  a -> ByteString -> ByteString -> SomeMatcher a
+mkBracketMatcher = B.mkBracketMatcher
 {-# INLINE mkBracketMatcher #-}
