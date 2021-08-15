@@ -1,3 +1,6 @@
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FunctionalDependencies #-}
+
 module Tshsh.Muxer.ShellOutputParser where
 
 import Control.Lens
@@ -25,26 +28,30 @@ data ParsePromptSt = ParsePromptSt
 
 -- This config implemented as a class toSt be able toSt specialize
 class RaceMatchersDataCfg a where
+  type FstParam a
+  type SndParam a
   onData :: BufferSlice -> a
-  onFstEv :: Int -> a
-  onSndEv :: Int -> a
+  onFstEv :: Int -> FstParam a -> a
+  onSndEv :: Int -> SndParam a -> a
 
-class RaceMatchersStateCfg st where
-  fstMatcher :: Lens' st (SomeMatcher ())
-  sndMatcher :: Lens' st (SomeMatcher ())
+class RaceMatchersDataCfg a => RaceMatchersStateCfg st a | st -> a where
+  fstMatcher :: Lens' st (SomeMatcher (FstParam a))
+  sndMatcher :: Lens' st (SomeMatcher (SndParam a))
 
 instance RaceMatchersDataCfg ShellModeAndOutput where
+  type FstParam ShellModeAndOutput = ()
+  type SndParam ShellModeAndOutput = Bool
   onData = Data
-  onFstEv = Prompt
-  onSndEv = const TuiMode
+  onFstEv len () = Prompt len
+  onSndEv = TuiMode
 
-instance RaceMatchersStateCfg PuppetState where
+instance RaceMatchersStateCfg PuppetState ShellModeAndOutput where
   fstMatcher = ps_promptMatcher
   sndMatcher = ps_tuiModeMatcher
 
-instance RaceMatchersStateCfg (Pair (SomeMatcher ()) (SomeMatcher ())) where
-  fstMatcher f (a :!: b) = (:!: b) <$> f a
-  sndMatcher f (a :!: b) = (a :!:) <$> f b
+-- instance RaceMatchersStateCfg (Pair (SomeMatcher ()) (SomeMatcher ())) where
+--   fstMatcher f (a :!: b) = (:!: b) <$> f a
+--   sndMatcher f (a :!: b) = (a :!:) <$> f b
 
 -- | Split input based on matches fromSt given matchers
 --
@@ -79,7 +86,7 @@ instance RaceMatchersStateCfg (Pair (SomeMatcher ()) (SomeMatcher ())) where
 
 {- ORMOLU_DISABLE -}
 raceMatchersP :: forall st out m .
-  (RaceMatchersStateCfg st, RaceMatchersDataCfg out) =>
+  (RaceMatchersStateCfg st out, RaceMatchersDataCfg out) =>
   Program st BufferSlice out m
 raceMatchersP =
   let feedM m0 putSt onOut bs cont =
@@ -90,10 +97,10 @@ raceMatchersP =
                 if BufferSlice.sliceNull bs
                    then cont
                    else Output (onData bs) cont
-              Match newM len prev _rest () ->
+              Match newM len prev _rest res ->
                 ModifyState (putSt .~ newM) $
                 Output (onData $ BufferSlice.sliceTake (BS.length prev) bs) $
-                Output (onOut len) $
+                Output (onOut len res) $
                 feedM newM putSt onOut (BufferSlice.sliceDrop (BS.length prev) bs) cont
       go bs0 =
         let str = BufferSlice.sliceToByteString bs0
@@ -106,41 +113,41 @@ raceMatchersP =
                         onSndEv
                         bs0 $
                   raceMatchersP
-                Match newFstM lenFst prevFst _restFst () ->
+                Match newFstM lenFst prevFst _restFst resFst ->
                   ModifyState (fstMatcher .~ newFstM) $
                   case matchStr (st ^. sndMatcher) str of
                     NoMatch newSndM ->
                       ModifyState (sndMatcher .~ newSndM) $
                       Output (onData (BufferSlice.sliceTake (BS.length prevFst) bs0)) $
-                      Output (onFstEv lenFst) $
+                      Output (onFstEv lenFst resFst) $
                       feedM newFstM
                             fstMatcher
                             onFstEv
                             (BufferSlice.sliceDrop (BS.length prevFst) bs0) $
                       raceMatchersP
-                    Match newSndM lenSnd prevSnd _restSnd () ->
+                    Match newSndM lenSnd prevSnd _restSnd resSnd ->
                       if BS.length prevSnd < BS.length prevFst
                         then
                           ModifyState (sndMatcher .~ newSndM) $
                           Output (onData (BufferSlice.sliceTake (BS.length prevSnd) bs0)) $
-                          Output (onSndEv lenSnd) $
+                          Output (onSndEv lenSnd resSnd) $
                           feedM newSndM
                                 sndMatcher
                                 onSndEv
                                 ( bs0 & BufferSlice.sliceTake (BS.length prevFst)
                                       & BufferSlice.sliceDrop (BS.length prevSnd)) $
-                          Output (onFstEv lenFst) $
+                          Output (onFstEv lenFst resFst) $
                           go (BufferSlice.sliceDrop (BS.length prevFst) bs0)
                         else
                           ModifyState (fstMatcher .~ newFstM) $
                           Output (onData (BufferSlice.sliceTake (BS.length prevFst) bs0)) $
-                          Output (onFstEv lenSnd) $
+                          Output (onFstEv lenFst resFst) $
                           feedM newFstM
                                 fstMatcher
                                 onFstEv
                                 (bs0 & BufferSlice.sliceTake (BS.length prevSnd)
                                      & BufferSlice.sliceDrop (BS.length prevFst)) $
-                          Output (onSndEv lenSnd) $
+                          Output (onSndEv lenSnd resSnd) $
                           go (BufferSlice.sliceDrop (BS.length prevSnd) bs0)
    in WaitInput go
 {-# SPECIALIZE raceMatchersP :: Program PuppetState BufferSlice ShellModeAndOutput IO #-}
@@ -170,13 +177,14 @@ accumCmdOutP =
           else
             PutState (st { _ps_mode = PuppetModeRepl })
             accumCmdOutP
-      TuiMode ->
-        if st ^. ps_mode == PuppetModeRepl
+      TuiMode _ enable ->
+        if enable && st ^. ps_mode == PuppetModeRepl
           then
             PutState (st { _ps_mode = PuppetModeTUI,
                            _ps_currCmdOut = coerce BufferSlice.listEmpty })
             accumCmdOutP
           else
+            PutState (st { _ps_mode = if enable then PuppetModeTUI else PuppetModeRepl })
             accumCmdOutP
 {- ORMOLU_ENABLE -}
 

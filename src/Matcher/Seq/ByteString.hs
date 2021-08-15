@@ -4,6 +4,7 @@ module Matcher.Seq.ByteString
   ( mkMatcher,
     matcherStep,
     matchStr,
+    matcherReset,
     Matcher,
     MatchResult,
   )
@@ -31,3 +32,6 @@ matchStr = B.matchStr
 
 matcherStep :: Matcher a -> Word8 -> StepResult a
 matcherStep = B.matcherStep
+
+matcherReset :: Matcher a -> Matcher a
+matcherReset = B.matcherReset

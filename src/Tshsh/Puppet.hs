@@ -56,7 +56,7 @@ import Tshsh.Commands
 data ShellModeAndOutput
   = Data BufferSlice
   | Prompt Int
-  | TuiMode
+  | TuiMode Int Bool
   deriving (Show)
 
 newtype RawCmdResult = RawCmdResult { unRawCmdResult :: SliceList }
@@ -87,7 +87,7 @@ $(makeLenses 'PuppetProcess)
 data PuppetState = PuppetState
   { _ps_idx :: PuppetIdx,
     _ps_promptMatcher :: SomeMatcher (),
-    _ps_tuiModeMatcher :: SomeMatcher (),
+    _ps_tuiModeMatcher :: SomeMatcher Bool,
     _ps_mode :: PuppetMode,
     _ps_currCmdOut :: RawCmdResult,
     _ps_prevCmdOut :: RawCmdResult,

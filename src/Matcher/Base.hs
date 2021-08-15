@@ -14,6 +14,7 @@ module Matcher.Base
     matchStr,
     mkSeqMatcher,
     mkBracketMatcher,
+    CanUnbox
   )
 where
 
@@ -26,6 +27,8 @@ import Protolude
 import Prelude (Show(..))
 
 type CanUnbox c = Data.Array.Unboxed.IArray Data.Array.Unboxed.UArray c
+
+class MatcherBase m where
 
 class MatcherI m c a where
   matcherStepI :: (Eq c, CanUnbox c) => m c a -> c -> StepResult (m c a) a

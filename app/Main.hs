@@ -13,7 +13,6 @@ import Data.String.Conversions
 import qualified Data.Text.IO as T
 import Foreign
 import Lang.Coroutine.CPS
-import Matcher.ByteString
 import Protolude hiding (tryIO)
 import ShellConfig
 import System.Directory
@@ -25,6 +24,7 @@ import System.Process
 import Tshsh.Commands
 import Tshsh.Muxer
 import Tshsh.Muxer.ShellOutputParser
+import qualified Tshsh.Muxer.TuiModeMatcher as TuiMatcher
 import Tshsh.Puppet
 import Prelude (String)
 
@@ -110,13 +110,11 @@ newPuppet idx chan PuppetCfg {..} = do
               _pp_readThread = readThread
             }
 
-  let tuiModeMatcher = mkSeqMatcher () "\ESC[?1049h"
-
   let puppetState =
         PuppetState
           { _ps_idx = idx,
             _ps_promptMatcher = _pc_promptMatcher,
-            _ps_tuiModeMatcher = tuiModeMatcher,
+            _ps_tuiModeMatcher = TuiMatcher.tuiModeMatcher,
             _ps_mode = PuppetModeRepl,
             _ps_currCmdOut = RawCmdResult BufferSlice.listEmpty,
             _ps_prevCmdOut = RawCmdResult BufferSlice.listEmpty,
