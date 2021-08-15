@@ -44,7 +44,7 @@
 --
 -- Doing transformation above can be viewed as using a zipper to focus on the
 -- currently evaluated node.
-module Lang.Coroutine.MonadT where
+module Tshsh.Lang.Coroutine.MonadT where
 
 import Control.Lens
 import Protolude

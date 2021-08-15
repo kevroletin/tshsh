@@ -7,8 +7,8 @@ import Control.Lens
 import Control.Monad
 import qualified Data.Map as M
 import qualified Data.Text as T
-import Lang.Coroutine.MonadT.Folds
-import Lang.Coroutine.MonadT
+import Tshsh.Lang.Coroutine.MonadT.Folds
+import Tshsh.Lang.Coroutine.MonadT
 import Protolude hiding ((>>), (>>=), exp, log)
 
 data Shell = Shell_1 | Shell_2

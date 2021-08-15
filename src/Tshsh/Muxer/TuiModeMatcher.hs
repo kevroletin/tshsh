@@ -3,9 +3,9 @@
 module Tshsh.Muxer.TuiModeMatcher (tuiModeMatcher) where
 
 import qualified Data.ByteString as BS
-import qualified Matcher.Base as B
-import Matcher.Result
-import qualified Matcher.Seq.ByteString as SeqMBs
+import qualified Tshsh.Matcher.Base as B
+import Tshsh.Matcher.Result
+import qualified Tshsh.Matcher.Seq.ByteString as SeqMBs
 import Protolude
 
 data TuiModeMatcher c a = TuiModeMatcher

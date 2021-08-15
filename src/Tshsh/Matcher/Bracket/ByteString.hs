@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Matcher.Bracket.ByteString
+module Tshsh.Matcher.Bracket.ByteString
   ( mkMatcher,
     matcherStep,
     matchStr,
@@ -9,8 +9,8 @@ module Matcher.Bracket.ByteString
   )
 where
 
-import qualified Matcher.Bracket.Base as B
-import qualified Matcher.Result as R
+import qualified Tshsh.Matcher.Bracket.Base as B
+import qualified Tshsh.Matcher.Result as R
 import Protolude
 
 {-# SPECIALIZE B.matcherStep :: B.BracketMatcher Word8 a -> Word8 -> R.StepResult (B.BracketMatcher Word8 a) a #-}

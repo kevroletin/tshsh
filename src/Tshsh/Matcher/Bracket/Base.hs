@@ -2,11 +2,12 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Matcher.Bracket.Base
+module Tshsh.Matcher.Bracket.Base
   ( BracketMatcher (..),
     bmch_left,
     bmch_right,
     bmch_leftMatchOffset,
+    bmch_ret,
     mkMatcher,
     matcherReset,
     matcherStep,
@@ -18,8 +19,8 @@ import Control.Lens
 import qualified Data.Array.Unboxed as U
 import Data.ListLike (ListLike)
 import qualified Data.ListLike as L
-import Matcher.Result
-import qualified Matcher.Seq.Base as SeqM
+import Tshsh.Matcher.Result
+import qualified Tshsh.Matcher.Seq.Base as SeqM
 import Protolude
 
 data BracketMatcher c a = BracketMatcher

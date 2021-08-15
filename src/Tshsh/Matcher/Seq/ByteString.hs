@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Matcher.Seq.ByteString
+module Tshsh.Matcher.Seq.ByteString
   ( mkMatcher,
     matcherStep,
     matchStr,
@@ -10,8 +10,8 @@ module Matcher.Seq.ByteString
   )
 where
 
-import qualified Matcher.Result as R
-import qualified Matcher.Seq.Base as B
+import qualified Tshsh.Matcher.Result as R
+import qualified Tshsh.Matcher.Seq.Base as B
 import Protolude
 
 {-# SPECIALIZE INLINE B.matcherStep :: B.SeqMatcher Word8 a -> Word8 -> R.StepResult (B.SeqMatcher Word8 a) a #-}

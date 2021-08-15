@@ -8,25 +8,20 @@ module Tshsh.Muxer.Body where
 
 import Control.Lens
 import Control.Monad
-import Data.BufferSlice (BufferSlice (..), SliceList (..))
-import qualified Data.BufferSlice as BufferSlice
+import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
+import qualified Tshsh.Data.BufferSlice as BufferSlice
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Internal as BS
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
-import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Foreign
 import GHC.Base (String)
-import Lang.Coroutine.CPS
-import Lang.Coroutine.CPS.Folds
-import Matcher.ByteString
-import Matcher.Result
+import Tshsh.Lang.Coroutine.CPS
+import Tshsh.Lang.Coroutine.CPS.Folds
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.ANSI
 import qualified System.Console.Terminal.Size as TerminalSize
 import System.IO hiding (hPutStr)
-import System.Posix
 import System.Process
 import Tshsh.Commands
 import Tshsh.Muxer.Types

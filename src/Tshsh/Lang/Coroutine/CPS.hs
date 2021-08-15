@@ -39,7 +39,7 @@
 --
 -- Doing transformation above can be viewed as using a zipper to focus on the
 -- currently evaluated node.
-module Lang.Coroutine.CPS
+module Tshsh.Lang.Coroutine.CPS
   ( Program (..),
     ProgramSt,
     ProgramCont,

@@ -20,7 +20,6 @@ module Tshsh.Muxer.Types
     mst_otherPuppet,
     mst_sortedPuppets,
     mst_syncCwdP,
-    mst_leaderKeyPressed,
     Mux (..),
   )
 where
@@ -28,7 +27,7 @@ where
 import Control.Lens
 import qualified Data.ByteString as BS
 import Data.Strict.Tuple
-import Lang.Coroutine.CPS
+import Tshsh.Lang.Coroutine.CPS
 import Protolude hiding (hPutStrLn, log, tryIO)
 import Tshsh.Commands
 import Tshsh.Puppet
@@ -41,8 +40,7 @@ data MuxState = MuxState
   { _mst_puppetSt :: Pair PuppetState PuppetState,
     _mst_currentPuppetIdx :: PuppetIdx,
     _mst_syncCwdP :: Maybe (Program () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
-    _mst_keepAlive :: Bool,
-    _mst_leaderKeyPressed :: Bool
+    _mst_keepAlive :: Bool
   }
 
 data Mux = Mux {_mux_env :: MuxEnv, _mux_st :: MuxState}

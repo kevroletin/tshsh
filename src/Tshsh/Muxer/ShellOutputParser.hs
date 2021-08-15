@@ -4,16 +4,14 @@
 module Tshsh.Muxer.ShellOutputParser where
 
 import Control.Lens
-import Data.BufferSlice (BufferSlice (..), SliceList (..))
-import qualified Data.BufferSlice as BufferSlice
+import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
+import qualified Tshsh.Data.BufferSlice as BufferSlice
 import qualified Data.ByteString as BS
-import Data.Strict.Tuple.Extended
 import Data.String.AnsiEscapeCodes.Strip.Text
 import qualified Data.Text as T
-import Lang.Coroutine.CPS
-import Lang.Coroutine.CPS.Folds
-import Matcher.ByteString
-import Matcher.Result
+import Tshsh.Lang.Coroutine.CPS
+import Tshsh.Matcher.ByteString
+import Tshsh.Matcher.Result
 import Protolude
 import Tshsh.Puppet
 import Data.String.Conversions

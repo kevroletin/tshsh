@@ -7,7 +7,7 @@ import Data.Strict.Tuple
 import Data.String.AnsiEscapeCodes.Strip.Text
 import Data.String.Conversions
 import qualified Data.Text as T
-import Lang.Coroutine.CPS
+import Tshsh.Lang.Coroutine.CPS
 import Protolude
 import System.Posix (ProcessID)
 import System.Process (readProcess)

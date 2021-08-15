@@ -38,7 +38,7 @@ module Spec.CPS.Folds
   )
 where
 
-import Lang.Coroutine.CPS
+import Tshsh.Lang.Coroutine.CPS
 import Protolude
 import Data.Strict.Tuple
 

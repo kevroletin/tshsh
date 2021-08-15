@@ -6,13 +6,13 @@ import Control.Concurrent.STM.BTChan
 import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
-import Data.BufferSlice (BufferSlice (..))
-import qualified Data.BufferSlice as BufferSlice
+import Tshsh.Data.BufferSlice (BufferSlice (..))
+import qualified Tshsh.Data.BufferSlice as BufferSlice
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text.IO as T
 import Foreign
-import Lang.Coroutine.CPS
+import Tshsh.Lang.Coroutine.CPS
 import Protolude hiding (tryIO)
 import ShellConfig
 import System.Directory

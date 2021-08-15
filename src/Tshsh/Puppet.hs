@@ -4,6 +4,8 @@
 module Tshsh.Puppet
   ( GetCwd (..),
     PuppetCfg (..),
+    pc_cmd,
+    pc_cmdArgs,
     pc_promptMatcher,
     pc_getCwdCmd,
     pc_mkCdCmd,
@@ -45,9 +47,9 @@ module Tshsh.Puppet
 where
 
 import Control.Lens
-import Data.BufferSlice (BufferSlice, SliceList (..))
-import Lang.Coroutine.CPS
-import Matcher.ByteString
+import Tshsh.Data.BufferSlice (BufferSlice, SliceList (..))
+import Tshsh.Lang.Coroutine.CPS
+import Tshsh.Matcher.ByteString
 import Protolude
 import System.Posix (ProcessID)
 import System.Process (ProcessHandle)

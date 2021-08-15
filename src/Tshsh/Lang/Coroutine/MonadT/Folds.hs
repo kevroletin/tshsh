@@ -1,13 +1,13 @@
 {-# LANGUAGE BangPatterns #-}
 
-module Lang.Coroutine.MonadT.Folds
+module Tshsh.Lang.Coroutine.MonadT.Folds
   ( evalProgramM,
     eatOutputsM,
     feedInputM,
   )
 where
 
-import Lang.Coroutine.MonadT
+import Tshsh.Lang.Coroutine.MonadT
 import Protolude
 
 evalProgramM :: Monad m => (o -> m ()) -> m i -> Program i o () m r -> m (Either Text r)

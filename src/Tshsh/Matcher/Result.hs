@@ -2,7 +2,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Matcher.Result
+module Tshsh.Matcher.Result
   ( StepResult (..),
     _StepMatch,
     match_matcher,

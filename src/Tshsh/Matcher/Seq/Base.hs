@@ -9,7 +9,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Matcher.Seq.Base
+module Tshsh.Matcher.Seq.Base
   ( mkMatcher,
     matcherStep,
     matcherReset,
@@ -23,6 +23,7 @@ module Matcher.Seq.Base
     mch_nextCharUnsafe,
     mch_isFull,
     mch_forwardUnsafe,
+    mch_ret
   )
 where
 
@@ -31,7 +32,7 @@ import Data.Array.IArray
 import qualified Data.Array.Unboxed as U
 import Data.ListLike (ListLike)
 import qualified Data.ListLike as L
-import qualified Matcher.Result as R
+import qualified Tshsh.Matcher.Result as R
 import Protolude
 
 takeEnd :: Int -> [c] -> [c]

@@ -1,4 +1,4 @@
-module Lang.Coroutine.CPS.Folds
+module Tshsh.Lang.Coroutine.CPS.Folds
   ( evalProgramM,
     eatOutputsM,
     feedInputM,
@@ -7,7 +7,7 @@ module Lang.Coroutine.CPS.Folds
 where
 
 import Data.Strict.Tuple
-import Lang.Coroutine.CPS
+import Tshsh.Lang.Coroutine.CPS
 import Protolude
 
 evalProgramM :: forall st i o m. Monad m => (o -> m ()) -> m i -> Pair st (Program st i o m) -> m (Pair st (Either Text ()))

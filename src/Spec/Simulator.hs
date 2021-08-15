@@ -8,8 +8,8 @@ import Control.Monad
 import qualified Data.Map as M
 import Data.Strict.Tuple
 import qualified Data.Text as T
-import Lang.Coroutine.CPS
-import Lang.Coroutine.CPS.Folds
+import Tshsh.Lang.Coroutine.CPS
+import Tshsh.Lang.Coroutine.CPS.Folds
 import Protolude hiding (exp, log, (>>), (>>=))
 
 data Shell = Shell_1 | Shell_2

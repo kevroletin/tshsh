@@ -4,7 +4,7 @@
 
 module Tshsh.Commands where
 
-import Data.BufferSlice (BufferSlice)
+import Tshsh.Data.BufferSlice (BufferSlice)
 import Protolude
 import System.Posix (ProcessID)
 

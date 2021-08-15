@@ -12,8 +12,8 @@ where
 
 import qualified Data.ByteString as BS
 import Data.Map as Map
-import Lang.Coroutine.CPS
-import Matcher.ByteString
+import Tshsh.Lang.Coroutine.CPS
+import Tshsh.Matcher.ByteString
 import Protolude
 import Tshsh.Puppet
 

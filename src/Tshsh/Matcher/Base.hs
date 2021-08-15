@@ -4,7 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Matcher.Base
+module Tshsh.Matcher.Base
   ( SomeMatcher (..),
     MatcherI (..),
     MatcherArrI (..),
@@ -20,15 +20,13 @@ where
 
 import qualified Data.Array.Unboxed
 import Data.ListLike (ListLike)
-import qualified Matcher.Bracket.Base as BrM
-import Matcher.Result
-import qualified Matcher.Seq.Base as SeqM
+import qualified Tshsh.Matcher.Bracket.Base as BrM
+import Tshsh.Matcher.Result
+import qualified Tshsh.Matcher.Seq.Base as SeqM
 import Protolude
 import Prelude (Show(..))
 
 type CanUnbox c = Data.Array.Unboxed.IArray Data.Array.Unboxed.UArray c
-
-class MatcherBase m where
 
 class MatcherI m c a where
   matcherStepI :: (Eq c, CanUnbox c) => m c a -> c -> StepResult (m c a) a

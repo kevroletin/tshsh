@@ -1,9 +1,9 @@
 import Data.ByteString as BS
 import Data.Strict.Tuple
 import Gauge.Main
-import qualified Matcher.ByteString as SomeM
-import Matcher.Result
-import qualified Matcher.Seq.ByteString as SeqM
+import qualified Tshsh.Matcher.ByteString as SomeM
+import Tshsh.Matcher.Result
+import qualified Tshsh.Matcher.Seq.ByteString as SeqM
 import Protolude
 import qualified Spec.Simulator as S
 import qualified Spec.SimulatorM as SM
