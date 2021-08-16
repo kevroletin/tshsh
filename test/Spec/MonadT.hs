@@ -5,8 +5,8 @@
 module Spec.MonadT where
 
 import Control.Lens
-import Lang.Coroutine.MonadT
-import Lang.Coroutine.MonadT.Folds
+import Tshsh.Lang.Coroutine.MonadT
+import Tshsh.Lang.Coroutine.MonadT.Folds
 import Protolude
 import Test.Hspec
 import Test.Hspec.Core.Spec

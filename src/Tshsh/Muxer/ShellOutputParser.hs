@@ -39,10 +39,6 @@ instance RaceMatchersStateCfg PuppetState ShellModeAndOutput where
   fstMatcher = ps_promptMatcher
   sndMatcher = ps_tuiModeMatcher
 
--- instance RaceMatchersStateCfg (Pair (SomeMatcher ()) (SomeMatcher ())) where
---   fstMatcher f (a :!: b) = (:!: b) <$> f a
---   sndMatcher f (a :!: b) = (a :!:) <$> f b
-
 -- | Split input based on matches fromSt given matchers
 --
 -- Let's say we have two matchers to detect a prompt $ and a clear screen sequence.

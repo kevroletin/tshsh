@@ -9,7 +9,7 @@
 module Spec.CPS where
 
 import Control.Lens
-import Lang.Coroutine.CPS
+import Tshsh.Lang.Coroutine.CPS
 import Spec.CPS.Folds
 import Protolude
 import Test.Hspec

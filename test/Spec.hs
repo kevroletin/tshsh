@@ -4,16 +4,15 @@
 {-# LANGUAGE ViewPatterns #-}
 
 import Control.Lens
-import Data.BufferSlice (BufferSlice (..), SliceList (..))
-import qualified Data.BufferSlice as BufferSlice
+import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
+import qualified Tshsh.Data.BufferSlice as BufferSlice
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Internal as BS
 import qualified Data.Text as T
-import qualified Matcher.Bracket.Text as MBT
-import Matcher.Result
-import qualified Matcher.Seq.ByteString as MSBS
-import qualified Matcher.Seq.Text as MST
+import qualified Tshsh.Matcher.Bracket as BrM
+import Tshsh.Stream
+import qualified Tshsh.Matcher.Seq as SeqM
 import Protolude
 import qualified Spec.CPS
 import qualified Spec.MonadT
@@ -25,45 +24,23 @@ import Test.Hspec.Expectations.Lens
 import Test.QuickCheck
 import Prelude (String)
 
-resultBind :: MatchResult m a -> (m -> MatchResult m a) -> MatchResult m a
-resultBind r@Match {} _ = r
-resultBind (NoMatch m) f = f m
-
-breakOnAll_ :: MST.Matcher -> Text -> Text -> [(Text, Text)]
-breakOnAll_ m pat hay =
-  case MST.matchStr m hay of
-    NoMatch _ -> []
-    Match {..} ->
-      -- In the case of (a, b) = T.breakOn, b contains a pattern,
-      -- in out case _match_prev contains a pattern
-      let prev = T.dropEnd (T.length pat) _match_prev
-          rest = pat <> _match_rest
-       in (prev, rest) :
-          ( (\(a, b) -> (prev <> pat <> a, b))
-              <$> breakOnAll_ _match_matcher pat _match_rest
-          )
-
-breakOnAll' :: Text -> Text -> [(Text, Text)]
-breakOnAll' p = breakOnAll_ (MST.mkMatcher p) p
-
-prop_sameAsTextImpl :: String -> String -> Property
-prop_sameAsTextImpl (T.pack -> a) (T.pack -> b) =
-  not (T.null a)
-    ==> breakOnAll' a b == T.breakOnAll a b
+resultBind :: ConsumerResult m arr a -> (m -> ConsumerResult m arr a) -> ConsumerResult m arr a
+resultBind r@ConsumerFinish {} _ = r
+resultBind (ConsumerContinue m) f = f m
 
 dropEnd :: Int -> ByteString -> ByteString
 dropEnd n str = BS.take (BS.length str - n) str
 
-breakOnAllBs_ :: MSBS.Matcher -> ByteString -> ByteString -> [(ByteString, ByteString)]
-breakOnAllBs_ m pat hay =
-  case MSBS.matchStr m hay of
-    NoMatch _ -> []
-    Match m' len prev rest ->
+breakOnAllSeq_ :: SeqM.SeqMatcher ByteString -> ByteString -> ByteString -> [(ByteString, ByteString)]
+breakOnAllSeq_ m pat hay =
+  case SeqM.matchStr m hay of
+    ConsumerContinue _ -> []
+    ConsumerFinish m' prev rest len ->
       (dropEnd len prev, pat <> rest) :
-      (first (prev <>) <$> breakOnAllBs_ m' pat rest)
+      (first (prev <>) <$> breakOnAllSeq_ m' pat rest)
 
-breakOnAllBs' :: ByteString -> ByteString -> [(ByteString, ByteString)]
-breakOnAllBs' p = breakOnAllBs_ (MSBS.mkMatcher p) p
+breakOnAllSeq :: ByteString -> ByteString -> [(ByteString, ByteString)]
+breakOnAllSeq p = breakOnAllSeq_ (SeqM.mkSeqMatcher p) p
 
 breakOnAllBs :: ByteString -> ByteString -> [(ByteString, ByteString)]
 breakOnAllBs p str =
@@ -79,7 +56,7 @@ breakOnAllBs p str =
 prop_sameAsBsImpl :: String -> String -> Property
 prop_sameAsBsImpl (C8.pack -> a) (C8.pack -> b) =
   not (BS.null a)
-    ==> breakOnAllBs' a b == breakOnAllBs a b
+    ==> breakOnAllSeq a b == breakOnAllBs a b
 
 main :: IO ()
 chopBs :: Int -> ByteString -> [ByteString]
@@ -207,64 +184,49 @@ main = hspec $ do
       let res = foldl' BufferSlice.listAppendEnd BufferSlice.listEmpty ss
       BufferSlice.listConcat (BufferSlice.listTakeEnd 5 res) `shouldBe` "67890"
 
-  describe "Matcher.Seq.Text" $ do
-    -- TODO: quickcheck generates quite useless input and doesn't catch errors,
-    -- fix Arbitrary instances
-    it "breakOnAll is the same as Data.Text.breakOnAll" $
-      property prop_sameAsTextImpl
-
-    it "test manually" $ do
-      breakOnAll' ":" "1:2:3" `shouldBe` [("1", ":2:3"), ("1:2", ":3")]
-      breakOnAll' ":" "123" `shouldBe` []
-      breakOnAll' ":" "---:---" `shouldBe` [("---", ":---")]
-      breakOnAll' "123" ("112" <> "123" <> "112" <> "123")
-        `shouldBe` [ ("112", "123" <> "112123"),
-                     ("112123112", "123")
-                   ]
-
   describe "Matcher.Seq.ByteString" $ do
     it "breakOnAll is the same as BS based breakOnAll" $
       property prop_sameAsBsImpl
 
     it "test manually" $ do
-      breakOnAllBs' ":" "1:2:3" `shouldBe` [("1", ":2:3"), ("1:2", ":3")]
-      breakOnAllBs' ":" "123" `shouldBe` []
-      breakOnAllBs' ":" "---:---" `shouldBe` [("---", ":---")]
-      breakOnAllBs' "123" ("112" <> "123" <> "112" <> "123")
+      breakOnAllSeq ":" "1:2:3" `shouldBe` [("1", ":2:3"), ("1:2", ":3")]
+      breakOnAllSeq ":" "123" `shouldBe` []
+      breakOnAllSeq ":" "---:---" `shouldBe` [("---", ":---")]
+      breakOnAllSeq "123" ("112" <> "123" <> "112" <> "123")
         `shouldBe` [ ("112", "123" <> "112123"),
                      ("112123112", "123")
                    ]
 
-  describe "Matcher.Bracket.Text" $ do
+  describe "Matcher.Bracket.ByteString" $ do
     it "finds a match" $ do
-      let res = MBT.matchStr (MBT.mkMatcher "[" "]") "prev[inside]rest"
-      res `shouldHave` _Match
-      res `shouldHave` match_prev . only "prev[inside]"
-      res `shouldHave` match_rest . only "rest"
-      res `shouldHave` match_matchLength . only 8
+      let res = BrM.matchStr (BrM.mkBracketMatcher @ByteString "[" "]") "prev[inside]rest"
+      res `shouldHave` _ConsumerFinish
+      res `shouldHave` cs_prev . only "prev[inside]"
+      res `shouldHave` cs_rest . only "rest"
+      res `shouldHave` cs_result . only 8
 
     it "feed input in chunks" $ do
-      let res0 = MBT.matchStr (MBT.mkMatcher "[" "]") "prev[ins"
-      res0 `shouldHave` _NoMatch
-      let res = res0 `resultBind` (`MBT.matchStr` "ide]rest")
-      res `shouldHave` _Match
-      res `shouldHave` match_prev . only "ide]"
-      res `shouldHave` match_rest . only "rest"
-      res `shouldHave` match_matchLength . only 8
+      let res0 = BrM.matchStr (BrM.mkBracketMatcher @ByteString "[" "]") "prev[ins"
+      res0 `shouldHave` _ConsumerContinue
+      let res = res0 `resultBind` (`BrM.matchStr` "ide]rest")
+      res `shouldHave` _ConsumerFinish
+      res `shouldHave` cs_prev . only "ide]"
+      res `shouldHave` cs_rest . only "rest"
+      res `shouldHave` cs_result . only 8
 
     it "feed input in many chunks" $ do
-      let res0 = MBT.matchStr (MBT.mkMatcher "[" "]") ""
-      res0 `shouldHave` _NoMatch
+      let res0 = BrM.matchStr (BrM.mkBracketMatcher @ByteString "[" "]") ""
+      res0 `shouldHave` _ConsumerContinue
       let res =
-            res0 `resultBind` (`MBT.matchStr` "pr")
-              `resultBind` (`MBT.matchStr` "e")
-              `resultBind` (`MBT.matchStr` "v[i")
-              `resultBind` (`MBT.matchStr` "nsi")
-              `resultBind` (`MBT.matchStr` "de]rest")
-      res `shouldHave` _Match
-      res `shouldHave` match_prev . only "de]"
-      res `shouldHave` match_rest . only "rest"
-      res `shouldHave` match_matchLength . only 8
+            res0 `resultBind` (`BrM.matchStr` "pr")
+              `resultBind` (`BrM.matchStr` "e")
+              `resultBind` (`BrM.matchStr` "v[i")
+              `resultBind` (`BrM.matchStr` "nsi")
+              `resultBind` (`BrM.matchStr` "de]rest")
+      res `shouldHave` _ConsumerFinish
+      res `shouldHave` cs_prev . only "de]"
+      res `shouldHave` cs_rest . only "rest"
+      res `shouldHave` cs_result . only 8
 
   describe "CPS lang" Spec.CPS.spec
 

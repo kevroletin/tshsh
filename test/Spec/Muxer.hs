@@ -1,34 +1,43 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE TypeFamilies  #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Spec.Muxer where
 
 import Control.Lens hiding (_1', _2')
-import Lang.Coroutine.CPS
+import Tshsh.Lang.Coroutine.CPS
 import Spec.CPS.Folds
 import Protolude
 import Test.Hspec
 import Test.Hspec.Core.Spec
 import Data.Strict.Tuple
 import Tshsh.Muxer.ShellOutputParser
-import Data.BufferSlice (BufferSlice)
-import qualified Data.BufferSlice as BufferSlice
-import Matcher.ByteString
+import Tshsh.Data.BufferSlice (BufferSlice)
+import qualified Tshsh.Data.BufferSlice as BufferSlice
+import Tshsh.Matcher.Seq (mkSeqMatcherSC)
+import Tshsh.Stream
 
 data TestSeq a = LeftBracket Int
                | RightBracket Int
                | TestData a
                deriving (Eq, Show, Functor)
 
+instance RaceMatchersDataCfg (TestSeq BufferSlice) where
+  type FstParam (TestSeq BufferSlice) = Int
+  type SndParam (TestSeq BufferSlice) = Int
+  onData = TestData
+  onFstEv = LeftBracket
+  onSndEv = RightBracket
+
+instance RaceMatchersStateCfg (Pair (StreamConsumer ByteString Int) (StreamConsumer ByteString Int)) (TestSeq BufferSlice) where
+  fstMatcher f (a :!: b) = (:!: b) <$> f a
+  sndMatcher f (a :!: b) = (a :!:) <$> f b
+
 mappendData :: Semigroup a => [TestSeq a] -> [TestSeq a]
 mappendData [] = []
 mappendData (TestData x : TestData y : rest) = mappendData (TestData (x <> y) : rest)
 mappendData (x : xs) = x : mappendData xs
-
-instance RaceMatchersDataCfg (TestSeq BufferSlice) where
-  onData = TestData
-  onFstEv = LeftBracket
-  onSndEv = RightBracket
 
 runProgram :: [inp] -> Pair st (Program st inp out Identity) -> [out]
 runProgram inp = loop inp []
@@ -43,10 +52,11 @@ runProgram inp = loop inp []
 
 spec :: SpecM () ()
 spec = do
-  let st = mkSeqMatcher "<<" :!: mkSeqMatcher ">>"
+  let st :: Pair (StreamConsumer ByteString Int) (StreamConsumer ByteString Int)
+      st = mkSeqMatcherSC "<<" :!: mkSeqMatcherSC ">>"
   let beautify xs = mappendData $ (BufferSlice.sliceToByteString <$>) <$> xs
   it "no match" $ do
-    let res = runProgram ["abc"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
+    let res = runProgram ["abc" :: BufferSlice] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "abc"]
 
   it "fst match" $ do

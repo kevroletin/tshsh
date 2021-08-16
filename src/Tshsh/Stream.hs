@@ -14,6 +14,8 @@ module Tshsh.Stream
     cs_rest,
     cs_result,
     mapConsumerResult,
+    _ConsumerFinish,
+    _ConsumerContinue,
   )
 where
 
