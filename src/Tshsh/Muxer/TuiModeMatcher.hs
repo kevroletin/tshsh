@@ -9,7 +9,7 @@ import Protolude
 import Data.Coerce
 
 data TuiModeMatcher = TuiModeMatcher
-  { _tmch_prefixMatcher :: SeqM.SeqMatcher ByteString,
+  { _tmch_prefixMatcher :: SeqM.SeqMatcher,
     _tmch_prefixMatchOffset :: {-# UNPACK #-} Int
   }
   deriving (Show)

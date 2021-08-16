@@ -4,6 +4,7 @@ import Gauge.Main
 import qualified Tshsh.Stream as S
 import qualified Tshsh.Matcher.Seq as SeqM
 import qualified Tshsh.Matcher.Bracket as BrM
+import qualified Tshsh.Matcher as M
 import Protolude
 import qualified Spec.Simulator as S
 import qualified Spec.SimulatorM as SM
@@ -24,7 +25,7 @@ countMatchesBS_ !res p str
 countMatchesBS :: ByteString -> ByteString -> Int
 countMatchesBS = countMatchesBS_ 0
 
-countMatchesBr_ :: Int -> BrM.BracketMatcher ByteString -> ByteString -> Int
+countMatchesBr_ :: Int -> BrM.BracketMatcher -> ByteString -> Int
 countMatchesBr_ !res m str
   | BS.null str = res
   | otherwise =
@@ -32,10 +33,10 @@ countMatchesBr_ !res m str
       S.ConsumerFinish m' _ rest _ -> countMatchesBr_ (res + 1) m' rest
       S.ConsumerContinue _ -> res
 
-countMatchesBr :: BrM.BracketMatcher ByteString -> ByteString -> Int
+countMatchesBr :: BrM.BracketMatcher -> ByteString -> Int
 countMatchesBr = countMatchesBr_ 0
 
-countMatches_ :: Int -> SeqM.SeqMatcher ByteString -> ByteString -> Int
+countMatches_ :: Int -> SeqM.SeqMatcher -> ByteString -> Int
 countMatches_ !res m str
   | BS.null str = res
   | otherwise =
@@ -43,7 +44,7 @@ countMatches_ !res m str
       S.ConsumerFinish m' _ rest _ -> countMatches_ (res + 1) m' rest
       S.ConsumerContinue _ -> res
 
-countMatchesSeq :: SeqM.SeqMatcher ByteString -> ByteString -> Int
+countMatchesSeq :: SeqM.SeqMatcher -> ByteString -> Int
 countMatchesSeq = countMatches_ 0
 
 countMatchesStream_ :: Int -> S.StreamConsumer ByteString Int -> ByteString -> Int
@@ -86,11 +87,11 @@ main = do
           bench "SeqM.Matcher.Seq" $
             whnf (countMatchesSeq (SeqM.mkSeqMatcher prompt)) str,
           bench "SeqM.Matcher seq" $
-            whnf (countMatchesStream (SeqM.mkSeqMatcherSC prompt)) str,
+            whnf (countMatchesStream (M.mkSeqMatcher prompt)) str,
           bench "SeqM.Matcher bracket" $
             whnf (countMatchesBr (BrM.mkBracketMatcher "[[" "]]")) str,
           bench "SeqM.Matcher bracket" $
-            whnf (countMatchesStream (BrM.mkBracketMatcherSC "[[" "]]")) str,
+            whnf (countMatchesStream (M.mkBracketMatcher "[[" "]]")) str,
           bench "dummy BS.foldl'" $
             whnf (BS.foldl' (+) 0) str
         ],
@@ -101,7 +102,7 @@ main = do
           bench "SeqM.Matcher.Seq" $
             whnf (countMatchesSeq (SeqM.mkSeqMatcher longsubstring)) str2,
           bench "SeqM.Matcher seq" $
-            whnf (countMatchesStream (SeqM.mkSeqMatcherSC longsubstring)) str2,
+            whnf (countMatchesStream (M.mkSeqMatcher longsubstring)) str2,
           bench "dummy BS.foldl'" $
             whnf (BS.foldl' (+) 0) str2
         ],
