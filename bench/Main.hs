@@ -1,9 +1,9 @@
 import Data.ByteString as BS
 import Data.Strict.Tuple
 import Gauge.Main
-import qualified Tshsh.Matcher.ByteString as SomeM
-import Tshsh.Matcher.Result
-import qualified Tshsh.Matcher.Seq.ByteString as SeqM
+import qualified Tshsh.Stream as S
+import qualified Tshsh.Matcher.Seq as SeqM
+import qualified Tshsh.Matcher.Bracket as BrM
 import Protolude
 import qualified Spec.Simulator as S
 import qualified Spec.SimulatorM as SM
@@ -24,27 +24,38 @@ countMatchesBS_ !res p str
 countMatchesBS :: ByteString -> ByteString -> Int
 countMatchesBS = countMatchesBS_ 0
 
-countMatches_ :: Int -> SeqM.Matcher a -> ByteString -> Int
+countMatchesBr_ :: Int -> BrM.BracketMatcher ByteString -> ByteString -> Int
+countMatchesBr_ !res m str
+  | BS.null str = res
+  | otherwise =
+    case BrM.matchStr m str of
+      S.ConsumerFinish m' _ rest _ -> countMatchesBr_ (res + 1) m' rest
+      S.ConsumerContinue _ -> res
+
+countMatchesBr :: BrM.BracketMatcher ByteString -> ByteString -> Int
+countMatchesBr = countMatchesBr_ 0
+
+countMatches_ :: Int -> SeqM.SeqMatcher ByteString -> ByteString -> Int
 countMatches_ !res m str
   | BS.null str = res
   | otherwise =
     case SeqM.matchStr m str of
-      Match m' _ _ r _ -> countMatches_ (res + 1) m' r
-      NoMatch _ -> res
+      S.ConsumerFinish m' _ rest _ -> countMatches_ (res + 1) m' rest
+      S.ConsumerContinue _ -> res
 
-countMatchesSeq :: SeqM.Matcher a -> ByteString -> Int
+countMatchesSeq :: SeqM.SeqMatcher ByteString -> ByteString -> Int
 countMatchesSeq = countMatches_ 0
 
-countMatchesSomeM_ :: Int -> SomeM.SomeMatcher a -> ByteString -> Int
-countMatchesSomeM_ !res m str
+countMatchesStream_ :: Int -> S.StreamConsumer ByteString Int -> ByteString -> Int
+countMatchesStream_ !res m str
   | BS.null str = res
   | otherwise =
-    case SomeM.matchStr m str of
-      Match m' _ _ r _ -> countMatchesSomeM_ (res + 1) m' r
-      NoMatch _ -> res
+    case S.consume m str of
+      S.ConsumerFinish m' _ rest _ -> countMatchesStream_ (res + 1) m' rest
+      S.ConsumerContinue _ -> res
 
-countMatchesSomeM :: SomeM.SomeMatcher a -> ByteString -> Int
-countMatchesSomeM = countMatchesSomeM_ 0
+countMatchesStream :: S.StreamConsumer ByteString Int -> ByteString -> Int
+countMatchesStream = countMatchesStream_ 0
 
 manySubstrings :: Int -> ByteString -> ByteString
 manySubstrings n = BS.pack . Protolude.take n . cycle . mconcat . Protolude.inits . BS.unpack
@@ -73,11 +84,13 @@ main = do
         [ bench "BS" $
             whnf (countMatchesBS prompt) str,
           bench "SeqM.Matcher.Seq" $
-            whnf (countMatchesSeq (SeqM.mkMatcher () prompt)) str,
+            whnf (countMatchesSeq (SeqM.mkSeqMatcher prompt)) str,
           bench "SeqM.Matcher seq" $
-            whnf (countMatchesSomeM (SomeM.mkSeqMatcher () prompt)) str,
+            whnf (countMatchesStream (SeqM.mkSeqMatcherSC prompt)) str,
           bench "SeqM.Matcher bracket" $
-            whnf (countMatchesSomeM (SomeM.mkBracketMatcher () "[[" "]]")) str,
+            whnf (countMatchesBr (BrM.mkBracketMatcher "[[" "]]")) str,
+          bench "SeqM.Matcher bracket" $
+            whnf (countMatchesStream (BrM.mkBracketMatcherSC "[[" "]]")) str,
           bench "dummy BS.foldl'" $
             whnf (BS.foldl' (+) 0) str
         ],
@@ -86,9 +99,9 @@ main = do
         [ bench "BS" $
             whnf (countMatchesBS longsubstring) str2,
           bench "SeqM.Matcher.Seq" $
-            whnf (countMatchesSeq (SeqM.mkMatcher () longsubstring)) str2,
+            whnf (countMatchesSeq (SeqM.mkSeqMatcher longsubstring)) str2,
           bench "SeqM.Matcher seq" $
-            whnf (countMatchesSomeM (SomeM.mkSeqMatcher () longsubstring)) str2,
+            whnf (countMatchesStream (SeqM.mkSeqMatcherSC longsubstring)) str2,
           bench "dummy BS.foldl'" $
             whnf (BS.foldl' (+) 0) str2
         ],

@@ -3,46 +3,46 @@
 module Tshsh.Muxer.TuiModeMatcher (tuiModeMatcher) where
 
 import qualified Data.ByteString as BS
-import qualified Tshsh.Matcher.Base as B
-import Tshsh.Matcher.Result
-import qualified Tshsh.Matcher.Seq.ByteString as SeqMBs
+import Tshsh.Stream
+import qualified Tshsh.Matcher.Seq as SeqM
 import Protolude
+import Data.Coerce
 
-data TuiModeMatcher c a = TuiModeMatcher
-  { _tmch_prefixMatcher :: SeqMBs.Matcher (),
+data TuiModeMatcher = TuiModeMatcher
+  { _tmch_prefixMatcher :: SeqM.SeqMatcher ByteString,
     _tmch_prefixMatchOffset :: {-# UNPACK #-} Int
   }
   deriving (Show)
 
-instance B.MatcherI TuiModeMatcher Word8 Bool where
-  matcherStepI = panic "not implemented"
-  matcherResetI = matcherReset
+instance ConsumerI Wrapper ByteString (Bool, Int) where
+  consumeI = coerce matchStr
+  resetI = coerce matcherReset
 
-instance B.MatcherArrI TuiModeMatcher ByteString Word8 Bool where
-  matchStrI = matchStr
+newtype Wrapper str a = Wrapper TuiModeMatcher
+  deriving Show
 
-tuiModeMatcher :: B.SomeMatcher ByteString Word8 Bool
-tuiModeMatcher = B.SomeMatcher mkMatcher
+tuiModeMatcher :: StreamConsumer ByteString (Bool, Int)
+tuiModeMatcher = StreamConsumer . Wrapper $ mkMatcher
 
-mkMatcher :: TuiModeMatcher c a
+mkMatcher :: TuiModeMatcher
 mkMatcher =
   TuiModeMatcher
-    { _tmch_prefixMatcher = SeqMBs.mkMatcher () "\ESC[?1049",
+    { _tmch_prefixMatcher = SeqM.mkSeqMatcher "\ESC[?1049",
       _tmch_prefixMatchOffset = -1
     }
 
 matchStr ::
-  TuiModeMatcher c a ->
+  TuiModeMatcher ->
   ByteString ->
-  MatchResult (TuiModeMatcher c a) ByteString Bool
+  ConsumerResult TuiModeMatcher ByteString (Bool, Int)
 matchStr m0 str0 =
   if _tmch_prefixMatchOffset m0 < 0
     then matchPrefix
     else matchParam m0 str0
   where
     matchPrefix =
-      case SeqMBs.matchStr (_tmch_prefixMatcher m0) str0 of
-        Match m len _prev rest () ->
+      case SeqM.matchStr (_tmch_prefixMatcher m0) str0 of
+        ConsumerFinish m _prev rest len ->
           matchParam
             ( m0
                 { _tmch_prefixMatcher = m,
@@ -50,25 +50,24 @@ matchStr m0 str0 =
                 }
             )
             rest
-        NoMatch m ->
-          NoMatch (m0 {_tmch_prefixMatcher = m})
+        ConsumerContinue m ->
+          ConsumerContinue (m0 {_tmch_prefixMatcher = m})
     matchParam m1 str =
       case BS.uncons str of
-        Nothing -> NoMatch m1
+        Nothing -> ConsumerContinue m1
         Just (x, xs) ->
           if x == 104 || x == 108
             then
-              Match
+              ConsumerFinish
                 (matcherReset m1)
-                (_tmch_prefixMatchOffset m1 + 1)
                 (BS.take (BS.length str0 - BS.length xs) str0)
                 xs
-                (x == 104)
-            else NoMatch (matcherReset m1)
+                (x == 104, _tmch_prefixMatchOffset m1 + 1)
+            else ConsumerContinue (matcherReset m1)
 
-matcherReset :: TuiModeMatcher c a -> TuiModeMatcher c a
+matcherReset :: TuiModeMatcher -> TuiModeMatcher
 matcherReset TuiModeMatcher {..} =
   TuiModeMatcher
-    { _tmch_prefixMatcher = SeqMBs.matcherReset _tmch_prefixMatcher,
+    { _tmch_prefixMatcher = SeqM.matcherReset _tmch_prefixMatcher,
       _tmch_prefixMatchOffset = -1
     }

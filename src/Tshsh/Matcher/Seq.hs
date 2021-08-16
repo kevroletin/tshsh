@@ -1,16 +1,11 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE UndecidableInstances #-}
 
-module Tshsh.Matcher.Seq.Base
-  ( mkMatcher,
+module Tshsh.Matcher.Seq
+  ( mkSeqMatcher,
     matcherStep,
     matcherReset,
     matchStr,
@@ -23,7 +18,7 @@ module Tshsh.Matcher.Seq.Base
     mch_nextCharUnsafe,
     mch_isFull,
     mch_forwardUnsafe,
-    mch_ret
+    mkSeqMatcherSC,
   )
 where
 
@@ -32,8 +27,10 @@ import Data.Array.IArray
 import qualified Data.Array.Unboxed as U
 import Data.ListLike (ListLike)
 import qualified Data.ListLike as L
-import qualified Tshsh.Matcher.Result as R
 import Protolude
+import Tshsh.Stream
+import GHC.Exts (IsList(Item))
+import Data.Coerce
 
 takeEnd :: Int -> [c] -> [c]
 takeEnd i xs0
@@ -66,106 +63,115 @@ preprocess str = reverse $ go (prefixesDesc str)
 -- all indexes in in SeqMatcher mean "how many characters we've already matched";
 -- hence 0 means, we matched nothing and (T.length mch_pattern) means we've
 -- matched everything
-data SeqMatcher c a = SeqMatcher
-  { _mch_fstChar :: !c,
+data SeqMatcher list = SeqMatcher
+  { _mch_fstChar :: Item list,
     _mch_pos :: {-# UNPACK #-} !Int,
     _mch_maxPos :: {-# UNPACK #-} !Int,
-    _mch_pattern :: U.UArray Int c,
-    _mch_jumpTable :: U.UArray Int Int,
-    _mch_ret :: a
+    _mch_pattern :: U.UArray Int (Item list),
+    _mch_jumpTable :: U.UArray Int Int
   }
-
-deriving instance Eq a => Eq (SeqMatcher Char a)
-
-deriving instance Show a => Show (SeqMatcher Char a)
-
-deriving instance Eq a => Eq (SeqMatcher Word8 a)
-
-deriving instance Show a => Show (SeqMatcher Word8 a)
 
 $(makeLenses 'SeqMatcher)
 
 type CanUnbox c = U.IArray U.UArray c
 
+deriving instance (c ~ Item list, Eq c, CanUnbox c) => Eq (SeqMatcher list)
+
+deriving instance (c ~ Item list, Show c, CanUnbox c) => Show (SeqMatcher list)
+
 -- Invariants:
--- - mch_pattern is not full
+-- - mch_pattern is not list
 --
 -- - mch_jumpTable indixes are in range [0, T.length mch_pattern]
 -- - mch_pos in range [0, T.lengh mch_pattern]
 -- - mch_maxPos in range [1, T.length mch_pattern]
-mkMatcher' :: (Eq c, CanUnbox c) => a -> [c] -> SeqMatcher c a
-mkMatcher' _ [] = panic "SeqMatcher for empty string makes no sense"
-mkMatcher' a str@(c : _) =
+mkSeqMatcher_ :: (c ~ Item list, Eq c, CanUnbox c) => [c] -> SeqMatcher list
+mkSeqMatcher_ [] = panic "SeqMatcher for empty string makes no sense"
+mkSeqMatcher_ str@(c : _) =
   let len = length str
    in SeqMatcher
         { _mch_fstChar = c,
           _mch_pattern = U.listArray (0, len -1) str,
           _mch_jumpTable = U.listArray (1, len) (preprocess str),
           _mch_pos = 0,
-          _mch_maxPos = len,
-          _mch_ret = a
+          _mch_maxPos = len
         }
 
-mkMatcher :: (Eq item, CanUnbox item, ListLike full item) => a -> full -> SeqMatcher item a
-mkMatcher a str = mkMatcher' a (L.toList str)
-{-# INLINE mkMatcher #-}
+mkSeqMatcher :: (item ~ Item list, Eq item, CanUnbox item, ListLike list item) => list -> SeqMatcher list
+mkSeqMatcher str = mkSeqMatcher_ (L.toList str)
+{-# INLINE mkSeqMatcher #-}
 
--- Unsafe, can go out of bounds if matcher is full
-mch_nextCharUnsafe :: CanUnbox c => SeqMatcher c a -> c
+-- Unsafe, can go out of bounds if matcher is list
+mch_nextCharUnsafe :: (c ~ Item list, CanUnbox c) => SeqMatcher list -> c
 mch_nextCharUnsafe m =
-  fromMaybe (panic "mch_nextCharUnsafe: SeqMatcher is full") $
+  fromMaybe (panic "mch_nextCharUnsafe: SeqMatcher is list") $
     m ^? mch_pattern . ix (m ^. mch_pos) -- TODO: check +-1
 {-# INLINE mch_nextCharUnsafe #-}
 
-mch_isFull :: SeqMatcher c a -> Bool
+mch_isFull :: SeqMatcher c -> Bool
 mch_isFull m = m ^. mch_maxPos == m ^. mch_pos
 {-# INLINE mch_isFull #-}
 
--- Unsafe, fails if matcher is full
-mch_forwardUnsafe :: SeqMatcher c a -> SeqMatcher c a
+-- Unsafe, fails if matcher is list
+mch_forwardUnsafe :: SeqMatcher c -> SeqMatcher c
 mch_forwardUnsafe m = m & mch_pos %~ (+ 1)
 {-# INLINE mch_forwardUnsafe #-}
 
-matcherReset :: SeqMatcher c a -> SeqMatcher c a
+matcherReset :: SeqMatcher c -> SeqMatcher c
 matcherReset m = m & mch_pos .~ 0
 {-# INLINE matcherReset #-}
 
+data StepResult m c
+  = StepMatch
+      { _sr_matchLength :: {-# UNPACK #-} !Int,
+        _sr_matcher :: m
+      }
+  | StepNoMatch {_sr_matcher :: m}
+  deriving (Show)
+
 -- Invariants:
--- - accepted matcher should be not full
--- - returned matcher is not full
-matcherStep :: (Eq c, CanUnbox c) => SeqMatcher c a -> c -> R.StepResult (SeqMatcher c a) a
+-- - accepted matcher should be not list
+-- - returned matcher is not list
+matcherStep :: (c ~ Item list, Eq c, CanUnbox c) => SeqMatcher list -> c -> StepResult (SeqMatcher list) c
 matcherStep m !inpChr
-  | _mch_pos m == 0 && (inpChr /= _mch_fstChar m) = R.StepNoMatch m
+  | _mch_pos m == 0 && (inpChr /= _mch_fstChar m) = StepNoMatch m
   | _mch_pos m == 0 || mch_nextCharUnsafe m == inpChr =
     let m' = mch_forwardUnsafe m
      in if mch_isFull m'
-          then R.StepMatch (_mch_maxPos m') (matcherReset m') (_mch_ret m')
-          else R.StepNoMatch m'
+          then StepMatch (_mch_maxPos m') (matcherReset m')
+          else StepNoMatch m'
   | otherwise =
     let fallbackPos = _mch_jumpTable m ! _mch_pos m
      in matcherStep (m {_mch_pos = fallbackPos}) inpChr
 {-# INLINEABLE matcherStep #-}
 
 matchStr_ ::
-  (Eq item, CanUnbox item, ListLike full item) =>
-  SeqMatcher item a ->
-  full ->
+  (Eq item, CanUnbox item, ListLike list item) =>
+  SeqMatcher list ->
+  list ->
   Int ->
-  full ->
-  R.MatchResult (SeqMatcher item a) full a
+  list ->
+  ConsumerResult (SeqMatcher list) list Int
 matchStr_ m0 orig !pos str =
   case L.uncons str of
-    Nothing -> R.NoMatch m0
+    Nothing -> ConsumerContinue m0
     Just (h, t) ->
       case matcherStep m0 h of
-        R.StepMatch _ m' ret -> R.Match m' (_mch_maxPos m0) (L.take (1 + pos) orig) t ret
-        R.StepNoMatch m' ->
+        StepMatch _ m' ->
+          ConsumerFinish
+            { _cs_consumer = m',
+              _cs_prev = L.take (1 + pos) orig,
+              _cs_rest = t,
+              _cs_result = _mch_maxPos m0
+            }
+        StepNoMatch m' ->
           if _mch_pos m' == 0
             then -- ByteString.break (== c) compiles into c fast memchr call
-                 -- which gives c huge speedup in c case when the first letter
-                 -- of c pattern isn't common in the input string (for example
-                 -- "\n" or c beginning of an escape sequence in c output from c
-                 -- shell command
+            -- which gives c huge speedup in c case when the first letter
+            -- of c pattern isn't common in the input string (for example
+            -- "\n" or c beginning of an escape sequence in c output from c
+            -- shell command
+
               let c = mch_nextCharUnsafe m'
                   (skip, rest) = L.break (== c) t
                in matchStr_ m' orig (pos + 1 + L.length skip) rest
@@ -173,9 +179,24 @@ matchStr_ m0 orig !pos str =
 {-# INLINEABLE matchStr_ #-}
 
 matchStr ::
-  (Eq item, CanUnbox item, ListLike full item) =>
-  SeqMatcher item a ->
-  full ->
-  R.MatchResult (SeqMatcher item a) full a
+  (Eq item, CanUnbox item, ListLike list item) =>
+  SeqMatcher list ->
+  list ->
+  ConsumerResult (SeqMatcher list) list Int
 matchStr m str = matchStr_ m str 0 str
-{-# INLINEABLE matchStr #-}
+{-# INLINE matchStr #-}
+
+newtype Wrapper a b c = Wrapper (a b)
+  deriving Show
+
+instance (ListLike list item, Eq item, CanUnbox item) => ConsumerI (Wrapper SeqMatcher) list Int where
+  consumeI m str = coerce matchStr m str
+
+  resetI = coerce matcherReset
+
+mkSeqMatcherSC ::
+  (ListLike list item, Eq item, Show item, CanUnbox item) =>
+  list ->
+  StreamConsumer list Int
+mkSeqMatcherSC str = StreamConsumer . Wrapper . mkSeqMatcher $ str
+{-# INLINE mkSeqMatcherSC #-}

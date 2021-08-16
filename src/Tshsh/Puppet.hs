@@ -49,16 +49,16 @@ where
 import Control.Lens
 import Tshsh.Data.BufferSlice (BufferSlice, SliceList (..))
 import Tshsh.Lang.Coroutine.CPS
-import Tshsh.Matcher.ByteString
 import Protolude
 import System.Posix (ProcessID)
 import System.Process (ProcessHandle)
 import Tshsh.Commands
+import Tshsh.Stream
 
 data ShellModeAndOutput
   = Data BufferSlice
   | Prompt Int
-  | TuiMode Int Bool
+  | TuiMode Bool Int
   deriving (Show)
 
 newtype RawCmdResult = RawCmdResult { unRawCmdResult :: SliceList }
@@ -88,8 +88,8 @@ $(makeLenses 'PuppetProcess)
 
 data PuppetState = PuppetState
   { _ps_idx :: PuppetIdx,
-    _ps_promptMatcher :: SomeMatcher (),
-    _ps_tuiModeMatcher :: SomeMatcher Bool,
+    _ps_promptMatcher :: StreamConsumer ByteString Int,
+    _ps_tuiModeMatcher :: StreamConsumer ByteString (Bool, Int),
     _ps_mode :: PuppetMode,
     _ps_currCmdOut :: RawCmdResult,
     _ps_prevCmdOut :: RawCmdResult,
@@ -104,7 +104,7 @@ type PuppetAction = PuppetProcess -> Program () StrippedCmdResult ByteString IO
 data PuppetCfg = PuppetCfg
   { _pc_cmd :: Text,
     _pc_cmdArgs :: [Text],
-    _pc_promptMatcher :: SomeMatcher (),
+    _pc_promptMatcher :: StreamConsumer ByteString Int,
     _pc_getCwdCmd :: GetCwd,
     _pc_mkCdCmd :: Text -> Text,
     _pc_switchEnterHook :: IO (),
@@ -118,7 +118,7 @@ data Puppet = Puppet
   { _pup_idx :: PuppetIdx,
     _pup_cmd :: Text,
     _pup_cmdArgs :: [Text],
-    _pup_promptMatcher :: SomeMatcher (),
+    _pup_promptMatcher :: StreamConsumer ByteString Int,
     _pup_getCwdCmd :: GetCwd,
     _pup_mkCdCmd :: Text -> Text,
     _pup_startProcess :: IO PuppetProcess,
