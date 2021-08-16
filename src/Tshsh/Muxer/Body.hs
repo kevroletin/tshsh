@@ -155,7 +155,7 @@ switchPuppets env st0 = do
       program =
         liftP_
           ( do hPutStrLn stderr "~ Switch puppets program started"
-               _pup_switchExitHook toPup
+               _pup_switchExitHook fromPup
                _pup_switchEnterHook toPup
            ) $
         ( \cont ->
@@ -175,7 +175,7 @@ switchPuppets env st0 = do
                           showCursor
                        )
                    ) $
-                -- clear the current line and until the end of screen
+                -- clear the current line and until the end of screen, go to up
                 liftP_ (BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
                 unlessC startedNewProc clearPromptToC $
                 whenJustC mSyncCwdC
