@@ -2,7 +2,6 @@ module Main where
 
 import Control.Concurrent
 import Control.Concurrent.STM
-import Control.Concurrent.STM.BTChan
 import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
@@ -67,7 +66,7 @@ readLoop name fromH act = do
 
 newPuppet ::
   PuppetIdx ->
-  BTChan MuxCmd ->
+  TBQueue MuxCmd ->
   PuppetCfg ->
   IO (Puppet, PuppetState)
 newPuppet idx chan PuppetCfg {..} = do
@@ -98,7 +97,7 @@ newPuppet idx chan PuppetCfg {..} = do
         (Just pid) <- getPid p
 
         readThread <- forkIO . readLoop "[Read puppet output thread]" masterH $ \str ->
-          atomically . writeBTChan chan $ PuppetOutput idx str
+          atomically . writeTBQueue chan $ PuppetOutput idx str
 
         hPutStrLn stderr ("Started: " <> (show pid :: Text))
         pure $
@@ -198,7 +197,7 @@ main = do
   stderrToFile "log.txt"
   openMuxLog "mux-log.txt"
 
-  muxChan <- newBTChanIO 10
+  muxChan <- newTBQueueIO 10
   (pup1, pup1st) <- newPuppet Puppet1 muxChan cfg1
   (pup2, pup2st) <- newPuppet Puppet2 muxChan cfg2
 
@@ -207,8 +206,8 @@ main = do
   let sttySignals = ["intr", "eof", "quit", "erase", "kill", "eol", "eol2", "swtch", "start", "stop", "rprnt", "werase", "lnext", "discard"]
   _ <- callCommand ("stty raw -echo isig susp ^Z "<> mconcat [x <> " '' " | x <- sttySignals])
 
-  _ <- installHandler windowChange (Catch (atomically $ writeBTChan muxChan WindowResize)) Nothing
-  let suspendSig = atomically $ writeBTChan muxChan SwitchPuppet
+  _ <- installHandler windowChange (Catch (atomically $ writeTBQueue muxChan WindowResize)) Nothing
+  let suspendSig = atomically $ writeTBQueue muxChan SwitchPuppet
   _ <- installHandler keyboardStop (Catch suspendSig) Nothing
 
   _ <- setStoppedChildFlag True
@@ -216,12 +215,12 @@ main = do
       onChildSig (SignalInfo _ _ NoSignalSpecificInfo) = pure ()
       onChildSig (SignalInfo _ _ SigChldInfo {..}) = do
         hPutStr stderr ("Sig> Child status: " <> show siginfoPid <> " -> " <> show siginfoStatus <> "\n" :: Text)
-        atomically $ writeBTChan muxChan (ChildExited siginfoPid)
+        atomically $ writeTBQueue muxChan (ChildExited siginfoPid)
   _ <- installHandler processStatusChanged (CatchInfo onChildSig) Nothing
 
   _readThread <- forkIO $
     readLoop "[Read stdin thread]" stdin $ \str ->
-      atomically . writeBTChan muxChan $ TermInput str
+      atomically . writeTBQueue muxChan $ TermInput str
 
   pup1pids <-
     case pup1st ^. ps_process of
@@ -241,7 +240,7 @@ main = do
             }
 
   let loop !env !st = do
-        cmd <- atomically (readBTChan muxChan)
+        cmd <- atomically (readTBQueue muxChan)
         muxLog cmd
         muxBody env st cmd >>= \case
           Just newSt -> loop env newSt

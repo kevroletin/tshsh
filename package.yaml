@@ -24,7 +24,6 @@ dependencies:
 - ListLike
 - ansi-terminal
 - array
-- bounded-tchan
 - bytestring
 - containers
 - directory
