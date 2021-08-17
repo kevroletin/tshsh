@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module Main where
 
 import Control.Concurrent
@@ -5,13 +7,10 @@ import Control.Concurrent.STM
 import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
-import Tshsh.Data.BufferSlice (BufferSlice (..))
-import qualified Tshsh.Data.BufferSlice as BufferSlice
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text.IO as T
 import Foreign
-import Tshsh.Lang.Coroutine.CPS
 import Protolude hiding (tryIO)
 import ShellConfig
 import System.Directory
@@ -21,6 +20,9 @@ import System.Posix
 import System.Posix.Signals.Exts
 import System.Process
 import Tshsh.Commands
+import Tshsh.Data.BufferSlice (BufferSlice (..))
+import qualified Tshsh.Data.BufferSlice as BufferSlice
+import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Muxer
 import Tshsh.Muxer.ShellOutputParser
 import qualified Tshsh.Muxer.TuiModeMatcher as TuiMatcher
@@ -43,23 +45,56 @@ bufSize = 64 * 1024
 minBufSize :: Int
 minBufSize = 64
 
+-- data ReadLoopSt = ReadLoopSt
+--   { _rl_capacity :: Int,
+--     _rl_buff :: ForeignPtr Word8,
+--     _rl_dataPtr :: ForeignPtr Word8,
+--     _rl_fileHandle :: Handle
+--   }
+
+readLoopStep :: ReadLoopSt -> IO (Maybe (BufferSlice, ReadLoopSt))
+readLoopStep st0 =
+  if _rl_capacity st0 >= minBufSize
+    then readSlice st0
+    else do
+      buff <- mallocForeignPtrBytes bufSize
+      readSlice
+        ( st0
+            { _rl_capacity = bufSize,
+              _rl_buff = buff,
+              _rl_dataPtr = buff
+            }
+        )
+  where
+    readSlice st@ReadLoopSt {..} =
+      withForeignPtr _rl_dataPtr (\ptr -> hGetBufSome _rl_fileHandle ptr _rl_capacity) >>= \case
+        n | n > 0 -> do
+          let res = BufferSlice _rl_buff _rl_dataPtr n
+          pure $
+            Just
+              ( res,
+                st
+                  { _rl_capacity = _rl_capacity - n,
+                    _rl_dataPtr = _rl_dataPtr `plusForeignPtr` n
+                  }
+              )
+        _ -> pure Nothing
+
+readLoopInit :: Handle -> IO ReadLoopSt
+readLoopInit h = do
+  buff <- mallocForeignPtrBytes bufSize
+  pure (ReadLoopSt bufSize buff buff h)
+
 readLoop :: Text -> Handle -> (BufferSlice -> IO ()) -> IO ()
 readLoop name fromH act = do
-  let loop !capacity buff0 dataPtr =
-        if capacity < minBufSize
-          then do
-            buff <- mallocForeignPtrBytes bufSize
-            loop bufSize buff buff
-          else
-            withForeignPtr dataPtr (\ptr -> hGetBufSome fromH ptr capacity) >>= \case
-              n | n > 0 -> do
-                act (BufferSlice buff0 dataPtr n)
-                loop (capacity - n) buff0 (plusForeignPtr dataPtr n)
-              _ -> pure ()
-  res <-
-    tryIO $ do
-      buff <- mallocForeignPtrBytes bufSize
-      loop bufSize buff buff
+  let loop st0 = do
+        readLoopStep st0 >>= \case
+          Just (res, st) -> do
+            act res
+            loop st
+          Nothing ->
+            pure ()
+  res <- tryIO (loop =<< readLoopInit fromH)
   case res of
     Left err -> hPutStrLn stderr (name <> " " <> show err)
     Right _ -> pure ()
@@ -99,6 +134,9 @@ newPuppet idx chan PuppetCfg {..} = do
         readThread <- forkIO . readLoop "[Read puppet output thread]" masterH $ \str ->
           atomically . writeTBQueue chan $ PuppetOutput idx str
 
+        dataAvailable <- newTVarIO True
+        readSlice <- readLoopInit masterH
+
         hPutStrLn stderr ("Started: " <> (show pid :: Text))
         pure $
           PuppetProcess
@@ -106,7 +144,9 @@ newPuppet idx chan PuppetCfg {..} = do
               _pp_pid = pid,
               _pp_inputH = masterH,
               _pp_pts = pts,
-              _pp_readThread = readThread
+              _pp_readThread = readThread,
+              _pp_dataAvailable = dataAvailable,
+              _pp_readSliceSt = readSlice
             }
 
   let puppetState =
@@ -204,7 +244,7 @@ main = do
   origTtyState <- saveTtyState
   -- disable all the signale except for susp
   let sttySignals = ["intr", "eof", "quit", "erase", "kill", "eol", "eol2", "swtch", "start", "stop", "rprnt", "werase", "lnext", "discard"]
-  _ <- callCommand ("stty raw -echo isig susp ^Z "<> mconcat [x <> " '' " | x <- sttySignals])
+  _ <- callCommand ("stty raw -echo isig susp ^Z " <> mconcat [x <> " '' " | x <- sttySignals])
 
   _ <- installHandler windowChange (Catch (atomically $ writeTBQueue muxChan WindowResize)) Nothing
   let suspendSig = atomically $ writeTBQueue muxChan SwitchPuppet
