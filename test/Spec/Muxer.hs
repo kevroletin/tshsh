@@ -15,8 +15,7 @@ import Data.Strict.Tuple
 import Tshsh.Muxer.ShellOutputParser
 import Tshsh.Data.BufferSlice (BufferSlice)
 import qualified Tshsh.Data.BufferSlice as BufferSlice
-import Tshsh.Matcher.Seq (mkSeqMatcherSC)
-import Tshsh.Stream
+import Tshsh.Matcher
 
 data TestSeq a = LeftBracket Int
                | RightBracket Int
@@ -53,7 +52,7 @@ runProgram inp = loop inp []
 spec :: SpecM () ()
 spec = do
   let st :: Pair (StreamConsumer ByteString Int) (StreamConsumer ByteString Int)
-      st = mkSeqMatcherSC "<<" :!: mkSeqMatcherSC ">>"
+      st = mkSeqMatcher "<<" :!: mkSeqMatcher ">>"
   let beautify xs = mappendData $ (BufferSlice.sliceToByteString <$>) <$> xs
   it "no match" $ do
     let res = runProgram ["abc" :: BufferSlice] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
