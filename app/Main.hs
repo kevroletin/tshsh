@@ -10,11 +10,11 @@ import Control.Monad
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text.IO as T
-import Foreign
+import Foreign hiding (void)
 import Protolude hiding (tryIO)
 import ShellConfig
 import System.Directory
-import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBinaryMode, hSetBuffering)
+import System.IO (BufferMode (..), hFlush, hGetBufSome, hPrint, hSetBinaryMode, hSetBuffering, hWaitForInput)
 import System.IO.Unsafe
 import System.Posix
 import System.Posix.Signals.Exts
@@ -101,10 +101,9 @@ readLoop name fromH act = do
 
 newPuppet ::
   PuppetIdx ->
-  TBQueue MuxCmd ->
   PuppetCfg ->
   IO (Puppet, PuppetState)
-newPuppet idx chan PuppetCfg {..} = do
+newPuppet idx PuppetCfg {..} = do
   let startProcess = do
         (master, slave) <- openPseudoTerminal
         masterH <- fdToHandle master
@@ -131,11 +130,10 @@ newPuppet idx chan PuppetCfg {..} = do
         -- TODO: handle process startup failures
         (Just pid) <- getPid p
 
-        readThread <- forkIO . readLoop "[Read puppet output thread]" masterH $ \str ->
-          atomically . writeTBQueue chan $ PuppetOutput idx str
-
-        dataAvailable <- newTVarIO True
+        dataAvailable <- newTVarIO False
         readSlice <- readLoopInit masterH
+
+        watchHandleInput masterH dataAvailable
 
         hPutStrLn stderr ("Started: " <> (show pid :: Text))
         pure $
@@ -144,7 +142,6 @@ newPuppet idx chan PuppetCfg {..} = do
               _pp_pid = pid,
               _pp_inputH = masterH,
               _pp_pts = pts,
-              _pp_readThread = readThread,
               _pp_dataAvailable = dataAvailable,
               _pp_readSliceSt = readSlice
             }
@@ -217,6 +214,12 @@ ensureCmdExits cmd = do
       exitFailure
     Just _ -> pure ()
 
+watchHandleInput :: Handle -> TVar Bool -> IO ()
+watchHandleInput h var = do
+  void . forkIO $ do
+    _ <- hWaitForInput h (-1)
+    atomically $ writeTVar var True
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -237,17 +240,19 @@ main = do
   stderrToFile "log.txt"
   openMuxLog "mux-log.txt"
 
-  muxChan <- newTBQueueIO 10
-  (pup1, pup1st) <- newPuppet Puppet1 muxChan cfg1
-  (pup2, pup2st) <- newPuppet Puppet2 muxChan cfg2
-
+  (pup1, pup1st) <- newPuppet Puppet1 cfg1
+  (pup2, pup2st) <- newPuppet Puppet2 cfg2
   origTtyState <- saveTtyState
+
   -- disable all the signale except for susp
   let sttySignals = ["intr", "eof", "quit", "erase", "kill", "eol", "eol2", "swtch", "start", "stop", "rprnt", "werase", "lnext", "discard"]
   _ <- callCommand ("stty raw -echo isig susp ^Z " <> mconcat [x <> " '' " | x <- sttySignals])
 
-  _ <- installHandler windowChange (Catch (atomically $ writeTBQueue muxChan WindowResize)) Nothing
-  let suspendSig = atomically $ writeTBQueue muxChan SwitchPuppet
+  muxQueue <- newTQueueIO
+
+  -- catch susp and child inpMsg
+  _ <- installHandler windowChange (Catch (atomically $ writeTQueue muxQueue WindowResize)) Nothing
+  let suspendSig = atomically $ writeTQueue muxQueue SwitchPuppet
   _ <- installHandler keyboardStop (Catch suspendSig) Nothing
 
   _ <- setStoppedChildFlag True
@@ -255,12 +260,12 @@ main = do
       onChildSig (SignalInfo _ _ NoSignalSpecificInfo) = pure ()
       onChildSig (SignalInfo _ _ SigChldInfo {..}) = do
         hPutStr stderr ("Sig> Child status: " <> show siginfoPid <> " -> " <> show siginfoStatus <> "\n" :: Text)
-        atomically $ writeTBQueue muxChan (ChildExited siginfoPid)
+        atomically $ writeTQueue muxQueue (ChildExited siginfoPid)
   _ <- installHandler processStatusChanged (CatchInfo onChildSig) Nothing
 
   _readThread <- forkIO $
     readLoop "[Read stdin thread]" stdin $ \str ->
-      atomically . writeTBQueue muxChan $ TermInput str
+      atomically . writeTQueue muxQueue $ TermInput str
 
   pup1pids <-
     case pup1st ^. ps_process of
@@ -279,12 +284,52 @@ main = do
               _mst_keepAlive = False
             }
 
-  let loop !env !st = do
-        cmd <- atomically (readTBQueue muxChan)
-        muxLog cmd
-        muxBody env st cmd >>= \case
-          Just newSt -> loop env newSt
-          Nothing -> pure ()
+  let loop !env !st0 = do
+        let (p1 :!: p2) = _mst_puppetSt st0
+            md1Av = p1 ^? ps_process . _Just . pp_dataAvailable
+            md2Av = p2 ^? ps_process . _Just . pp_dataAvailable
+
+        (inpMsg, d1, d2) :: ([MuxCmd], Bool, Bool) <-
+          atomically $ do
+            inpMsg <- flushTQueue muxQueue
+            av1 <- maybe (pure False) readTVar md1Av
+            av2 <- maybe (pure False) readTVar md2Av
+            if not (null inpMsg) || av1 || av2
+              then pure (inpMsg, av1, av2)
+              else retry
+
+        let muxBodyL e s cmd = muxLog cmd >> muxBody e s cmd
+
+        let goInpMsg [] st = pure st
+            goInpMsg _ Nothing = pure Nothing
+            goInpMsg (cmd : rest) (Just st) = muxBodyL env st cmd >>= goInpMsg rest
+
+        let goPuppet _ Nothing = pure Nothing
+            goPuppet idx (Just st) = do
+              let Just (pp) = st ^. mst_puppetSt . pupIdx idx . ps_process
+              atomically $ writeTVar (_pp_dataAvailable pp) False
+              res <-
+                readLoopStep (_pp_readSliceSt pp) >>= \case
+                  Nothing -> pure (Just st)
+                  Just (slice, newReadSt) -> do
+                    let newSt =
+                          st & mst_puppetSt . pupIdx idx . ps_process
+                            ?~ (pp {_pp_readSliceSt = newReadSt})
+                    muxBodyL env newSt (PuppetOutput idx slice)
+
+              watchHandleInput (_pp_inputH pp) (_pp_dataAvailable pp)
+              pure res
+
+        let whenAv True act st = act st
+            whenAv False _ st = pure st
+
+        goInpMsg inpMsg (Just st0)
+          >>= whenAv d1 (goPuppet Puppet1)
+          >>= whenAv d2 (goPuppet Puppet2)
+          >>= \case
+            Nothing -> pure ()
+            Just newSt -> loop env newSt
+
   loop (mux ^. mux_env) (mux ^. mux_st)
 
   restoreTtyState origTtyState

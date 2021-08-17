@@ -19,7 +19,6 @@ module Tshsh.Puppet
     pp_pid,
     pp_inputH,
     pp_pts,
-    pp_readThread,
     pp_dataAvailable,
     pp_readSliceSt,
     pup_idx,
@@ -51,7 +50,6 @@ where
 
 import Control.Lens
 import Control.Concurrent.STM
-import Data.Strict.Tuple
 import Tshsh.Data.BufferSlice (BufferSlice, SliceList (..))
 import Tshsh.Lang.Coroutine.CPS
 import Protolude
@@ -94,7 +92,6 @@ data PuppetProcess = PuppetProcess
     _pp_pid :: ProcessID,
     _pp_inputH :: Handle,
     _pp_pts :: FilePath,
-    _pp_readThread :: ThreadId,
     _pp_dataAvailable :: TVar Bool,
     _pp_readSliceSt :: ReadLoopSt
   }
