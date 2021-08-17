@@ -31,6 +31,7 @@ import Tshsh.Lang.Coroutine.CPS
 import Protolude hiding (hPutStrLn, log, tryIO)
 import Tshsh.Commands
 import Tshsh.Puppet
+import Control.Concurrent.STM (TQueue)
 
 newtype MuxEnv = MuxEnv
   { _menv_puppets :: Pair Puppet Puppet
@@ -43,7 +44,10 @@ data MuxState = MuxState
     _mst_keepAlive :: Bool
   }
 
-data Mux = Mux {_mux_env :: MuxEnv, _mux_st :: MuxState}
+data Mux = Mux { _mux_queue :: TQueue MuxCmd,
+                 _mux_env :: MuxEnv,
+                 _mux_st :: MuxState
+               }
 
 $(makeLenses 'MuxState)
 $(makeLenses 'MuxEnv)

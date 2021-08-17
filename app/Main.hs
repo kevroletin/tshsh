@@ -201,8 +201,8 @@ saveTtyState = do
         }
   T.hGetContents sttyOut
 
-restoreTtyState :: Text -> IO ()
-restoreTtyState sttyState = do
+restoreStdinTty :: Text -> IO ()
+restoreStdinTty sttyState = do
   _ <- system ("stty " <> cs sttyState)
   pure ()
 
@@ -219,6 +219,99 @@ watchHandleInput h var = do
   void . forkIO $ do
     _ <- hWaitForInput h (-1)
     atomically $ writeTVar var True
+
+muxLoop_ :: TQueue MuxCmd -> MuxEnv -> MuxState -> IO ()
+muxLoop_ !queue !env !st0 = do
+  (inpMsg, d1Av, d2Av) :: ([MuxCmd], Bool, Bool) <- waitInput
+
+  handleInpMsg inpMsg (Just st0)
+    >>= whenAv d1Av (handlePuppetInput Puppet1)
+    >>= whenAv d2Av (handlePuppetInput Puppet2)
+    >>= \case
+      Nothing -> pure ()
+      Just newSt -> muxLoop_ queue env newSt
+  where
+    waitInput :: IO ([MuxCmd], Bool, Bool)
+    waitInput = do
+      let (p1 :!: p2) = _mst_puppetSt st0
+          md1Av = p1 ^? ps_process . _Just . pp_dataAvailable
+          md2Av = p2 ^? ps_process . _Just . pp_dataAvailable
+
+      atomically $ do
+        inpMsg <- flushTQueue queue
+        av1 <- maybe (pure False) readTVar md1Av
+        av2 <- maybe (pure False) readTVar md2Av
+        if not (null inpMsg) || av1 || av2
+          then pure (inpMsg, av1, av2)
+          else retry
+
+    whenAv True act st = act st
+    whenAv False _ st = pure st
+
+    muxBodyL e s cmd = muxLog cmd >> muxBody e s cmd
+
+    handleInpMsg [] st = pure st
+    handleInpMsg _ Nothing = pure Nothing
+    handleInpMsg (cmd : rest) (Just st) = muxBodyL env st cmd >>= handleInpMsg rest
+
+    muxReadFromPuppet :: MuxState -> PuppetIdx -> IO (Maybe BufferSlice, MuxState)
+    muxReadFromPuppet st idx =
+      case st ^. mst_puppetSt . pupIdx idx . ps_process of
+        Nothing -> pure (Nothing, st)
+        Just pp -> do
+          wasAv <- atomically $ swapTVar (_pp_dataAvailable pp) False
+          res <-
+            readLoopStep (_pp_readSliceSt pp) >>= \case
+              Nothing -> pure (Nothing, st)
+              Just (slice, newReadSt) -> do
+                let newSt =
+                      st & mst_puppetSt . pupIdx idx . ps_process
+                        ?~ (pp {_pp_readSliceSt = newReadSt})
+                pure (Just slice, newSt)
+          when wasAv (watchHandleInput (_pp_inputH pp) (_pp_dataAvailable pp))
+          pure res
+
+    handlePuppetInput _ Nothing = pure Nothing
+    handlePuppetInput idx (Just st) = do
+      (mSlice, newSt) <- muxReadFromPuppet st idx
+      case mSlice of
+        Nothing -> pure (Just newSt)
+        Just slice -> do
+          muxBodyL env newSt (PuppetOutput idx slice)
+
+muxLoop :: Mux -> IO ()
+muxLoop (Mux q e s) = muxLoop_ q e s
+
+setSignalHandlers :: TQueue MuxCmd -> IO ()
+setSignalHandlers queue = do
+  -- catch susp and child inpMsg
+  _ <- installHandler windowChange (Catch (atomically $ writeTQueue queue WindowResize)) Nothing
+  let suspendSig = atomically $ writeTQueue queue SwitchPuppet
+  _ <- installHandler keyboardStop (Catch suspendSig) Nothing
+
+  _ <- setStoppedChildFlag True
+  let onChildSig :: SignalInfo -> IO ()
+      onChildSig (SignalInfo _ _ NoSignalSpecificInfo) = pure ()
+      onChildSig (SignalInfo _ _ SigChldInfo {..}) = do
+        hPutStr stderr ("Sig> Child status: " <> show siginfoPid <> " -> " <> show siginfoStatus <> "\n" :: Text)
+        atomically $ writeTQueue queue (ChildExited siginfoPid)
+  _ <- installHandler processStatusChanged (CatchInfo onChildSig) Nothing
+  pure ()
+
+configureStdinTty :: IO Text
+configureStdinTty = do
+  origTtyState <- saveTtyState
+
+  -- disable all the signale except for susp
+  let sttySignals = ["intr", "eof", "quit", "erase", "kill", "eol", "eol2", "swtch", "start", "stop", "rprnt", "werase", "lnext", "discard"]
+  _ <- callCommand ("stty raw -echo isig susp ^Z " <> mconcat [x <> " '' " | x <- sttySignals])
+  pure origTtyState
+
+forkReadUserInput :: TQueue MuxCmd -> IO ()
+forkReadUserInput queue = do
+  void . forkIO $
+    readLoop "[Read stdin thread]" stdin $ \str ->
+      atomically . writeTQueue queue $ TermInput str
 
 main :: IO ()
 main = do
@@ -242,96 +335,30 @@ main = do
 
   (pup1, pup1st) <- newPuppet Puppet1 cfg1
   (pup2, pup2st) <- newPuppet Puppet2 cfg2
-  origTtyState <- saveTtyState
 
-  -- disable all the signale except for susp
-  let sttySignals = ["intr", "eof", "quit", "erase", "kill", "eol", "eol2", "swtch", "start", "stop", "rprnt", "werase", "lnext", "discard"]
-  _ <- callCommand ("stty raw -echo isig susp ^Z " <> mconcat [x <> " '' " | x <- sttySignals])
+  bracket
+    configureStdinTty
+    restoreStdinTty
+    $ \_ -> do
+      muxQueue <- newTQueueIO
+      setSignalHandlers muxQueue
+      forkReadUserInput muxQueue
 
-  muxQueue <- newTQueueIO
+      pup1pids <- maybe (_pup_startProcess pup1) pure (pup1st ^. ps_process)
 
-  -- catch susp and child inpMsg
-  _ <- installHandler windowChange (Catch (atomically $ writeTQueue muxQueue WindowResize)) Nothing
-  let suspendSig = atomically $ writeTQueue muxQueue SwitchPuppet
-  _ <- installHandler keyboardStop (Catch suspendSig) Nothing
+      let mux =
+            Mux
+              muxQueue
+              MuxEnv
+                { _menv_puppets = pup1 :!: pup2
+                }
+              MuxState
+                { _mst_puppetSt = pup1st {_ps_process = Just pup1pids} :!: pup2st,
+                  _mst_currentPuppetIdx = Puppet1,
+                  _mst_syncCwdP = Nothing,
+                  _mst_keepAlive = False
+                }
 
-  _ <- setStoppedChildFlag True
-  let onChildSig :: SignalInfo -> IO ()
-      onChildSig (SignalInfo _ _ NoSignalSpecificInfo) = pure ()
-      onChildSig (SignalInfo _ _ SigChldInfo {..}) = do
-        hPutStr stderr ("Sig> Child status: " <> show siginfoPid <> " -> " <> show siginfoStatus <> "\n" :: Text)
-        atomically $ writeTQueue muxQueue (ChildExited siginfoPid)
-  _ <- installHandler processStatusChanged (CatchInfo onChildSig) Nothing
-
-  _readThread <- forkIO $
-    readLoop "[Read stdin thread]" stdin $ \str ->
-      atomically . writeTQueue muxQueue $ TermInput str
-
-  pup1pids <-
-    case pup1st ^. ps_process of
-      Nothing -> _pup_startProcess pup1
-      Just pids -> pure pids
-
-  let mux =
-        Mux
-          MuxEnv
-            { _menv_puppets = pup1 :!: pup2
-            }
-          MuxState
-            { _mst_puppetSt = pup1st {_ps_process = Just pup1pids} :!: pup2st,
-              _mst_currentPuppetIdx = Puppet1,
-              _mst_syncCwdP = Nothing,
-              _mst_keepAlive = False
-            }
-
-  let loop !env !st0 = do
-        let (p1 :!: p2) = _mst_puppetSt st0
-            md1Av = p1 ^? ps_process . _Just . pp_dataAvailable
-            md2Av = p2 ^? ps_process . _Just . pp_dataAvailable
-
-        (inpMsg, d1, d2) :: ([MuxCmd], Bool, Bool) <-
-          atomically $ do
-            inpMsg <- flushTQueue muxQueue
-            av1 <- maybe (pure False) readTVar md1Av
-            av2 <- maybe (pure False) readTVar md2Av
-            if not (null inpMsg) || av1 || av2
-              then pure (inpMsg, av1, av2)
-              else retry
-
-        let muxBodyL e s cmd = muxLog cmd >> muxBody e s cmd
-
-        let goInpMsg [] st = pure st
-            goInpMsg _ Nothing = pure Nothing
-            goInpMsg (cmd : rest) (Just st) = muxBodyL env st cmd >>= goInpMsg rest
-
-        let goPuppet _ Nothing = pure Nothing
-            goPuppet idx (Just st) = do
-              let Just (pp) = st ^. mst_puppetSt . pupIdx idx . ps_process
-              atomically $ writeTVar (_pp_dataAvailable pp) False
-              res <-
-                readLoopStep (_pp_readSliceSt pp) >>= \case
-                  Nothing -> pure (Just st)
-                  Just (slice, newReadSt) -> do
-                    let newSt =
-                          st & mst_puppetSt . pupIdx idx . ps_process
-                            ?~ (pp {_pp_readSliceSt = newReadSt})
-                    muxBodyL env newSt (PuppetOutput idx slice)
-
-              watchHandleInput (_pp_inputH pp) (_pp_dataAvailable pp)
-              pure res
-
-        let whenAv True act st = act st
-            whenAv False _ st = pure st
-
-        goInpMsg inpMsg (Just st0)
-          >>= whenAv d1 (goPuppet Puppet1)
-          >>= whenAv d2 (goPuppet Puppet2)
-          >>= \case
-            Nothing -> pure ()
-            Just newSt -> loop env newSt
-
-  loop (mux ^. mux_env) (mux ^. mux_st)
-
-  restoreTtyState origTtyState
+      muxLoop mux
 
   pure ()
