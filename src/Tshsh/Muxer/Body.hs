@@ -15,12 +15,10 @@ import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text.IO as T
 import Foreign
-import GHC.Base (String)
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Lang.Coroutine.CPS.Folds
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.ANSI
-import qualified System.Console.Terminal.Size as TerminalSize
 import System.IO hiding (hPutStr)
 import System.Process
 import Tshsh.Commands
@@ -28,19 +26,7 @@ import Tshsh.Muxer.Types
 import Tshsh.Muxer.SyncCwd
 import Tshsh.Muxer.ShellOutputParser
 import Tshsh.Puppet
-
-syncTtySize :: String -> IO ()
-syncTtySize pts = do
-  Just (TerminalSize.Window h w :: TerminalSize.Window Int) <- TerminalSize.size
-  _ <- callCommand ("stty -F " <> pts <> " cols " <> show w <> " rows " <> show h)
-  pure ()
-
-jiggleTtySize :: String -> IO ()
-jiggleTtySize pts = do
-  Just (TerminalSize.Window h w :: TerminalSize.Window Int) <- TerminalSize.size
-  _ <- callCommand ("stty -F " <> pts <> " cols " <> show (w + 1) <> " rows " <> show h)
-  _ <- callCommand ("stty -F " <> pts <> " cols " <> show w <> " rows " <> show h)
-  pure ()
+import Tshsh.Tty
 
 copyToXClipboard :: Text -> IO ()
 copyToXClipboard str = do

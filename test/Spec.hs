@@ -31,7 +31,7 @@ resultBind (ConsumerContinue m) f = f m
 dropEnd :: Int -> ByteString -> ByteString
 dropEnd n str = BS.take (BS.length str - n) str
 
-breakOnAllSeq_ :: SeqM.SeqMatcher ByteString -> ByteString -> ByteString -> [(ByteString, ByteString)]
+breakOnAllSeq_ :: SeqM.SeqMatcher -> ByteString -> ByteString -> [(ByteString, ByteString)]
 breakOnAllSeq_ m pat hay =
   case SeqM.matchStr m hay of
     ConsumerContinue _ -> []
@@ -199,14 +199,14 @@ main = hspec $ do
 
   describe "Matcher.Bracket.ByteString" $ do
     it "finds a match" $ do
-      let res = BrM.matchStr (BrM.mkBracketMatcher @ByteString "[" "]") "prev[inside]rest"
+      let res = BrM.matchStr (BrM.mkBracketMatcher "[" "]") "prev[inside]rest"
       res `shouldHave` _ConsumerFinish
       res `shouldHave` cs_prev . only "prev[inside]"
       res `shouldHave` cs_rest . only "rest"
       res `shouldHave` cs_result . only 8
 
     it "feed input in chunks" $ do
-      let res0 = BrM.matchStr (BrM.mkBracketMatcher @ByteString "[" "]") "prev[ins"
+      let res0 = BrM.matchStr (BrM.mkBracketMatcher "[" "]") "prev[ins"
       res0 `shouldHave` _ConsumerContinue
       let res = res0 `resultBind` (`BrM.matchStr` "ide]rest")
       res `shouldHave` _ConsumerFinish
@@ -215,7 +215,7 @@ main = hspec $ do
       res `shouldHave` cs_result . only 8
 
     it "feed input in many chunks" $ do
-      let res0 = BrM.matchStr (BrM.mkBracketMatcher @ByteString "[" "]") ""
+      let res0 = BrM.matchStr (BrM.mkBracketMatcher "[" "]") ""
       res0 `shouldHave` _ConsumerContinue
       let res =
             res0 `resultBind` (`BrM.matchStr` "pr")

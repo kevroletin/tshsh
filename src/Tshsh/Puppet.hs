@@ -12,13 +12,15 @@ module Tshsh.Puppet
     pc_switchEnterHook,
     pc_switchExitHook,
     pc_cleanPromptP,
+    ReadLoopSt (..),
     Puppet (..),
     PuppetProcess (..),
     pp_handle,
     pp_pid,
     pp_inputH,
     pp_pts,
-    pp_readThread,
+    pp_dataAvailable,
+    pp_readSliceSt,
     pup_idx,
     pup_cmd,
     pup_cmdArgs,
@@ -47,6 +49,7 @@ module Tshsh.Puppet
 where
 
 import Control.Lens
+import Control.Concurrent.STM
 import Tshsh.Data.BufferSlice (BufferSlice, SliceList (..))
 import Tshsh.Lang.Coroutine.CPS
 import Protolude
@@ -54,6 +57,7 @@ import System.Posix (ProcessID)
 import System.Process (ProcessHandle)
 import Tshsh.Commands
 import Tshsh.Stream
+import Foreign
 
 data ShellModeAndOutput
   = Data BufferSlice
@@ -76,12 +80,20 @@ data PuppetMode
   | PuppetModeRepl
   deriving (Eq, Ord, Show)
 
+data ReadLoopSt = ReadLoopSt
+  { _rl_capacity :: Int,
+    _rl_buff :: ForeignPtr Word8,
+    _rl_dataPtr :: ForeignPtr Word8,
+    _rl_fileHandle :: Handle
+  }
+
 data PuppetProcess = PuppetProcess
   { _pp_handle :: ProcessHandle,
     _pp_pid :: ProcessID,
     _pp_inputH :: Handle,
     _pp_pts :: FilePath,
-    _pp_readThread :: ThreadId
+    _pp_dataAvailable :: TVar Bool,
+    _pp_readSliceSt :: ReadLoopSt
   }
 
 $(makeLenses 'PuppetProcess)
