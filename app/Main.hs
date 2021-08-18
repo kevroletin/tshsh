@@ -1,5 +1,6 @@
 module Main where
 
+import Cli
 import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
@@ -31,7 +32,7 @@ ensureCmdExits cmd = do
 
 main :: IO ()
 main = do
-  args <- getArgs
+  (opts, args) <- parseArgs
   let cfg1 = maybe "shh" cs (args ^? ix 0) `getPuppetCfg` shhCfg
   let cfg2 = maybe "zsh" cs (args ^? ix 1) `getPuppetCfg` zshCfg
 
@@ -46,8 +47,8 @@ main = do
       (_pc_cmd cfg2)
     ]
 
-  stderrToFile "log.txt"
-  openMuxLog "mux-log.txt"
+  traverse_ openMuxLog (_cl_muxLog opts)
+  stderrToFile (fromMaybe "/dev/null" $ _cl_log opts)
 
   (pup1, pup1st) <- newPuppet Puppet1 cfg1
   (pup2, pup2st) <- newPuppet Puppet2 cfg2

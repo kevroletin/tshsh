@@ -170,9 +170,9 @@ newPuppet idx PuppetCfg {..} = do
       puppetState
     )
 
-openMuxLog :: String -> IO ()
+openMuxLog :: Text -> IO ()
 openMuxLog fName = do
-  muxF <- openFile fName AppendMode
+  muxF <- openFile (cs fName) AppendMode
   hSetBuffering muxF LineBuffering
   hSetBinaryMode muxF True
   putMVar muxLogFile muxF
