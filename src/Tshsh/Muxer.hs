@@ -36,7 +36,6 @@ import qualified Tshsh.Muxer.TuiModeMatcher as TuiMatcher
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
 import Tshsh.Tty
-import Prelude (String)
 
 muxLogFile :: MVar Handle
 muxLogFile = unsafePerformIO newEmptyMVar

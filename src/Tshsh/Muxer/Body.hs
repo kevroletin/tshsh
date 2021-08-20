@@ -16,7 +16,7 @@ import Data.String.Conversions
 import qualified Data.Text.IO as T
 import Foreign
 import Tshsh.Lang.Coroutine.CPS
-import Tshsh.Lang.Coroutine.CPS.Folds
+import Tshsh.Lang.Coroutine.CPS.Internal (step)
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.ANSI
 import System.IO hiding (hPutStr)

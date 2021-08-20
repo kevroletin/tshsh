@@ -9,8 +9,8 @@ import qualified Data.Map as M
 import Data.Strict.Tuple
 import qualified Data.Text as T
 import Tshsh.Lang.Coroutine.CPS
-import Tshsh.Lang.Coroutine.CPS.Folds
 import Protolude hiding (exp, log, (>>), (>>=))
+import Spec.CPS.Folds (evalProgramM)
 
 data Shell = Shell_1 | Shell_2
   deriving (Eq, Ord, Show)

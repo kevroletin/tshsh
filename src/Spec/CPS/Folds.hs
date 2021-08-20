@@ -34,11 +34,12 @@ module Spec.CPS.Folds
     accumOutputs,
     feedInputFoldOutputs,
     feedInputAccumOutputs,
-    feedInputAccumOutputsUnsafe
+    feedInputAccumOutputsUnsafe,
+    evalProgramM,
   )
 where
 
-import Tshsh.Lang.Coroutine.CPS
+import Tshsh.Lang.Coroutine.CPS.Internal
 import Protolude
 import Data.Strict.Tuple
 
@@ -92,3 +93,17 @@ feedInputFoldOutputs f s i c =
 
 feedInputAccumOutputs :: forall st i o m. Monad m => i -> Pair st (Program st i o m) -> m ([o], ContRes st i o m)
 feedInputAccumOutputs i c = first reverse <$> feedInputFoldOutputs (\s o -> o : s) [] i c
+
+evalProgramM :: forall st i o m. Monad m => (o -> m ()) -> m i -> Pair st (Program st i o m) -> m (Pair st (Either Text ()))
+evalProgramM onOut getIn c0 =
+  let feedInputAccumOutUnsafe c = do
+        i <- getIn
+        loop =<< step (Just i) c
+
+      loop = \case
+        ContOut Nothing stCont -> feedInputAccumOutUnsafe stCont
+        ContOut (Just o) stCont -> do
+          _ <- onOut o
+          loop =<< step Nothing stCont
+        ResOut o -> pure o
+   in loop =<< step Nothing c0

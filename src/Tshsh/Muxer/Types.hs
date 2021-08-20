@@ -12,6 +12,7 @@ module Tshsh.Muxer.Types
     mst_currentPuppetIdx,
     mux_env,
     mux_st,
+    mux_queue,
     mst_keepAlive,
     pupIdx,
     sortPup,
