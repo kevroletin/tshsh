@@ -126,7 +126,8 @@ switchPuppets env st0 = do
           Just fromProc ->
             Just
               ( \cont ->
-                  AndThen (adapt fromIdx $ _pup_cleanPromptP fromPup fromProc) $
+                  whenC (_ps_mode fromSt == PuppetModeRepl)
+                    (AndThen (adapt fromIdx $ _pup_cleanPromptP fromPup fromProc)) $
                   syncCwdC (_pp_pid toProc :!: _pp_pid fromProc) env toIdx $
                   cont
               )
