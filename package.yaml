@@ -45,6 +45,7 @@ dependencies:
 
 default-extensions:
 - StrictData
+- DataKinds
 - BangPatterns
 - DeriveAnyClass
 - DeriveGeneric

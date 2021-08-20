@@ -41,7 +41,7 @@ newtype MuxEnv = MuxEnv
 data MuxState = MuxState
   { _mst_puppetSt :: Pair PuppetState PuppetState,
     _mst_currentPuppetIdx :: PuppetIdx,
-    _mst_syncCwdP :: Maybe (Program () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
+    _mst_syncCwdP :: Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
     _mst_keepAlive :: Bool
   }
 

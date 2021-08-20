@@ -43,11 +43,11 @@ runProgram inp = loop inp []
   where loop [] res _ = res
         loop (x:xs) res p =
           let
-            (out, Cont p') = runIdentity $
+            (out, Cont (st :!: p')) = runIdentity $
               feedInputAccumOutputs
                 x
                 p
-          in loop xs (res ++ out) p'
+          in loop xs (res ++ out) (st :!: unProgramEv p')
 
 spec :: SpecM () ()
 spec = do

@@ -8,23 +8,22 @@ module Tshsh.Muxer.Body where
 
 import Control.Lens
 import Control.Monad
-import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
-import qualified Tshsh.Data.BufferSlice as BufferSlice
 import qualified Data.ByteString as BS
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text.IO as T
 import Foreign
-import Tshsh.Lang.Coroutine.CPS
-import Tshsh.Lang.Coroutine.CPS.Internal (step)
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.ANSI
 import System.IO hiding (hPutStr)
 import System.Process
 import Tshsh.Commands
-import Tshsh.Muxer.Types
-import Tshsh.Muxer.SyncCwd
+import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
+import qualified Tshsh.Data.BufferSlice as BufferSlice
+import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Muxer.ShellOutputParser
+import Tshsh.Muxer.SyncCwd
+import Tshsh.Muxer.Types
 import Tshsh.Puppet
 import Tshsh.Tty
 
@@ -42,61 +41,54 @@ logSliceList msg n bl = do
     hPutStr stderr ("..." :: Text)
   hPutStr stderr ("\n" :: Text)
 
+onSyncCwdOut :: MuxState -> (PuppetIdx, ByteString) -> IO ()
+onSyncCwdOut st (i, x) = do
+  hPutStr stderr $ "~> " <> (show (i, x) :: Text) <> "\n"
+  case st ^. mst_puppetSt . pupIdx i . ps_process of
+    Just p -> BS.hPut (_pp_inputH p) x
+    Nothing -> pure ()
+
 -- manually loop over output of commands output parser and feed into sync cwd
 pipeInput ::
   MuxState ->
   PuppetIdx ->
-  Maybe inp ->
+  inp ->
   Pair
-    (ProgramSt st1 inp RawCmdResult IO)
-    (Maybe (ProgramSt () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)) ->
+    (ProgramEvSt st1 inp RawCmdResult IO)
+    (Maybe (ProgramEvSt () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)) ->
   IO
     ( Pair
-        (ProgramSt st1 inp RawCmdResult IO)
-        (Maybe (ProgramSt () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO))
+        (ProgramEvSt st1 inp RawCmdResult IO)
+        (Maybe (ProgramEvSt () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO))
     )
-pipeInput st puppetIdx = loop
+pipeInput st puppetIdx i (producer :!: mConsumer0) =
+  loop mConsumer0 =<< stepInput i producer
   where
-    onOut (i, x) = do
-      hPutStr stderr $ "~> " <> (show (i, x) :: Text) <> "\n"
-      case st ^. mst_puppetSt . pupIdx i . ps_process of
-        Just p -> BS.hPut (_pp_inputH p) x
-        Nothing -> pure ()
-    loop i (producer :!: mConsumer) =
-      step i producer >>= \case
-        ContOut (Just o) prodCont -> do
-          logSliceList (show puppetIdx <> "> ") 40 (unRawCmdResult o)
-          case mConsumer of
-            Nothing -> loop Nothing (prodCont :!: Nothing)
-            Just consumer ->
-              feedInputM onOut (puppetIdx, stripCmdOut o) consumer >>= \case
-                Cont consCont -> loop Nothing (prodCont :!: Just consCont)
-                Res r -> do
-                  hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
-                  loop Nothing (prodCont :!: Nothing)
-        ContOut Nothing prodCont ->
-          case mConsumer of
-            Nothing -> pure (prodCont :!: mConsumer)
-            Just consumer ->
-              eatOutputsM onOut consumer >>= \case
-                Cont consCont -> pure (prodCont :!: Just consCont)
-                Res r -> do
-                  hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
-                  pure (prodCont :!: Nothing)
-        ResOut (_ :!: r) -> panic ("oops, input parser exited with " <> show r)
+    loop mConsumer = \case
+      ResOut (_ :!: r) -> panic ("oops, input parser exited with " <> show r)
+      ContNoOut prodCont ->
+        pure (prodCont :!: mConsumer)
+      ContOut o prodCont -> do
+        logSliceList (show puppetIdx <> "> ") 40 (unRawCmdResult o)
+        case mConsumer of
+          Nothing -> loop Nothing =<< stepOut prodCont
+          Just consumer ->
+            feedInputM (onSyncCwdOut st) (puppetIdx, stripCmdOut o) consumer >>= \case
+              Cont consCont ->
+                loop (Just consCont) =<< stepOut prodCont
+              Res r -> do
+                hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
+                loop Nothing =<< stepOut prodCont
 
-runMuxPrograms :: MuxState -> PuppetIdx -> Maybe BufferSlice -> IO MuxState
-runMuxPrograms st puppetIdx mInp = do
+  -- Just <$> runMuxPrograms (newSt & mst_syncCwdP ?~ program) toIdx Nothing
+
+runMuxPrograms :: MuxState -> PuppetIdx -> BufferSlice -> IO MuxState
+runMuxPrograms st puppetIdx inp = do
   let thisPuppet = st ^. mst_puppetSt . pupIdx puppetIdx
-  let cmdOutPSt = thisPuppet :!: thisPuppet ^. ps_outputParser
+      cmdOutPSt = thisPuppet :!: thisPuppet ^. ps_outputParser
       mSyncCwdPSt = (() :!:) <$> _mst_syncCwdP st
   ((newThisPup :!: newCmdOutP) :!: newMuxProg) <-
-    case mInp of
-      Nothing ->
-        pipeInput st puppetIdx Nothing (cmdOutPSt :!: mSyncCwdPSt)
-      (Just inp) ->
-        pipeInput st puppetIdx (Just inp)
-          =<< pipeInput st puppetIdx Nothing (cmdOutPSt :!: mSyncCwdPSt)
+    pipeInput st puppetIdx inp (cmdOutPSt :!: mSyncCwdPSt)
   pure
     ( st & mst_puppetSt . pupIdx puppetIdx .~ (newThisPup & ps_outputParser .~ newCmdOutP)
         & mst_syncCwdP .~ ((^. _2) <$> newMuxProg)
@@ -171,7 +163,15 @@ switchPuppets env st0 = do
         liftP_ (hPutStrLn stderr "~ Switch puppets program finished")
         finishP
   {- ORMOLU_ENABLE -}
-  Just <$> runMuxPrograms (newSt & mst_syncCwdP ?~ program) toIdx Nothing
+
+  mProgram <- eatOutputsM (onSyncCwdOut newSt) (() :!: program) >>= \case
+    Cont (_ :!: consCont) ->
+      pure (Just consCont)
+    Res r -> do
+      hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
+      pure Nothing
+
+  pure $ Just (newSt & mst_syncCwdP .~ mProgram)
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
 muxBody _env st (TermInput (BufferSlice _ buf size)) = do
@@ -184,7 +184,7 @@ muxBody _env st (PuppetOutput puppetIdx inp@(BufferSlice _ buf size)) = do
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     withForeignPtr buf $ \ptr -> do
       hPutBuf stdout ptr size
-  Just <$> runMuxPrograms st puppetIdx (Just inp)
+  Just <$> runMuxPrograms st puppetIdx inp
 muxBody _env st WindowResize = do
   traverse_ syncTtySize (st ^? mst_currentPuppet . ps_process . _Just . pp_pts)
   traverse_ syncTtySize (st ^? mst_otherPuppet . ps_process . _Just . pp_pts)

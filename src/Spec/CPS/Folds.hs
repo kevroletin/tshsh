@@ -34,76 +34,80 @@ module Spec.CPS.Folds
     accumOutputs,
     feedInputFoldOutputs,
     feedInputAccumOutputs,
-    feedInputAccumOutputsUnsafe,
     evalProgramM,
   )
 where
 
-import Tshsh.Lang.Coroutine.CPS.Internal
-import Protolude
 import Data.Strict.Tuple
+import Protolude
+import Tshsh.Lang.Coroutine.CPS
 
-foldProgram :: forall s st i o m. Monad m => (s -> o -> s) -> s -> [i] -> Pair st (Program st i o m) -> m (s, ContRes st i o m)
+foldProgram ::
+  forall s st i o m prog.
+  (ProgramLike prog st i o m, Monad m) =>
+  (s -> o -> s) ->
+  s ->
+  [i] ->
+  Pair st (prog st i o m) ->
+  m (s, ContRes st i o m)
 foldProgram f res0 xs0 c0 =
-  let
-      feedInput' !res [] c = pure (res, Cont c)
-      feedInput' !res (x : xs) c = loop res xs =<< step (Just x) c
+  let feedInput' !res [] c = pure (res, Cont c)
+      feedInput' !res (x : xs) c = loop res xs =<< stepInput x c
 
       loop !res xs = \case
-        ContOut Nothing cont -> feedInput' res xs cont
-        ContOut (Just o) cont -> loop (f res o) xs =<< step Nothing cont
+        ContNoOut cont -> feedInput' res xs cont
+        ContOut o cont -> loop (f res o) xs =<< stepOut cont
         (ResOut r) -> pure (res, Res r)
-   in loop res0 xs0 =<< step Nothing c0
+   in loop res0 xs0 =<< stepOut c0
 
-accumProgram :: forall st i o m. Monad m => [i] -> Pair st (Program st i o m) -> m ([o], ContRes st i o m)
+accumProgram :: forall st i o m prog. (ProgramLike prog st i o m, Monad m) => [i] -> Pair st (prog st i o m) -> m ([o], ContRes st i o m)
 accumProgram is c = first reverse <$> foldProgram (\s o -> o : s) [] is c
 
 foldResOutputs :: forall s st i o m. Monad m => (s -> o -> s) -> s -> ContResOut st i o m -> m (s, ContRes st i o m)
 foldResOutputs f res0 r =
   let loop !res = \case
-        ContOut Nothing cont -> pure (res, Cont cont)
-        ContOut (Just o) cont -> loop (f res o) =<< step Nothing cont
+        ContNoOut cont -> pure (res, Cont cont)
+        ContOut o cont -> loop (f res o) =<< stepOut cont
         ResOut o -> pure (res, Res o)
    in loop res0 r
 
-foldOutputs :: forall s st i o m. Monad m => (s -> o -> s) -> s -> Pair st (Program st i o m) -> m (s, ContRes st i o m)
-foldOutputs a b c = foldResOutputs a b =<< step Nothing c
+foldOutputs ::
+  forall s st i o m prog.
+  (ProgramLike prog st i o m, Monad m) =>
+  (s -> o -> s) ->
+  s ->
+  Pair st (prog st i o m) ->
+  m (s, ContRes st i o m)
+foldOutputs a b c = foldResOutputs a b =<< stepOut c
 
 accumOutputs :: forall st i o m. Monad m => Pair st (Program st i o m) -> m ([o], ContRes st i o m)
 accumOutputs c = first reverse <$> foldOutputs (\s o -> o : s) [] c
 
-feedInputFoldOutUnsafe ::
-  forall s st i o m.
-  Monad m =>
-  (s -> o -> s) ->
-  s ->
-  i ->
-  Pair st (Program st i o m) ->
-  m (s, ContRes st i o m)
-feedInputFoldOutUnsafe a b i c = foldResOutputs a b =<< step (Just i) c
-
-feedInputAccumOutputsUnsafe :: forall st i o m. Monad m => i -> Pair st (Program st i o m) -> m ([o], ContRes st i o m)
-feedInputAccumOutputsUnsafe i c = first reverse <$> feedInputFoldOutUnsafe (\s o -> o : s) [] i c
-
 feedInputFoldOutputs :: forall s st i o m. Monad m => (s -> o -> s) -> s -> i -> Pair st (Program st i o m) -> m (s, ContRes st i o m)
 feedInputFoldOutputs f s i c =
   foldOutputs f s c >>= \case
-    (s', Cont c') -> feedInputFoldOutUnsafe f s' i c'
+    (s', Cont c') -> foldResOutputs f s' =<< stepInput i c'
     (s', Res o) -> pure (s', Res o)
 
 feedInputAccumOutputs :: forall st i o m. Monad m => i -> Pair st (Program st i o m) -> m ([o], ContRes st i o m)
 feedInputAccumOutputs i c = first reverse <$> feedInputFoldOutputs (\s o -> o : s) [] i c
 
-evalProgramM :: forall st i o m. Monad m => (o -> m ()) -> m i -> Pair st (Program st i o m) -> m (Pair st (Either Text ()))
+evalProgramM ::
+  forall st i o m prog.
+  (ProgramLike prog st i o m, Monad m) =>
+  (o -> m ()) ->
+  m i ->
+  Pair st (prog st i o m) ->
+  m (Pair st (Either Text ()))
 evalProgramM onOut getIn c0 =
-  let feedInputAccumOutUnsafe c = do
+  let feedInputAccumOut c = do
         i <- getIn
-        loop =<< step (Just i) c
+        loop =<< stepInput i c
 
       loop = \case
-        ContOut Nothing stCont -> feedInputAccumOutUnsafe stCont
-        ContOut (Just o) stCont -> do
+        ContNoOut stCont -> feedInputAccumOut stCont
+        ContOut o stCont -> do
           _ <- onOut o
-          loop =<< step Nothing stCont
+          loop =<< stepOut stCont
         ResOut o -> pure o
-   in loop =<< step Nothing c0
+   in loop =<< stepOut c0

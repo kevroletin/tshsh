@@ -1,16 +1,21 @@
 module Tshsh.Lang.Coroutine.CPS
-  ( eatOutputsM,
-    feedInputM,
-    Program (..),
-    ProgramSt,
-    ProgramCont,
-    ProgramCont_,
+  ( Program (..),
+    ProgramEv,
+    unProgramEv,
+    ProgramLike (..),
+    Ev (..),
     ContResOut (..),
     _ContOut,
     _ResOut,
-    ContRes (..),
-    _Cont,
-    _Res,
+    stepUnsafe,
+    stepInput,
+    EvWitness(..),
+    matchEv,
+    module Tshsh.Lang.Coroutine.CPS.Folds,
+    ProgramSt,
+    ProgramEvSt,
+    ProgramCont,
+    ProgramCont_,
     whenC,
     unlessC,
     liftP_,
@@ -19,9 +24,18 @@ module Tshsh.Lang.Coroutine.CPS
   )
 where
 
+import Data.Strict.Tuple
+import Protolude
 import Tshsh.Lang.Coroutine.CPS.Folds
 import Tshsh.Lang.Coroutine.CPS.Internal
-import Protolude
+
+type ProgramSt st i o m = Pair st (Program st i o m)
+
+type ProgramEvSt st i o m = Pair st (ProgramEv 'Ev st i o m)
+
+type ProgramCont st i o m s = (s -> Program st i o m) -> Program st i o m
+
+type ProgramCont_ st i o m = Program st i o m -> Program st i o m
 
 whenC :: Bool -> (a -> a) -> a -> a
 whenC False _ cont = cont

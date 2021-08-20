@@ -105,7 +105,7 @@ data PuppetState = PuppetState
     _ps_mode :: PuppetMode,
     _ps_currCmdOut :: RawCmdResult,
     _ps_prevCmdOut :: RawCmdResult,
-    _ps_outputParser :: Program PuppetState BufferSlice RawCmdResult IO,
+    _ps_outputParser :: ProgramEv 'Ev PuppetState BufferSlice RawCmdResult IO,
     _ps_process :: Maybe PuppetProcess
   }
 
