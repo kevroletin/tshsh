@@ -131,11 +131,7 @@ newPuppet idx PuppetCfg {..} = do
               _pp_readSliceSt = readSlice
             }
 
-  let assertEv p =
-        case matchEv p of
-          EvWitness p' -> pure p'
-          NotEvWitness _ -> throwIO (FatalError "puppet outParser is not in weakly evaluated form")
-  outParser <- assertEv (raceMatchersP `Pipe` accumCmdOutP)
+  let outParser = toEv (raceMatchersP `pipe` accumCmdOutP)
 
   let puppetState =
         PuppetState

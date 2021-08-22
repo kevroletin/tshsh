@@ -44,6 +44,7 @@
 module Tshsh.Lang.Coroutine.CPS.Internal
   ( Program (..),
     ProgramEv (..),
+    pipe,
     unProgramEv,
     ProgramLike (..),
     Ev (..),
@@ -54,6 +55,7 @@ module Tshsh.Lang.Coroutine.CPS.Internal
     stepInput,
     EvWitness (..),
     matchEv,
+    toEv,
   )
 where
 
@@ -64,6 +66,14 @@ import Protolude hiding (pi)
 import Prelude (Show (..))
 
 type Error = Text
+
+data PipeList st i o m where
+  PipeCons :: Program st i o' m -> PipeList st o' o m -> PipeList st i o m
+  PipeNil :: PipeList st o o m
+
+data PipeRevList st i o m where
+  PipeRevSnoc :: PipeRevList st i o' m -> Program st o' o m -> PipeRevList st i o m
+  PipeRevNil :: PipeRevList st i i m
 
 -- st - state (for GetState, Put state)
 -- i, o - input/output types for yield
@@ -77,14 +87,32 @@ data Program st i o m where
   WaitInput :: (i -> Program st i o m) -> Program st i o m
   Output :: o -> Program st i o m -> Program st i o m
   Finish :: Either Error () -> Program st i o m
-  -- a sequence of n pipes will add O(n) complexity for each stepUnsafe call;
-  -- maybe we can improve using a zipper-like transformation to keep
-  -- currently outputting program in focus (similarly to what we did
-  -- with AndThen
-  Pipe :: Program st i o' m -> Program st o' o m -> Program st i o m
+  -- (Pipe prev mo next) is a zipper where
+  -- prev - list of Programs in 'NotEv state (they potentially can output from stepOut)
+  -- mo - pending input to the first program in next list
+  -- next - list of Programs in 'Ev state (they are ready to consume input by stepIn)
+  Pipe :: PipeRevList st i o' m -> Maybe o' -> PipeList st o' o m -> Program st i o m
   AdapterSt :: Lens' st st' -> (i -> Maybe i') -> (o' -> o) -> Program st' i' o' m -> Program st i o m
   Adapter :: (i -> Maybe i') -> (o' -> o) -> Program st i' o' m -> Program st i o m
   AndThen :: Program st i o m -> Program st i o m -> Program st i o m
+  BuffInput :: Maybe i -> Program st i o m -> Program st i o m
+
+pipeListAppend :: PipeList st i o' m -> PipeList st o' o m -> PipeList st i o m
+pipeListAppend PipeNil next = next
+pipeListAppend (PipeCons p prev) next = PipeCons p (pipeListAppend prev next)
+
+pipe :: Program st i o' m -> Program st o' o m -> Program st i o m
+pipe (Pipe PipeRevNil Nothing prev) (Pipe PipeRevNil Nothing next) =
+  Pipe PipeRevNil Nothing (pipeListAppend prev next)
+pipe p (Pipe PipeRevNil Nothing ps) = Pipe PipeRevNil Nothing (PipeCons p ps)
+pipe (Pipe PipeRevNil Nothing prev) p =
+  Pipe PipeRevNil Nothing (pipeListAppend prev (PipeCons p PipeNil))
+pipe p1 p2 = pipe_ (PipeCons p1 (PipeCons p2 PipeNil))
+
+infixr 9 `pipe`
+
+pipe_ :: PipeList st o' o m -> Program st o' o m
+pipe_ = Pipe PipeRevNil Nothing
 
 instance (Show o) => Show (Program st i o m) where
   show (Lift _ _) = "Lift"
@@ -94,10 +122,11 @@ instance (Show o) => Show (Program st i o m) where
   show (WaitInput _) = "WaitInput"
   show (Output o _) = "Output " <> Protolude.show o
   show (Finish _) = "Finish"
-  show (Pipe _ _) = "Pipe"
+  show Pipe {} = "Pipe"
   show Adapter {} = "Adapter"
   show AdapterSt {} = "AdapterSt"
   show AndThen {} = "AndThen"
+  show BuffInput {} = "BuffInp"
 
 -- 'Ev - program has been evaluated until WaitInput and cannot be further reduced without providing input
 -- 'NotEv - program can be reduced without providing input
@@ -137,28 +166,28 @@ stepUnsafe Nothing (st :!: Output x next) = pure $ ContOut x (st :!: coerce next
 stepUnsafe (Just _) (_st :!: Output _ _) = panic "Consume all the outputs first"
 stepUnsafe Nothing (st :!: Finish a) = pure $ ResOut (st :!: a)
 stepUnsafe (Just _) (_st :!: Finish _) = panic "Consume all the outputs before reading a result"
-stepUnsafe mi (st0 :!: Pipe p1_ p2_) =
-  let feedP2 st p1 p2 i =
-        stepUnsafe i (st :!: p2) >>= \case
-          ContOut o (newSt :!: PEv newP2) ->
-            pure $ ContOut o (newSt :!: coerce (Pipe p1 newP2))
-          ContNoOut (newSt :!: PEv newP2) ->
-            feedP1 newSt p1 newP2 Nothing
-          ResOut res ->
-            pure $ ResOut res
-      feedP1 st p1 p2 i =
-        stepUnsafe i (st :!: p1) >>= \case
-          ContOut o (newSt :!: PEv newP1) ->
-            feedP2 newSt newP1 p2 (Just o)
-          ContNoOut (newSt :!: PEv newP1) ->
-            pure $ ContNoOut (newSt :!: coerce (Pipe newP1 p2))
-          ResOut res ->
-            pure $ ResOut res
-   in case mi of
-        Nothing ->
-          feedP2 st0 p1_ p2_ Nothing
-        Just i ->
-          feedP1 st0 p1_ p2_ (Just i)
+stepUnsafe Nothing (st0 :!: (Pipe prev (Just o) PipeNil)) =
+  pure $ ContOut o (st0 :!: coerce (Pipe prev Nothing PipeNil))
+stepUnsafe Nothing (st0 :!: (Pipe prev (Just i) (PipeCons p next))) =
+  stepUnsafe (Just i) (st0 :!: p) >>= \case
+    ContOut o (newSt :!: PEv newP) ->
+      stepUnsafe Nothing (newSt :!: Pipe (PipeRevSnoc prev newP) (Just o) next)
+    ContNoOut (newSt :!: PEv newP) ->
+      stepUnsafe Nothing (newSt :!: Pipe prev Nothing (PipeCons newP next))
+    ResOut res -> pure $ ResOut res
+stepUnsafe Nothing (st0 :!: (Pipe (PipeRevSnoc prev p) Nothing next)) =
+  stepUnsafe Nothing (st0 :!: p) >>= \case
+    ContOut o (newSt :!: PEv newP) ->
+      stepUnsafe Nothing (newSt :!: Pipe (PipeRevSnoc prev newP) (Just o) next)
+    ContNoOut (newSt :!: PEv newP) ->
+      stepUnsafe Nothing (newSt :!: Pipe prev Nothing (PipeCons newP next))
+    ResOut res -> pure $ ResOut res
+stepUnsafe Nothing (st0 :!: p0@(Pipe PipeRevNil Nothing _)) =
+  pure $ ContNoOut (st0 :!: coerce p0)
+stepUnsafe (Just i) (st0 :!: Pipe PipeRevNil Nothing (PipeCons p ps)) =
+  stepUnsafe Nothing (st0 :!: Pipe PipeRevNil (Just i) (PipeCons p ps))
+stepUnsafe (Just _) (_ :!: Pipe {}) =
+  panic "Consume all Pipe outputs first"
 stepUnsafe mi (st :!: Adapter proj inj p) =
   stepUnsafe (proj =<< mi) (st :!: p) >>= \case
     ContOut o (newSt :!: PEv newP) ->
@@ -184,6 +213,16 @@ stepUnsafe i (st :!: AndThen p1 p2) =
       if isJust i && not (isEv p1)
         then panic "Consume all the outputs before evaluating AndThen"
         else stepUnsafe Nothing (newSt :!: p2)
+stepUnsafe i (st :!: BuffInput Nothing p) = stepUnsafe i (st :!: p)
+stepUnsafe Nothing (st :!: BuffInput (Just i) p) = stepUnsafe (Just i) (st :!: p)
+stepUnsafe (Just newInp) (st :!: BuffInput (Just oldInp) p) =
+  stepUnsafe (Just oldInp) (st :!: p) >>= \case
+    ContOut o (newSt :!: PEv newP) ->
+      pure $ ContOut o (newSt :!: coerce (BuffInput (Just newInp) newP))
+    ContNoOut (newSt :!: PEv newP) ->
+      stepUnsafe (Just newInp) (newSt :!: newP)
+    ResOut res ->
+      pure $ ResOut (coerce res)
 {-# INLINEABLE stepUnsafe #-}
 
 data EvWitness st i o m where
@@ -198,10 +237,17 @@ isEv ModifyState {} = False
 isEv WaitInput {} = True
 isEv Output {} = False
 isEv Finish {} = False
-isEv (Pipe p1 p2) = isEv p1 && isEv p2
+isEv (Pipe PipeRevNil _ _) = True
+isEv (Pipe _ _ xs0) =
+  let go :: PipeList st i o m -> Bool
+      go PipeNil = True
+      go (PipeCons x xs) = isEv x && go xs
+   in go xs0
 isEv (AdapterSt _ _ _ p) = isEv p
 isEv (Adapter _ _ p) = isEv p
 isEv (AndThen p1 _) = isEv p1
+isEv (BuffInput Nothing p) = isEv p
+isEv _ = False
 {-# INLINE isEv #-}
 
 matchEv :: Program st i o m -> EvWitness st i o m
@@ -209,6 +255,10 @@ matchEv p
   | isEv p = EvWitness (PEv p)
   | otherwise = NotEvWitness (PEv p)
 {-# INLINE matchEv #-}
+
+toEv :: Program st i o m -> ProgramEv 'Ev st i o m
+toEv p = coerce (BuffInput Nothing p)
+{-# INLINE toEv #-}
 
 -- Both tagged and untagged programs can be evaluated to 'Ev form without
 -- providing any input. This class makes it possible to write one polymorphic

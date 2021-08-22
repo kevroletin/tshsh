@@ -135,13 +135,41 @@ spec = do
               ModifyState (_2 %~ (+ 1)) $
                 Output i (takeNInp n)
             else Finish (Right ())
-    let p = groupInp 3 `Pipe` sumInp `Pipe` takeNInp 10
+    let p = groupInp 3 `pipe` sumInp `pipe` takeNInp 10
     let (out, _) =
           rid $
             accumProgram @([Int], Int) @Int @Int @_
               [1 ..]
               (([], 0) :!: p)
     out `shouldBe` [6, 15, 24, 33, 42, 51, 60, 69, 78, 87]
+
+  it "Long pipe" $ do
+    let addPrefix :: Text -> Program () Text Text Identity
+        addPrefix msg =
+          WaitInput $ \i ->
+            Output (msg <> i) (addPrefix msg)
+
+    let dup =
+          WaitInput $ \i ->
+            Output i $
+              Output i dup
+
+    let p = addPrefix ">" `pipe` dup `pipe` addPrefix "<" `pipe` dup
+    let (out, _) =
+          rid $
+            accumProgram @() @Text @Text @_
+              (["1", "2"])
+              (() :!: p)
+    out
+      `shouldBe` [ "<>1",
+                   "<>1",
+                   "<>1",
+                   "<>1",
+                   "<>2",
+                   "<>2",
+                   "<>2",
+                   "<>2"
+                 ]
 
   let echo = WaitInput $ \i -> Output i finishP
 

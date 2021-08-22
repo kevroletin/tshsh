@@ -1,6 +1,7 @@
 module Tshsh.Lang.Coroutine.CPS
   ( Program (..),
     ProgramEv,
+    pipe,
     unProgramEv,
     ProgramLike (..),
     Ev (..),
@@ -11,6 +12,7 @@ module Tshsh.Lang.Coroutine.CPS
     stepInput,
     EvWitness (..),
     matchEv,
+    toEv,
     module Tshsh.Lang.Coroutine.CPS.Folds,
     ProgramSt,
     ProgramEvSt,
