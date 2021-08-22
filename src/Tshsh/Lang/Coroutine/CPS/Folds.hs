@@ -1,5 +1,5 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Tshsh.Lang.Coroutine.CPS.Folds
   ( ContRes (..),
@@ -10,10 +10,10 @@ module Tshsh.Lang.Coroutine.CPS.Folds
   )
 where
 
+import Control.Lens
 import Data.Strict.Tuple
 import Protolude
 import Tshsh.Lang.Coroutine.CPS.Internal
-import Control.Lens
 
 data ContRes st i o m where
   Cont :: Pair st (ProgramEv 'Ev st i o m) -> ContRes st i o m

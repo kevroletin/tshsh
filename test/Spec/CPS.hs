@@ -1,21 +1,21 @@
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ExplicitForAll #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ExplicitForAll #-}
 
 module Spec.CPS where
 
 import Control.Lens
-import Tshsh.Lang.Coroutine.CPS
-import Spec.CPS.Folds
+import Data.Strict.Tuple.Extended
 import Protolude
+import Spec.CPS.Folds
 import Test.Hspec
 import Test.Hspec.Core.Spec
 import Test.Hspec.Expectations.Lens
-import Data.Strict.Tuple.Extended
+import Tshsh.Lang.Coroutine.CPS
 
 rid :: Identity a -> a
 rid = runIdentity
@@ -29,35 +29,40 @@ spec = do
 
   it "output outputs" $ do
     let (out, res) =
-          rid $ accumOutputs @() @Int @Int
-            ( () :!:
-              (Output 1 $
-                Output 2 $
-                  Output 3 $
-                    Finish (Right ()))
-            )
+          rid $
+            accumOutputs @() @Int @Int
+              ( ()
+                  :!: ( Output 1 $
+                          Output 2 $
+                            Output 3 $
+                              Finish (Right ())
+                      )
+              )
     out `shouldBe` [1, 2, 3]
     res `shouldHave` _Res . _2 . _Right
 
   it "waitInput doesn't output" $ do
     let (out, res) =
-          rid $ accumOutputs @() @Int @Int
-            (() :!: (WaitInput $ \i -> Output i (Finish (Right ()))))
+          rid $
+            accumOutputs @() @Int @Int
+              (() :!: (WaitInput $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` []
     res `shouldHave` _Cont
 
   it "program executes until the frist waitInput" $ do
     let (out, res) =
-          rid $ accumOutputs @() @Int @Int
-            (() :!: (Output 1 $ WaitInput $ \i -> Output i (Finish (Right ()))))
+          rid $
+            accumOutputs @() @Int @Int
+              (() :!: (Output 1 $ WaitInput $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` [1]
     res `shouldHave` _Cont
 
   it "feedInput" $ do
     let (out, res) =
-          rid $ feedInputAccumOutputs @() @Int @Int
-            10
-            (() :!: (Output 1 $ WaitInput $ \i -> Output i (Finish (Right ()))))
+          rid $
+            feedInputAccumOutputs @() @Int @Int
+              10
+              (() :!: (Output 1 $ WaitInput $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` [1, 10]
     res `shouldHave` _Res . _2 . _Right . only ()
 
@@ -77,36 +82,36 @@ spec = do
 
   it "can access the state before program terminates" $ do
     let sumLoop = WaitInput $ \i ->
-                  GetState $ \st ->
-                  PutState (i + st) $
-                  sumLoop
+          GetState $ \st ->
+            PutState (i + st) $
+              sumLoop
 
-        (out, res) = rid $ accumProgram @Int @Int @Int [1..10] (0 :!: sumLoop)
+        (out, res) = rid $ accumProgram @Int @Int @Int [1 .. 10] (0 :!: sumLoop)
     out `shouldBe` []
     res `shouldHave` _Cont . _1 . only (55 :: Int)
 
   it "can access the state after program terminates" $ do
     let sumLoop = WaitInput $ \i ->
-                  GetState $ \st ->
-                  PutState (i + st) $
-                  if (i + st) < 100
-                    then sumLoop
-                    else Output i $ Finish (Right ())
+          GetState $ \st ->
+            PutState (i + st) $
+              if (i + st) < 100
+                then sumLoop
+                else Output i $ Finish (Right ())
 
-        (out, res) = rid $ accumProgram @Int @Int @Int [1..] (0 :!: sumLoop)
+        (out, res) = rid $ accumProgram @Int @Int @Int [1 ..] (0 :!: sumLoop)
     out `shouldBe` [14]
     res `shouldHave` _Res . only (105 :!: Right ()) -- sum [1..14] == 105
-
   it "lift" $ do
     let sumLoop = WaitInput $ \i ->
-                  Lift (modify (+i)) $ \() ->
-                  Output i
-                  sumLoop
+          Lift (modify (+ i)) $ \() ->
+            Output
+              i
+              sumLoop
 
-    let ((out, res), st)  = flip runState 0 $ accumProgram @Int @Int @Int [1..10] (0 :!: sumLoop)
+    let ((out, res), st) = flip runState 0 $ accumProgram @Int @Int @Int [1 .. 10] (0 :!: sumLoop)
 
     st `shouldBe` 55
-    out `shouldBe` [1..10]
+    out `shouldBe` [1 .. 10]
     res `shouldHave` _Cont
 
   -- TODO: this test doesn't check that we consume all outputs
@@ -116,10 +121,10 @@ spec = do
   it "pipe" $ do
     let groupInp n = GetState $ \(acc, _) ->
           if length acc < n
-            then
-              WaitInput $ \i ->
-                ModifyState (_1 %~ (++ [i]))
-                  (groupInp n)
+            then WaitInput $ \i ->
+              ModifyState
+                (_1 %~ (++ [i]))
+                (groupInp n)
             else
               ModifyState (_1 .~ []) $
                 Output acc (groupInp n)

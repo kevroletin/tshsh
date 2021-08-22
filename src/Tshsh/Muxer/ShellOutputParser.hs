@@ -1,20 +1,20 @@
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Tshsh.Muxer.ShellOutputParser where
 
 import Control.Lens
+import qualified Data.ByteString as BS
+import Data.Coerce
+import Data.String.AnsiEscapeCodes.Strip.Text
+import Data.String.Conversions
+import qualified Data.Text as T
+import Protolude
 import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
 import qualified Tshsh.Data.BufferSlice as BufferSlice
-import qualified Data.ByteString as BS
-import Data.String.AnsiEscapeCodes.Strip.Text
-import qualified Data.Text as T
 import Tshsh.Lang.Coroutine.CPS
-import Tshsh.Stream
-import Protolude
 import Tshsh.Puppet
-import Data.String.Conversions
-import Data.Coerce
+import Tshsh.Stream
 
 -- This config implemented as a class toSt be able toSt specialize
 class RaceMatchersDataCfg a where

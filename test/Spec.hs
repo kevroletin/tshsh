@@ -4,15 +4,10 @@
 {-# LANGUAGE ViewPatterns #-}
 
 import Control.Lens
-import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
-import qualified Tshsh.Data.BufferSlice as BufferSlice
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Internal as BS
 import qualified Data.Text as T
-import qualified Tshsh.Matcher.Bracket as BrM
-import Tshsh.Stream
-import qualified Tshsh.Matcher.Seq as SeqM
 import Protolude
 import qualified Spec.CPS
 import qualified Spec.MonadT
@@ -22,6 +17,11 @@ import qualified Spec.SimulatorM
 import Test.Hspec
 import Test.Hspec.Expectations.Lens
 import Test.QuickCheck
+import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
+import qualified Tshsh.Data.BufferSlice as BufferSlice
+import qualified Tshsh.Matcher.Bracket as BrM
+import qualified Tshsh.Matcher.Seq as SeqM
+import Tshsh.Stream
 import Prelude (String)
 
 resultBind :: ConsumerResult m arr a -> (m -> ConsumerResult m arr a) -> ConsumerResult m arr a

@@ -12,10 +12,10 @@ where
 
 import qualified Data.ByteString as BS
 import Data.Map as Map
-import Tshsh.Lang.Coroutine.CPS
 import Protolude
-import Tshsh.Puppet
+import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Matcher
+import Tshsh.Puppet
 
 defShellCfg :: PuppetCfg
 defShellCfg =

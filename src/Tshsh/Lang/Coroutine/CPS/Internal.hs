@@ -1,9 +1,8 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE RankNTypes #-}
 
 -- An implementation of coroutines. It's features are:
 -- + interprets to a monadic value, provides Lift operation
@@ -53,16 +52,16 @@ module Tshsh.Lang.Coroutine.CPS.Internal
     _ResOut,
     stepUnsafe,
     stepInput,
-    EvWitness(..),
+    EvWitness (..),
     matchEv,
   )
 where
 
 import Control.Lens
+import Data.Coerce
 import Data.Strict.Tuple
 import Protolude hiding (pi)
 import Prelude (Show (..))
-import Data.Coerce
 
 type Error = Text
 
@@ -105,7 +104,7 @@ instance (Show o) => Show (Program st i o m) where
 data Ev = Ev | NotEv
 
 newtype ProgramEv (ev :: Ev) st i o m = PEv (Program st i o m)
-  deriving Show
+  deriving (Show)
 
 unProgramEv :: ProgramEv ev st i o m -> Program st i o m
 unProgramEv = coerce
@@ -183,24 +182,22 @@ stepUnsafe i (st :!: AndThen p1 p2) =
     ResOut (newSt :!: Left err) -> pure $ ResOut (newSt :!: Left err)
     ResOut (newSt :!: Right ()) ->
       if isJust i && not (isEv p1)
-        then
-          panic "Consume all the outputs before evaluating AndThen"
-        else
-          stepUnsafe Nothing (newSt :!: p2)
-{-# INLINABLE stepUnsafe #-}
+        then panic "Consume all the outputs before evaluating AndThen"
+        else stepUnsafe Nothing (newSt :!: p2)
+{-# INLINEABLE stepUnsafe #-}
 
 data EvWitness st i o m where
   EvWitness :: ProgramEv 'Ev st i o m -> EvWitness st i o m
   NotEvWitness :: ProgramEv 'NotEv st i o m -> EvWitness st i o m
 
 isEv :: Program st i o m -> Bool
-isEv Lift{} = False
-isEv GetState{} = False
-isEv PutState{} = False
-isEv ModifyState{} = False
-isEv WaitInput{} = True
-isEv Output{} = False
-isEv Finish{} = False
+isEv Lift {} = False
+isEv GetState {} = False
+isEv PutState {} = False
+isEv ModifyState {} = False
+isEv WaitInput {} = True
+isEv Output {} = False
+isEv Finish {} = False
 isEv (Pipe p1 p2) = isEv p1 && isEv p2
 isEv (AdapterSt _ _ _ p) = isEv p
 isEv (Adapter _ _ p) = isEv p

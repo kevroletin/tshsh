@@ -6,11 +6,11 @@ module Tshsh.Matcher
 where
 
 import Data.Coerce
+import Protolude
 import qualified Tshsh.Matcher.Bracket as BrM
 import qualified Tshsh.Matcher.Seq as SeqM
-import qualified Tshsh.Stream as S
 import Tshsh.Stream
-import Protolude
+import qualified Tshsh.Stream as S
 
 newtype SeqMatcherWrapper b c = SeqMatcherWrapper SeqM.SeqMatcher
   deriving (Show)

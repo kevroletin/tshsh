@@ -1,8 +1,8 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 -- | An implementation of coroutines. It's features
@@ -119,7 +119,7 @@ $(makePrisms 'Res)
 
 step :: forall i o a m r. Monad m => Maybe i -> a -> Program i o a m r -> m (ContResOut i o m r)
 step (Just i) _ WaitInput = pure $ ResOut (Right i)
-step Nothing _ WaitInput  = pure $ ContOut Nothing WaitInput
+step Nothing _ WaitInput = pure $ ContOut Nothing WaitInput
 step i a (Lam val) = step i () (val a)
 step Nothing _ (Output x) = pure $ ContOut (Just x) (Finish (Right ()))
 step (Just _) _ (Output _) = panic "Consume all the outputs first"

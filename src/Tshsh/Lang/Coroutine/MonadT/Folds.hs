@@ -7,8 +7,8 @@ module Tshsh.Lang.Coroutine.MonadT.Folds
   )
 where
 
-import Tshsh.Lang.Coroutine.MonadT
 import Protolude
+import Tshsh.Lang.Coroutine.MonadT
 
 evalProgramM :: Monad m => (o -> m ()) -> m i -> Program i o () m r -> m (Either Text r)
 evalProgramM onOut getIn c0 =

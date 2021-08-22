@@ -7,9 +7,9 @@ import Control.Lens
 import Control.Monad
 import qualified Data.Map as M
 import qualified Data.Text as T
-import Tshsh.Lang.Coroutine.MonadT.Folds
+import Protolude hiding (exp, log, (>>), (>>=))
 import Tshsh.Lang.Coroutine.MonadT
-import Protolude hiding ((>>), (>>=), exp, log)
+import Tshsh.Lang.Coroutine.MonadT.Folds
 
 data Shell = Shell_1 | Shell_2
   deriving (Eq, Ord, Show)
@@ -34,10 +34,11 @@ finishOnErr = Finish
 
 inputFromShell :: Shell -> Program (Shell, i) o () m i
 inputFromShell shell = do
-  let loop = do (s, i) <- WaitInput
-                if s == shell
-                  then Finish (Right i)
-                  else loop
+  let loop = do
+        (s, i) <- WaitInput
+        if s == shell
+          then Finish (Right i)
+          else loop
   loop
 
 getEnv :: Shell -> Program (Shell, Input) (Shell, Text) () m [(Text, Text)]
@@ -56,8 +57,8 @@ accumUntillPrompt :: Shell -> Program (Shell, Input) o () m Text
 accumUntillPrompt shell = do
   let loop res =
         inputFromShell shell >>= \case
-           Prompt -> pure (T.concat . reverse $ res)
-           TextInput x -> loop (x : res)
+          Prompt -> pure (T.concat . reverse $ res)
+          TextInput x -> loop (x : res)
   loop []
 
 expect :: Shell -> Text -> Program (Shell, Input) o () m ()

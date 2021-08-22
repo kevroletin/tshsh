@@ -1,5 +1,5 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Tshsh.Puppet
   ( GetCwd (..),
@@ -48,16 +48,16 @@ module Tshsh.Puppet
   )
 where
 
-import Control.Lens
 import Control.Concurrent.STM
-import Tshsh.Data.BufferSlice (BufferSlice, SliceList (..))
-import Tshsh.Lang.Coroutine.CPS
+import Control.Lens
+import Foreign
 import Protolude
 import System.Posix (ProcessID)
 import System.Process (ProcessHandle)
 import Tshsh.Commands
+import Tshsh.Data.BufferSlice (BufferSlice, SliceList (..))
+import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Stream
-import Foreign
 
 data ShellModeAndOutput
   = Data BufferSlice
@@ -65,10 +65,10 @@ data ShellModeAndOutput
   | TuiMode Bool Int
   deriving (Show)
 
-newtype RawCmdResult = RawCmdResult { unRawCmdResult :: SliceList }
+newtype RawCmdResult = RawCmdResult {unRawCmdResult :: SliceList}
   deriving (Show)
 
-newtype StrippedCmdResult = StrippedCmdResult { unStrippedCmdResult :: Text }
+newtype StrippedCmdResult = StrippedCmdResult {unStrippedCmdResult :: Text}
   deriving (Show)
 
 data GetCwd

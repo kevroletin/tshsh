@@ -17,8 +17,8 @@ where
 
 import Control.Lens
 import qualified Data.ByteString as BS
-import qualified Tshsh.Matcher.Seq as SeqM
 import Protolude
+import qualified Tshsh.Matcher.Seq as SeqM
 import Tshsh.Stream
 
 data BracketMatcher = BracketMatcher
@@ -86,4 +86,3 @@ matchStr m0 str0 =
                 }
             )
 {-# INLINEABLE matchStr #-}
-

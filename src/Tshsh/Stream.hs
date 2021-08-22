@@ -19,8 +19,8 @@ module Tshsh.Stream
   )
 where
 
-import Protolude
 import Control.Lens
+import Protolude
 
 class ConsumerI c str a where
   consumeI :: c str a -> str -> ConsumerResult (c str a) str a
@@ -36,14 +36,14 @@ applyConsumer (StreamConsumer c) f = f c
 {-# INLINE applyConsumer #-}
 
 consumerReset :: StreamConsumer str a -> StreamConsumer str a
-consumerReset m0 = applyConsumer m0 (StreamConsumer  . resetI)
+consumerReset m0 = applyConsumer m0 (StreamConsumer . resetI)
 {-# INLINE consumerReset #-}
 
 consume :: StreamConsumer str a -> str -> ConsumerResult (StreamConsumer str a) str a
 consume m0 str =
   applyConsumer
     m0
-    ( \c -> StreamConsumer  `mapConsumerResult` consumeI c str
+    ( \c -> StreamConsumer `mapConsumerResult` consumeI c str
     )
 {-# INLINE consume #-}
 
@@ -54,11 +54,11 @@ data ConsumerResult c str a
         _cs_rest :: str,
         _cs_result :: a
       }
-  | ConsumerContinue { _cs_consumer :: c }
-  deriving Show
+  | ConsumerContinue {_cs_consumer :: c}
+  deriving (Show)
 
 mapConsumerResult :: (c -> m') -> ConsumerResult c str a -> ConsumerResult m' str a
-mapConsumerResult f c = c { _cs_consumer = f x } where x = _cs_consumer c
+mapConsumerResult f c = c {_cs_consumer = f x} where x = _cs_consumer c
 {-# INLINE mapConsumerResult #-}
 
 $(makeLenses 'ConsumerFinish)

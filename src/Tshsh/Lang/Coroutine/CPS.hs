@@ -9,7 +9,7 @@ module Tshsh.Lang.Coroutine.CPS
     _ResOut,
     stepUnsafe,
     stepInput,
-    EvWitness(..),
+    EvWitness (..),
     matchEv,
     module Tshsh.Lang.Coroutine.CPS.Folds,
     ProgramSt,

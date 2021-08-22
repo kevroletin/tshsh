@@ -4,9 +4,9 @@
 
 module Tshsh.Commands where
 
-import Tshsh.Data.BufferSlice (BufferSlice)
 import Protolude
 import System.Posix (ProcessID)
+import Tshsh.Data.BufferSlice (BufferSlice)
 
 data PuppetIdx = Puppet1 | Puppet2 deriving (Eq, Ord, Show, Enum)
 

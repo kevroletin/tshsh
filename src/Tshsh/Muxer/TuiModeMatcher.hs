@@ -3,10 +3,10 @@
 module Tshsh.Muxer.TuiModeMatcher (tuiModeMatcher) where
 
 import qualified Data.ByteString as BS
-import Tshsh.Stream
-import qualified Tshsh.Matcher.Seq as SeqM
-import Protolude
 import Data.Coerce
+import Protolude
+import qualified Tshsh.Matcher.Seq as SeqM
+import Tshsh.Stream
 
 data TuiModeMatcher = TuiModeMatcher
   { _tmch_prefixMatcher :: SeqM.SeqMatcher,
@@ -19,7 +19,7 @@ instance ConsumerI Wrapper ByteString (Bool, Int) where
   resetI = coerce matcherReset
 
 newtype Wrapper str a = Wrapper TuiModeMatcher
-  deriving Show
+  deriving (Show)
 
 tuiModeMatcher :: StreamConsumer ByteString (Bool, Int)
 tuiModeMatcher = StreamConsumer . Wrapper $ mkMatcher
