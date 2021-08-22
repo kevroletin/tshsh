@@ -11,6 +11,7 @@ import ShellConfig
 import System.Directory
 import System.IO (BufferMode (..), hFlush, hSetBuffering)
 import System.Posix
+import Tshsh.KeyParser
 import Tshsh.Muxer
 import Tshsh.Tty
 
@@ -30,8 +31,25 @@ ensureCmdExits cmd = do
       exitFailure
     Just _ -> pure ()
 
+keyBindings :: Either Text (KeyParserState MuxKeyCommands)
+keyBindings =
+  mkKeyParser
+    [ -- Ctrl-z
+      KeyAct "\SUB" "switch" MuxKeySwitch,
+      -- Ctrl-x
+      KeyPrefix
+        "\CAN"
+        "leader key"
+        [ KeyAct "c" "copy previous output" MuxKeyCopyLastOut,
+          KeyAct "e" "edit previous output" MuxKeyEditLastOut,
+          KeyAct "z" "switch" MuxKeySwitch
+        ]
+    ]
+
 main :: IO ()
 main = do
+  let (Right kb) = keyBindings
+
   (opts, args) <- parseArgs
   let cfg1 = maybe "shh" cs (args ^? ix 0) `getPuppetCfg` shhCfg
   let cfg2 = maybe "zsh" cs (args ^? ix 1) `getPuppetCfg` zshCfg
@@ -73,7 +91,8 @@ main = do
                 { _mst_puppetSt = pup1st {_ps_process = Just pup1pids} :!: pup2st,
                   _mst_currentPuppetIdx = Puppet1,
                   _mst_syncCwdP = Nothing,
-                  _mst_keepAlive = False
+                  _mst_keepAlive = False,
+                  _mst_inputParser = kb
                 }
 
       muxLoop mux

@@ -6,21 +6,26 @@
 
 module Tshsh.Muxer.Body where
 
+import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
 import qualified Data.ByteString as BS
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
+import qualified Data.Text as T
 import qualified Data.Text.IO as T
-import Foreign
+import Foreign hiding (void)
 import Protolude hiding (hPutStrLn, log, tryIO)
 import System.Console.ANSI
 import System.IO hiding (hPutStr)
+import System.IO.Temp
 import System.Process
 import Tshsh.Commands
 import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
 import qualified Tshsh.Data.BufferSlice as BufferSlice
+import Tshsh.KeyParser
 import Tshsh.Lang.Coroutine.CPS
+import Tshsh.Muxer.Log
 import Tshsh.Muxer.ShellOutputParser
 import Tshsh.Muxer.SyncCwd
 import Tshsh.Muxer.Types
@@ -28,10 +33,11 @@ import Tshsh.Puppet
 import Tshsh.Tty
 
 copyToXClipboard :: Text -> IO ()
-copyToXClipboard str = do
-  (Just inP, _, _, _) <- createProcess $ (proc "xclip" ["-selection", "clipboard", "-in"]) {std_in = CreatePipe}
-  T.hPutStr inP str
-  hClose inP
+copyToXClipboard str =
+  unless (T.all isSpace str) $ do
+    (Just inP, _, _, _) <- createProcess $ (proc "xclip" ["-selection", "clipboard", "-in"]) {std_in = CreatePipe}
+    T.hPutStr inP str
+    hClose inP
 
 logSliceList :: Text -> Int -> SliceList -> IO ()
 logSliceList msg n bl = do
@@ -79,8 +85,6 @@ pipeInput st puppetIdx i (producer :!: mConsumer0) =
               Res r -> do
                 hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
                 loop Nothing =<< stepOut prodCont
-
-  -- Just <$> runMuxPrograms (newSt & mst_syncCwdP ?~ program) toIdx Nothing
 
 runMuxPrograms :: MuxState -> PuppetIdx -> BufferSlice -> IO MuxState
 runMuxPrograms st puppetIdx inp = do
@@ -165,22 +169,66 @@ switchPuppets env st0 = do
         finishP
   {- ORMOLU_ENABLE -}
 
-  mProgram <- eatOutputsM (onSyncCwdOut newSt) (() :!: program) >>= \case
-    Cont (_ :!: consCont) ->
-      pure (Just consCont)
-    Res r -> do
-      hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
-      pure Nothing
+  mProgram <-
+    eatOutputsM (onSyncCwdOut newSt) (() :!: program) >>= \case
+      Cont (_ :!: consCont) ->
+        pure (Just consCont)
+      Res r -> do
+        hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
+        pure Nothing
 
   pure $ Just (newSt & mst_syncCwdP .~ mProgram)
 
-muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
-muxBody _env st (TermInput (BufferSlice _ buf size)) = do
+muxOnTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
+muxOnTermInput st str = do
+  muxLog (st ^. mst_currentPuppetIdx, str)
   case st ^. mst_currentPuppet . ps_process of
     Nothing -> pure ()
-    Just p ->
-      withForeignPtr buf $ \ptr -> hPutBuf (_pp_inputH p) ptr size
+    Just p -> BS.hPut (_pp_inputH p) str
   pure (Just st)
+
+muxOnKeyBinding :: MuxEnv -> MuxState -> MuxKeyCommands -> IO (Maybe MuxState)
+muxOnKeyBinding env st key = do
+  hPutStrLn stderr ("Key< " <> show key)
+  case key of
+    MuxKeySwitch ->
+      switchPuppets env st
+    MuxKeyCopyLastOut -> do
+      let currPup = st ^. mst_currentPuppet
+      copyToXClipboard . unStrippedCmdResult . stripCmdOut $ _ps_prevCmdOut currPup
+      pure (Just st)
+    MuxKeyEditLastOut -> do
+      -- TODO: we will copy a wrong command after switch cause a correct previous command was from
+      -- a previous puppet
+      let currPup = st ^. mst_currentPuppet
+      let prevOut = unStrippedCmdResult . stripCmdOut $ _ps_prevCmdOut currPup
+      unless (T.all isSpace prevOut) $ do
+        hPutStrLn stderr "Os < emacsclient"
+        void . tryIO $ do
+          fname <- emptySystemTempFile "tshsh_cmdout"
+          T.writeFile fname prevOut
+          void $ spawnProcess "emacsclient" ["-n", "-c", fname]
+      pure (Just st)
+
+muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
+muxBody env st0 (TermInput bs) = do
+  let str0 = BufferSlice.sliceToByteString bs
+
+      loop _ Nothing = pure Nothing
+      loop res (Just st) =
+        case res of
+          KeyParserData out next ->
+            loop next =<< muxOnTermInput st out
+          KeyParserAction act next -> do
+            loop next =<< muxOnKeyBinding env st act
+          KeyParserNull next ->
+            pure $ Just (next, st)
+
+  loop (keyParserRun (_mst_inputParser st0) str0) (Just st0) >>= \case
+    Nothing ->
+      pure Nothing
+    Just (newKeyParser, newSt) ->
+      pure $ Just (newSt {_mst_inputParser = newKeyParser})
 muxBody _env st (PuppetOutput puppetIdx inp@(BufferSlice _ buf size)) = do
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     withForeignPtr buf $ \ptr -> do

@@ -30,9 +30,9 @@ configureStdinTty :: IO Text
 configureStdinTty = do
   origTtyState <- saveStdinTtyState
 
-  -- disable all the signale except for susp
-  let sttySignals = ["intr", "eof", "quit", "erase", "kill", "eol", "eol2", "swtch", "start", "stop", "rprnt", "werase", "lnext", "discard"]
-  _ <- callCommand ("stty raw -echo isig susp ^Z " <> mconcat [x <> " '' " | x <- sttySignals])
+  -- disable all the signals
+  let sttySignals = ["susp", "intr", "eof", "quit", "erase", "kill", "eol", "eol2", "swtch", "start", "stop", "rprnt", "werase", "lnext", "discard"]
+  _ <- callCommand ("stty raw -echo -isig " <> mconcat [x <> " '' " | x <- sttySignals])
   pure origTtyState
 
 restoreStdinTty :: Text -> IO ()

@@ -7,6 +7,7 @@ module Tshsh.Muxer.Types
     menv_puppets,
     menv_currentPuppet,
     menv_sortedPuppets,
+    MuxKeyCommands (..),
     MuxState (..),
     mst_puppetSt,
     mst_currentPuppetIdx,
@@ -14,6 +15,7 @@ module Tshsh.Muxer.Types
     mux_st,
     mux_queue,
     mst_keepAlive,
+    mst_inputParser,
     pupIdx,
     sortPup,
     sortPup_,
@@ -25,30 +27,39 @@ module Tshsh.Muxer.Types
   )
 where
 
+import Control.Concurrent.STM (TQueue)
 import Control.Lens
 import qualified Data.ByteString as BS
 import Data.Strict.Tuple
-import Tshsh.Lang.Coroutine.CPS
 import Protolude hiding (hPutStrLn, log, tryIO)
 import Tshsh.Commands
+import Tshsh.KeyParser
+import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Puppet
-import Control.Concurrent.STM (TQueue)
 
 newtype MuxEnv = MuxEnv
   { _menv_puppets :: Pair Puppet Puppet
   }
 
+data MuxKeyCommands
+  = MuxKeyCopyLastOut
+  | MuxKeyEditLastOut
+  | MuxKeySwitch
+  deriving (Show)
+
 data MuxState = MuxState
   { _mst_puppetSt :: Pair PuppetState PuppetState,
     _mst_currentPuppetIdx :: PuppetIdx,
     _mst_syncCwdP :: Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
-    _mst_keepAlive :: Bool
+    _mst_keepAlive :: Bool,
+    _mst_inputParser :: KeyParserState MuxKeyCommands
   }
 
-data Mux = Mux { _mux_queue :: TQueue MuxCmd,
-                 _mux_env :: MuxEnv,
-                 _mux_st :: MuxState
-               }
+data Mux = Mux
+  { _mux_queue :: TQueue MuxCmd,
+    _mux_env :: MuxEnv,
+    _mux_st :: MuxState
+  }
 
 $(makeLenses 'MuxState)
 $(makeLenses 'MuxEnv)

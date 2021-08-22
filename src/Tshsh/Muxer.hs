@@ -20,8 +20,7 @@ import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import Foreign hiding (void)
 import Protolude hiding (tryIO)
-import System.IO (BufferMode (..), hGetBufSome, hPrint, hSetBinaryMode, hSetBuffering, hWaitForInput)
-import System.IO.Unsafe
+import System.IO (hGetBufSome, hWaitForInput)
 import System.Posix
 import System.Posix.Signals.Exts
 import System.Process
@@ -31,21 +30,12 @@ import Tshsh.Data.BufferSlice (BufferSlice (..))
 import qualified Tshsh.Data.BufferSlice as BufferSlice
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Muxer.Body
+import Tshsh.Muxer.Log
 import Tshsh.Muxer.ShellOutputParser
 import qualified Tshsh.Muxer.TuiModeMatcher as TuiMatcher
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
 import Tshsh.Tty
-
-muxLogFile :: MVar Handle
-muxLogFile = unsafePerformIO newEmptyMVar
-{-# NOINLINE muxLogFile #-}
-
-muxLog :: Show a => a -> IO ()
-muxLog a =
-  tryReadMVar muxLogFile >>= \case
-    Nothing -> pure ()
-    Just h -> hPrint h a
 
 readLoopStep :: ReadLoopSt -> IO (Maybe (BufferSlice, ReadLoopSt))
 readLoopStep st0 =
@@ -174,13 +164,6 @@ newPuppet idx PuppetCfg {..} = do
         },
       puppetState
     )
-
-openMuxLog :: Text -> IO ()
-openMuxLog fName = do
-  muxF <- openFile (cs fName) AppendMode
-  hSetBuffering muxF LineBuffering
-  hSetBinaryMode muxF True
-  putMVar muxLogFile muxF
 
 watchHandleInput :: Handle -> TVar Bool -> IO ()
 watchHandleInput h var = do

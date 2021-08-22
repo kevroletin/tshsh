@@ -39,6 +39,7 @@ dependencies:
 - strict
 - string-conversions
 - strip-ansi-escape
+- temporary
 - terminal-size
 - text
 - unix
