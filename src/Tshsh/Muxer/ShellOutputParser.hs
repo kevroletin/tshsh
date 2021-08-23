@@ -35,9 +35,9 @@ instance RaceMatchersDataCfg ShellModeAndOutput where
   onFstEv len = Prompt len
   onSndEv (b, len) = TuiMode b len
 
-instance RaceMatchersStateCfg PuppetState ShellModeAndOutput where
-  fstMatcher = ps_promptMatcher
-  sndMatcher = ps_tuiModeMatcher
+instance RaceMatchersStateCfg OutputParserSt ShellModeAndOutput where
+  fstMatcher = op_promptMatcher
+  sndMatcher = op_tuiModeMatcher
 
 -- | Split input based on matches fromSt given matchers
 --
@@ -136,40 +136,40 @@ raceMatchersP =
                           Output (onSndEv resSnd) $
                           go (BufferSlice.sliceDrop (BS.length prevSnd) bs0)
    in WaitInput go
-{-# SPECIALIZE raceMatchersP :: Program PuppetState BufferSlice ShellModeAndOutput IO #-}
+{-# SPECIALIZE raceMatchersP :: Program OutputParserSt BufferSlice ShellModeAndOutput IO #-}
 {- ORMOLU_ENABLE -}
 
 {- ORMOLU_DISABLE -}
-accumCmdOutP :: Program PuppetState ShellModeAndOutput RawCmdResult IO
+accumCmdOutP :: Program OutputParserSt ShellModeAndOutput RawCmdResult IO
 accumCmdOutP =
   WaitInput $ \i ->
-  GetState $ \st@PuppetState{..} ->
+  GetState $ \st@OutputParserSt{..} ->
     case i of
       Data bs ->
-        if st ^. ps_mode == PuppetModeRepl
+        if st ^. op_mode == PuppetModeRepl
           then
-            PutState (st & ps_currCmdOut %~ (\x -> coerce (BufferSlice.listAppendEnd (coerce x) bs)))
+            PutState (st & op_currCmdOut %~ (\x -> coerce (BufferSlice.listAppendEnd (coerce x) bs)))
             accumCmdOutP
           else
             accumCmdOutP
       Prompt len ->
-        if st ^. ps_mode == PuppetModeRepl
+        if st ^. op_mode == PuppetModeRepl
           then
-            let res = BufferSlice.listDropEnd len (coerce _ps_currCmdOut) in
-            PutState (st {_ps_currCmdOut = coerce BufferSlice.listEmpty }) $
+            let res = BufferSlice.listDropEnd len (coerce _op_currCmdOut) in
+            PutState (st {_op_currCmdOut = coerce BufferSlice.listEmpty }) $
             Output (RawCmdResult res)
             accumCmdOutP
           else
-            PutState (st { _ps_mode = PuppetModeRepl })
+            PutState (st { _op_mode = PuppetModeRepl })
             accumCmdOutP
       TuiMode enable _ ->
-        if enable && st ^. ps_mode == PuppetModeRepl
+        if enable && st ^. op_mode == PuppetModeRepl
           then
-            PutState (st { _ps_mode = PuppetModeTUI,
-                           _ps_currCmdOut = coerce BufferSlice.listEmpty })
+            PutState (st { _op_mode = PuppetModeTUI,
+                           _op_currCmdOut = coerce BufferSlice.listEmpty })
             accumCmdOutP
           else
-            PutState (st { _ps_mode = if enable then PuppetModeTUI else PuppetModeRepl })
+            PutState (st { _op_mode = if enable then PuppetModeTUI else PuppetModeRepl })
             accumCmdOutP
 {- ORMOLU_ENABLE -}
 
@@ -184,7 +184,7 @@ stripCmdOut (RawCmdResult sl) =
       bs' = BS.drop 1 . Protolude.snd . BS.break (== 10) . bsDropEnd 1 . Protolude.fst . BS.breakEnd (== 10) $ bs
    in StrippedCmdResult . T.strip . stripAnsiEscapeCodes $ cs bs'
 
-stripCmdOutP :: Program PuppetState RawCmdResult StrippedCmdResult IO
+stripCmdOutP :: Program OutputParserSt RawCmdResult StrippedCmdResult IO
 stripCmdOutP =
   WaitInput $ \i ->
     Output (stripCmdOut i) stripCmdOutP

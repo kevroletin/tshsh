@@ -59,12 +59,12 @@ runMuxPrograms_ ::
   PuppetIdx ->
   BufferSlice ->
   ( StrippedCmdResult,
-    ProgramEvSt PuppetState BufferSlice StrippedCmdResult IO,
+    ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
     Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)
   ) ->
   IO
     ( StrippedCmdResult,
-      ProgramEvSt PuppetState BufferSlice StrippedCmdResult IO,
+      ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
       Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)
     )
 runMuxPrograms_ st puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
@@ -90,12 +90,11 @@ runMuxPrograms_ st puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
 
 runMuxPrograms :: MuxState -> PuppetIdx -> BufferSlice -> IO MuxState
 runMuxPrograms st puppetIdx inp = do
-  let thisPuppet = st ^. mst_puppetSt . pupIdx puppetIdx
-      cmdOutPSt = thisPuppet :!: thisPuppet ^. ps_outputParser
-  (prevCmdOut, (newThisPup :!: newCmdOutP), newMuxProg) <-
+  let cmdOutPSt = st ^. mst_puppetSt . pupIdx puppetIdx . ps_outputParser
+  (prevCmdOut, newCmdOutP, newMuxProg) <-
     runMuxPrograms_ st puppetIdx inp (_mst_prevCmdOut st, cmdOutPSt, _mst_syncCwdP st)
   pure
-    ( st & mst_puppetSt . pupIdx puppetIdx .~ (newThisPup & ps_outputParser .~ newCmdOutP)
+    ( st & mst_puppetSt . pupIdx puppetIdx . ps_outputParser .~ newCmdOutP
         & mst_syncCwdP .~ newMuxProg
         & mst_prevCmdOut .~ prevCmdOut
     )
@@ -131,7 +130,7 @@ switchPuppets env st0 = do
           Just fromProc ->
             Just
               ( \cont ->
-                  whenC (_ps_mode fromSt == PuppetModeRepl)
+                  whenC (fromSt ^. ps_mode == PuppetModeRepl)
                     (AndThen (adapt fromIdx $ _pup_cleanPromptP fromPup fromProc)) $
                   syncCwdC (_pp_pid toProc :!: _pp_pid fromProc) env toIdx $
                   cont
@@ -143,7 +142,7 @@ switchPuppets env st0 = do
                _pup_switchEnterHook toPup
            ) $
         ( \cont ->
-            case (_ps_mode fromSt, _ps_mode toSt) of
+            case (fromSt ^. ps_mode, toSt ^. ps_mode) of
               (fromMode, PuppetModeTUI) ->
                 unlessC startedNewProc
                   ( liftP_ $ do

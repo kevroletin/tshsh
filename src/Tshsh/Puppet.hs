@@ -34,12 +34,14 @@ module Tshsh.Puppet
     pup_cleanPromptP,
     PuppetState (..),
     ps_idx,
-    ps_promptMatcher,
-    ps_tuiModeMatcher,
-    ps_mode,
-    ps_currCmdOut,
     ps_outputParser,
     ps_process,
+    ps_mode,
+    OutputParserSt (..),
+    op_mode,
+    op_promptMatcher,
+    op_tuiModeMatcher,
+    op_currCmdOut,
     PuppetMode (..),
     ShellModeAndOutput (..),
     RawCmdResult (..),
@@ -49,6 +51,7 @@ where
 
 import Control.Concurrent.STM
 import Control.Lens
+import Data.Strict.Tuple.Extended ()
 import Foreign
 import Protolude
 import System.Posix (ProcessID)
@@ -97,17 +100,25 @@ data PuppetProcess = PuppetProcess
 
 $(makeLenses 'PuppetProcess)
 
+data OutputParserSt = OutputParserSt
+  { _op_mode :: PuppetMode,
+    _op_promptMatcher :: StreamConsumer ByteString Int,
+    _op_tuiModeMatcher :: StreamConsumer ByteString (Bool, Int),
+    _op_currCmdOut :: RawCmdResult
+  }
+
+$(makeLenses 'OutputParserSt)
+
 data PuppetState = PuppetState
   { _ps_idx :: PuppetIdx,
-    _ps_promptMatcher :: StreamConsumer ByteString Int,
-    _ps_tuiModeMatcher :: StreamConsumer ByteString (Bool, Int),
-    _ps_mode :: PuppetMode,
-    _ps_currCmdOut :: RawCmdResult,
-    _ps_outputParser :: ProgramEv 'Ev PuppetState BufferSlice StrippedCmdResult IO,
+    _ps_outputParser :: ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
     _ps_process :: Maybe PuppetProcess
   }
 
 $(makeLenses 'PuppetState)
+
+ps_mode :: Lens' PuppetState PuppetMode
+ps_mode = ps_outputParser . _1 . op_mode
 
 type PuppetAction = PuppetProcess -> Program () StrippedCmdResult ByteString IO
 

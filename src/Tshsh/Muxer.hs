@@ -133,14 +133,18 @@ newPuppet idx PuppetCfg {..} = do
 
   let outParser = toEv (raceMatchersP `pipe` accumCmdOutP `pipe` stripCmdOutP)
 
+  let outParserSt =
+        OutputParserSt
+          { _op_promptMatcher = _pc_promptMatcher,
+            _op_tuiModeMatcher = TuiMatcher.tuiModeMatcher,
+            _op_mode = PuppetModeRepl,
+            _op_currCmdOut = RawCmdResult BufferSlice.listEmpty
+          }
+
   let puppetState =
         PuppetState
           { _ps_idx = idx,
-            _ps_promptMatcher = _pc_promptMatcher,
-            _ps_tuiModeMatcher = TuiMatcher.tuiModeMatcher,
-            _ps_mode = PuppetModeRepl,
-            _ps_currCmdOut = RawCmdResult BufferSlice.listEmpty,
-            _ps_outputParser = outParser,
+            _ps_outputParser = (outParserSt :!: outParser),
             _ps_process = Nothing
           }
   pure
