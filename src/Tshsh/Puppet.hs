@@ -38,7 +38,6 @@ module Tshsh.Puppet
     ps_tuiModeMatcher,
     ps_mode,
     ps_currCmdOut,
-    ps_prevCmdOut,
     ps_outputParser,
     ps_process,
     PuppetMode (..),
@@ -68,7 +67,7 @@ data ShellModeAndOutput
 newtype RawCmdResult = RawCmdResult {unRawCmdResult :: SliceList}
   deriving (Show)
 
-newtype StrippedCmdResult = StrippedCmdResult {unStrippedCmdResult :: Text}
+data StrippedCmdResult = StrippedCmdResult {unStrippedCmdResult :: ~Text}
   deriving (Show)
 
 data GetCwd
@@ -104,8 +103,7 @@ data PuppetState = PuppetState
     _ps_tuiModeMatcher :: StreamConsumer ByteString (Bool, Int),
     _ps_mode :: PuppetMode,
     _ps_currCmdOut :: RawCmdResult,
-    _ps_prevCmdOut :: RawCmdResult,
-    _ps_outputParser :: ProgramEv 'Ev PuppetState BufferSlice RawCmdResult IO,
+    _ps_outputParser :: ProgramEv 'Ev PuppetState BufferSlice StrippedCmdResult IO,
     _ps_process :: Maybe PuppetProcess
   }
 

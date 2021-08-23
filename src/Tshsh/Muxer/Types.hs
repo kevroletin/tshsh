@@ -16,6 +16,7 @@ module Tshsh.Muxer.Types
     mux_queue,
     mst_keepAlive,
     mst_inputParser,
+    mst_prevCmdOut,
     pupIdx,
     sortPup,
     sortPup_,
@@ -52,7 +53,8 @@ data MuxState = MuxState
     _mst_currentPuppetIdx :: PuppetIdx,
     _mst_syncCwdP :: Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
     _mst_keepAlive :: Bool,
-    _mst_inputParser :: KeyParserState MuxKeyCommands
+    _mst_inputParser :: KeyParserState MuxKeyCommands,
+    _mst_prevCmdOut :: StrippedCmdResult
   }
 
 data Mux = Mux

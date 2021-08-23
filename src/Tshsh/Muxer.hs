@@ -131,7 +131,7 @@ newPuppet idx PuppetCfg {..} = do
               _pp_readSliceSt = readSlice
             }
 
-  let outParser = toEv (raceMatchersP `pipe` accumCmdOutP)
+  let outParser = toEv (raceMatchersP `pipe` accumCmdOutP `pipe` stripCmdOutP)
 
   let puppetState =
         PuppetState
@@ -140,7 +140,6 @@ newPuppet idx PuppetCfg {..} = do
             _ps_tuiModeMatcher = TuiMatcher.tuiModeMatcher,
             _ps_mode = PuppetModeRepl,
             _ps_currCmdOut = RawCmdResult BufferSlice.listEmpty,
-            _ps_prevCmdOut = RawCmdResult BufferSlice.listEmpty,
             _ps_outputParser = outParser,
             _ps_process = Nothing
           }

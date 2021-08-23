@@ -92,7 +92,8 @@ main = do
                   _mst_currentPuppetIdx = Puppet1,
                   _mst_syncCwdP = Nothing,
                   _mst_keepAlive = False,
-                  _mst_inputParser = kb
+                  _mst_inputParser = kb,
+                  _mst_prevCmdOut = StrippedCmdResult ""
                 }
 
       muxLoop mux

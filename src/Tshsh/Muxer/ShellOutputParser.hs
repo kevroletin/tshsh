@@ -156,8 +156,7 @@ accumCmdOutP =
         if st ^. ps_mode == PuppetModeRepl
           then
             let res = BufferSlice.listDropEnd len (coerce _ps_currCmdOut) in
-            PutState (st { _ps_prevCmdOut = coerce res,
-                           _ps_currCmdOut = coerce BufferSlice.listEmpty }) $
+            PutState (st {_ps_currCmdOut = coerce BufferSlice.listEmpty }) $
             Output (RawCmdResult res)
             accumCmdOutP
           else

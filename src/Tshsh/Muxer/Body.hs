@@ -26,7 +26,6 @@ import qualified Tshsh.Data.BufferSlice as BufferSlice
 import Tshsh.KeyParser
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Muxer.Log
-import Tshsh.Muxer.ShellOutputParser
 import Tshsh.Muxer.SyncCwd
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
@@ -55,47 +54,50 @@ onSyncCwdOut st (i, x) = do
     Nothing -> pure ()
 
 -- manually loop over output of commands output parser and feed into sync cwd
-pipeInput ::
+runMuxPrograms_ ::
   MuxState ->
   PuppetIdx ->
-  inp ->
-  Pair
-    (ProgramEvSt st1 inp RawCmdResult IO)
-    (Maybe (ProgramEvSt () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)) ->
+  BufferSlice ->
+  ( StrippedCmdResult,
+    ProgramEvSt PuppetState BufferSlice StrippedCmdResult IO,
+    Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)
+  ) ->
   IO
-    ( Pair
-        (ProgramEvSt st1 inp RawCmdResult IO)
-        (Maybe (ProgramEvSt () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO))
+    ( StrippedCmdResult,
+      ProgramEvSt PuppetState BufferSlice StrippedCmdResult IO,
+      Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)
     )
-pipeInput st puppetIdx i (producer :!: mConsumer0) =
-  loop mConsumer0 =<< stepInput i producer
+runMuxPrograms_ st puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
+  loop prevCmdOut0 mConsumer0 =<< stepInput i producer0
   where
-    loop mConsumer = \case
-      ResOut (_ :!: r) -> panic ("oops, input parser exited with " <> show r)
+    loop prevCmdOut mConsumer = \case
+      ResOut (_ :!: r) -> do
+        throwIO . FatalError $ "Input parser " <> show puppetIdx <> " terminated with: " <> show r
       ContNoOut prodCont ->
-        pure (prodCont :!: mConsumer)
-      ContOut o prodCont -> do
-        logSliceList (show puppetIdx <> "> ") 40 (unRawCmdResult o)
+        pure (prevCmdOut, prodCont, mConsumer)
+      ContOut newCmdOut prodCont -> do
         case mConsumer of
-          Nothing -> loop Nothing =<< stepOut prodCont
+          Nothing ->
+            -- remember newCmdOut only if SyncCwd is not running
+            loop newCmdOut Nothing =<< stepOut prodCont
           Just consumer ->
-            feedInputM (onSyncCwdOut st) (puppetIdx, stripCmdOut o) consumer >>= \case
-              Cont consCont ->
-                loop (Just consCont) =<< stepOut prodCont
+            feedInputM (onSyncCwdOut st) (puppetIdx, newCmdOut) (() :!: consumer) >>= \case
+              Cont (() :!: consCont) -> do
+                loop prevCmdOut0 (Just consCont) =<< stepOut prodCont
               Res r -> do
                 hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
-                loop Nothing =<< stepOut prodCont
+                loop prevCmdOut0 Nothing =<< stepOut prodCont
 
 runMuxPrograms :: MuxState -> PuppetIdx -> BufferSlice -> IO MuxState
 runMuxPrograms st puppetIdx inp = do
   let thisPuppet = st ^. mst_puppetSt . pupIdx puppetIdx
       cmdOutPSt = thisPuppet :!: thisPuppet ^. ps_outputParser
-      mSyncCwdPSt = (() :!:) <$> _mst_syncCwdP st
-  ((newThisPup :!: newCmdOutP) :!: newMuxProg) <-
-    pipeInput st puppetIdx inp (cmdOutPSt :!: mSyncCwdPSt)
+  (prevCmdOut, (newThisPup :!: newCmdOutP), newMuxProg) <-
+    runMuxPrograms_ st puppetIdx inp (_mst_prevCmdOut st, cmdOutPSt, _mst_syncCwdP st)
   pure
     ( st & mst_puppetSt . pupIdx puppetIdx .~ (newThisPup & ps_outputParser .~ newCmdOutP)
-        & mst_syncCwdP .~ ((^. _2) <$> newMuxProg)
+        & mst_syncCwdP .~ newMuxProg
+        & mst_prevCmdOut .~ prevCmdOut
     )
 
 whenJustC :: Maybe (a -> a) -> a -> a
@@ -118,8 +120,7 @@ switchPuppets env st0 = do
         pid <- _pup_startProcess toPup
         pure (pid, True, st & mst_currentPuppet . ps_process ?~ pid)
 
-  let copyPrevCmdC = liftP_ (copyToXClipboard . unStrippedCmdResult . stripCmdOut $ _ps_prevCmdOut fromSt)
-      selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
+  let selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
       adapt idx p = Adapter (selectInp idx) (idx,) p
       clearPromptToC = AndThen (adapt toIdx $ _pup_cleanPromptP toPup toProc)
 
@@ -160,11 +161,12 @@ switchPuppets env st0 = do
                    ) $
                 -- clear the current line and until the end of screen, go to up
                 liftP_ (BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
-                unlessC startedNewProc clearPromptToC $
+                (if startedNewProc
+                   then (WaitInput . const)
+                   else clearPromptToC) $
                 whenJustC mSyncCwdC
                 cont
           ) $
-        copyPrevCmdC $
         liftP_ (hPutStrLn stderr "~ Switch puppets program finished")
         finishP
   {- ORMOLU_ENABLE -}
@@ -194,14 +196,10 @@ muxOnKeyBinding env st key = do
     MuxKeySwitch ->
       switchPuppets env st
     MuxKeyCopyLastOut -> do
-      let currPup = st ^. mst_currentPuppet
-      copyToXClipboard . unStrippedCmdResult . stripCmdOut $ _ps_prevCmdOut currPup
+      copyToXClipboard . unStrippedCmdResult $ _mst_prevCmdOut st
       pure (Just st)
     MuxKeyEditLastOut -> do
-      -- TODO: we will copy a wrong command after switch cause a correct previous command was from
-      -- a previous puppet
-      let currPup = st ^. mst_currentPuppet
-      let prevOut = unStrippedCmdResult . stripCmdOut $ _ps_prevCmdOut currPup
+      let prevOut = unStrippedCmdResult (_mst_prevCmdOut st)
       unless (T.all isSpace prevOut) $ do
         hPutStrLn stderr "Os < emacsclient"
         void . tryIO $ do
@@ -223,7 +221,6 @@ muxBody env st0 (TermInput bs) = do
             loop next =<< muxOnKeyBinding env st act
           KeyParserNull next ->
             pure $ Just (next, st)
-
   loop (keyParserRun (_mst_inputParser st0) str0) (Just st0) >>= \case
     Nothing ->
       pure Nothing
