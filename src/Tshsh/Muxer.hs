@@ -181,9 +181,8 @@ muxLoop_ !queue !env !st0 = do
   where
     waitInput :: IO ([MuxCmd], Bool, Bool)
     waitInput = do
-      let (p1 :!: p2) = _mst_puppetSt st0
-          md1Av = p1 ^? _Just . ps_process . pp_dataAvailable
-          md2Av = p2 ^? _Just . ps_process . pp_dataAvailable
+      let md1Av = st0 ^? mst_puppets . ix Puppet1 . ps_process . pp_dataAvailable
+          md2Av = st0 ^? mst_puppets . ix Puppet2 . ps_process . pp_dataAvailable
 
       atomically $ do
         inpMsg <- flushTQueue queue
@@ -204,7 +203,7 @@ muxLoop_ !queue !env !st0 = do
 
     muxReadFromPuppet :: MuxState -> PuppetIdx -> IO (Maybe BufferSlice, MuxState)
     muxReadFromPuppet st idx =
-      case st ^. mst_puppetSt . pupIdx idx of
+      case st ^? mst_puppets . ix idx of
         Nothing -> pure (Nothing, st)
         Just (_ps_process -> pp) -> do
           wasAv <- atomically $ swapTVar (_pp_dataAvailable pp) False
@@ -213,7 +212,7 @@ muxLoop_ !queue !env !st0 = do
               Nothing -> pure (Nothing, st)
               Just (slice, newReadSt) -> do
                 let newSt =
-                      st & mst_puppetSt . pupIdx idx . _Just . ps_process
+                      st & mst_puppets . ix idx . ps_process
                         .~ (pp {_pp_readSliceSt = newReadSt})
                 pure (Just slice, newSt)
           when wasAv (watchHandleInput (_pp_inputH pp) (_pp_dataAvailable pp))

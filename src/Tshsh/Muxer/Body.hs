@@ -49,7 +49,7 @@ logSliceList msg n bl = do
 onSyncCwdOut :: MuxState -> (PuppetIdx, ByteString) -> IO ()
 onSyncCwdOut st (i, x) = do
   hPutStr stderr $ "~> " <> (show (i, x) :: Text) <> "\n"
-  case st ^? mst_puppetSt . pupIdx i . _Just . ps_process of
+  case st ^? mst_puppets . ix i . ps_process of
     Just p -> BS.hPut (_pp_inputH p) x
     Nothing -> pure ()
 
@@ -90,13 +90,13 @@ runMuxPrograms_ st puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
 
 runMuxPrograms :: MuxState -> PuppetIdx -> BufferSlice -> IO MuxState
 runMuxPrograms st puppetIdx inp = do
-  case st ^? mst_puppetSt . pupIdx puppetIdx . _Just . ps_outputParser of
+  case st ^? mst_puppets . ix puppetIdx . ps_outputParser of
     Nothing -> pure st
     Just cmdOutPSt -> do
       (prevCmdOut, newCmdOutP, newMuxProg) <-
         runMuxPrograms_ st puppetIdx inp (_mst_prevCmdOut st, cmdOutPSt, _mst_syncCwdP st)
       pure
-        ( st & mst_puppetSt . pupIdx puppetIdx . _Just . ps_outputParser .~ newCmdOutP
+        ( st & mst_puppets . ix puppetIdx . ps_outputParser .~ newCmdOutP
             & mst_syncCwdP .~ newMuxProg
             & mst_prevCmdOut .~ prevCmdOut
         )
@@ -111,8 +111,8 @@ switchPuppets env st0 prevMode = do
         (st0 ^? mst_currentPuppet . _Just . ps_mode)
           <|> prevMode
   let fromIdx = st0 ^. mst_currentPuppetIdx
-  let toIdx = nextPuppet (st0 ^. mst_currentPuppetIdx)
-  let st = st0 {_mst_currentPuppetIdx = toIdx}
+  let toIdx = st0 ^. mst_prevPuppetIdx
+  let st = st0 {_mst_currentPuppetIdx = toIdx, _mst_prevPuppetIdx = fromIdx}
   let (mToSt :!: mFromSt) = st ^. mst_sortedPuppets
   let (toPup :!: fromPup) = env ^. menv_sortedPuppets st
 
@@ -138,7 +138,7 @@ switchPuppets env st0 prevMode = do
                   let fromPid = fromSt ^. ps_process . pp_pid in
                   whenC (fromSt ^. ps_mode == PuppetModeRepl)
                     (AndThen (adapt fromIdx $ _pup_cleanPromptP fromPup (_ps_process fromSt))) $
-                  syncCwdC ((toSt ^. ps_process . pp_pid) :!: fromPid) env toIdx $
+                  syncCwdC ((toSt ^. ps_process . pp_pid) :!: fromPid) env (toIdx :!: fromIdx) $
                   cont
               )
       program =
@@ -237,7 +237,7 @@ muxBody _env st (PuppetOutput puppetIdx inp@(BufferSlice _ buf size)) = do
   Just <$> runMuxPrograms st puppetIdx inp
 muxBody _env st WindowResize = do
   traverse_ syncTtySize (st ^? mst_currentPuppet . _Just . ps_process . pp_pts)
-  traverse_ syncTtySize (st ^? mst_otherPuppet . _Just . ps_process . pp_pts)
+  traverse_ syncTtySize (st ^? mst_prevPuppet . _Just . ps_process . pp_pts)
   pure (Just st)
 muxBody env st0 SwitchPuppet = do
   switchPuppets env st0 Nothing
@@ -264,6 +264,6 @@ muxBody env st0 (ChildExited exitedPid) = do
             if otherSt ^. ps_process . pp_pid == exitedPid
               then
                 pure . Just $
-                  st0 & mst_otherPuppet .~ Nothing
+                  st0 & mst_prevPuppet .~ Nothing
                     & mst_syncCwdP .~ Nothing
               else pure (Just st0)

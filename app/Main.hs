@@ -4,6 +4,7 @@ import Cli
 import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
+import qualified Data.Map.Strict as Map
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import Protolude
@@ -88,8 +89,9 @@ main = do
                 { _menv_puppets = pup1 :!: pup2
                 }
               MuxState
-                { _mst_puppetSt = Just pup1st :!: Nothing,
+                { _mst_puppets = Map.fromList [(Puppet1, pup1st)],
                   _mst_currentPuppetIdx = Puppet1,
+                  _mst_prevPuppetIdx = Puppet2,
                   _mst_syncCwdP = Nothing,
                   _mst_keepAlive = False,
                   _mst_inputParser = kb,

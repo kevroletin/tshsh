@@ -39,10 +39,9 @@ getProcessCwd pid =
   C8.strip . C8.pack <$> readProcess "readlink" ["/proc/" <> show pid <> "/cwd"] []
 
 -- TODO: too many cs conversions
-syncCwdC :: Pair ProcessID ProcessID -> MuxEnv -> PuppetIdx -> ProgramCont_ () In Out IO
-syncCwdC (currPid :!: prevPid) env idx cont0 =
-  let prevIdx = nextPuppet idx
-      (currP :!: prevP) = env ^. menv_puppets . sortPup idx
+syncCwdC :: Pair ProcessID ProcessID -> MuxEnv -> (Pair PuppetIdx PuppetIdx) -> ProgramCont_ () In Out IO
+syncCwdC (currPid :!: prevPid) env (currIdx :!: prevIdx) cont0 =
+  let (currP :!: prevP) = env ^. menv_puppets . sortPup currIdx
       getPrevCwd cont =
         case prevP ^. pup_getCwdCmd of
           GetCwdCommand cmd ->
@@ -66,5 +65,5 @@ syncCwdC (currPid :!: prevPid) env idx cont0 =
                    in if same
                         then cont0
                         else
-                          runCmd idx (cs $ (currP ^. pup_mkCdCmd) (cs cwd)) $
+                          runCmd currIdx (cs $ (currP ^. pup_mkCdCmd) (cs cwd)) $
                             const cont0

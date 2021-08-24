@@ -9,19 +9,19 @@ module Tshsh.Muxer.Types
     menv_sortedPuppets,
     MuxKeyCommands (..),
     MuxState (..),
-    mst_puppetSt,
+    mst_puppets,
     mst_currentPuppetIdx,
+    mst_prevPuppetIdx,
     mux_env,
     mux_st,
     mux_queue,
     mst_keepAlive,
     mst_inputParser,
     mst_prevCmdOut,
-    pupIdx,
     sortPup,
     sortPup_,
     mst_currentPuppet,
-    mst_otherPuppet,
+    mst_prevPuppet,
     mst_sortedPuppets,
     mst_syncCwdP,
     Mux (..),
@@ -49,8 +49,9 @@ data MuxKeyCommands
   deriving (Show)
 
 data MuxState = MuxState
-  { _mst_puppetSt :: Pair (Maybe PuppetState) (Maybe PuppetState),
+  { _mst_puppets :: Map PuppetIdx PuppetState,
     _mst_currentPuppetIdx :: PuppetIdx,
+    _mst_prevPuppetIdx :: PuppetIdx,
     _mst_syncCwdP :: Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
     _mst_keepAlive :: Bool,
     _mst_inputParser :: KeyParserState MuxKeyCommands,
@@ -81,21 +82,19 @@ sortPup_ Puppet2 (a :!: b) = (b :!: a)
 
 mst_currentPuppet :: Lens' MuxState (Maybe PuppetState)
 mst_currentPuppet f m =
-  let idx = m ^. mst_currentPuppetIdx
-      ls = mst_puppetSt . pupIdx idx
+  let ls = mst_puppets . at (m ^. mst_currentPuppetIdx)
    in (\x -> m & ls .~ x) <$> f (m ^. ls)
 
-mst_otherPuppet :: Lens' MuxState (Maybe PuppetState)
-mst_otherPuppet f m =
-  let idx = nextPuppet (m ^. mst_currentPuppetIdx)
-      ls = mst_puppetSt . pupIdx idx
+mst_prevPuppet :: Lens' MuxState (Maybe PuppetState)
+mst_prevPuppet f m =
+  let ls = mst_puppets . at (m ^. mst_prevPuppetIdx)
    in (\x -> m & ls .~ x) <$> f (m ^. ls)
 
 mst_sortedPuppets :: Lens' MuxState (Pair (Maybe PuppetState) (Maybe PuppetState))
 mst_sortedPuppets f m =
-  let idx = m ^. mst_currentPuppetIdx
-      ls = mst_puppetSt . sortPup idx
-   in (\x -> m & ls .~ x) <$> f (m ^. ls)
+  let a = mst_currentPuppet
+      b = mst_prevPuppet
+   in (\(a' :!: b') -> m & a .~ a' & b .~ b') <$> f (m ^. a :!: m ^. b)
 
 menv_currentPuppet :: MuxState -> Lens' MuxEnv Puppet
 menv_currentPuppet st f env =
