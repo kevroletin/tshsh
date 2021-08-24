@@ -68,8 +68,8 @@ main = do
   traverse_ openMuxLog (_cl_muxLog opts)
   stderrToFile (fromMaybe "/dev/null" $ _cl_log opts)
 
-  (pup1, pup1st) <- newPuppet Puppet1 cfg1
-  (pup2, pup2st) <- newPuppet Puppet2 cfg2
+  pup1 <- newPuppet Puppet1 cfg1
+  pup2 <- newPuppet Puppet2 cfg2
 
   bracket
     configureStdinTty
@@ -79,7 +79,7 @@ main = do
       setupSignalHandlers muxQueue
       forkReadUserInput muxQueue
 
-      pup1pids <- maybe (_pup_startProcess pup1) pure (pup1st ^. ps_process)
+      pup1st <- _pup_startProcess pup1
 
       let mux =
             Mux
@@ -88,7 +88,7 @@ main = do
                 { _menv_puppets = pup1 :!: pup2
                 }
               MuxState
-                { _mst_puppetSt = pup1st {_ps_process = Just pup1pids} :!: pup2st,
+                { _mst_puppetSt = Just pup1st :!: Nothing,
                   _mst_currentPuppetIdx = Puppet1,
                   _mst_syncCwdP = Nothing,
                   _mst_keepAlive = False,

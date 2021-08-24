@@ -1,3 +1,5 @@
+{-# LANGUAGE ViewPatterns #-}
+
 module Tshsh.Muxer
   ( module Tshsh.Muxer.Types,
     module Tshsh.Muxer.Body,
@@ -87,8 +89,18 @@ readLoop name fromH act = do
 newPuppet ::
   PuppetIdx ->
   PuppetCfg ->
-  IO (Puppet, PuppetState)
+  IO Puppet
 newPuppet idx PuppetCfg {..} = do
+  let outParser = toEv (raceMatchersP `pipe` accumCmdOutP `pipe` stripCmdOutP)
+
+  let outParserSt =
+        OutputParserSt
+          { _op_promptMatcher = _pc_promptMatcher,
+            _op_tuiModeMatcher = TuiMatcher.tuiModeMatcher,
+            _op_mode = PuppetModeRepl,
+            _op_currCmdOut = RawCmdResult BufferSlice.listEmpty
+          }
+
   let startProcess = do
         (master, slave) <- openPseudoTerminal
         masterH <- fdToHandle master
@@ -122,31 +134,19 @@ newPuppet idx PuppetCfg {..} = do
 
         hPutStrLn stderr ("Started: " <> (show pid :: Text))
         pure $
-          PuppetProcess
-            { _pp_handle = p,
-              _pp_pid = pid,
-              _pp_inputH = masterH,
-              _pp_pts = pts,
-              _pp_dataAvailable = dataAvailable,
-              _pp_readSliceSt = readSlice
+          PuppetState
+            { _ps_idx = idx,
+              _ps_outputParser = (outParserSt :!: outParser),
+              _ps_process =
+                PuppetProcess
+                  { _pp_handle = p,
+                    _pp_pid = pid,
+                    _pp_inputH = masterH,
+                    _pp_pts = pts,
+                    _pp_dataAvailable = dataAvailable,
+                    _pp_readSliceSt = readSlice
+                  }
             }
-
-  let outParser = toEv (raceMatchersP `pipe` accumCmdOutP `pipe` stripCmdOutP)
-
-  let outParserSt =
-        OutputParserSt
-          { _op_promptMatcher = _pc_promptMatcher,
-            _op_tuiModeMatcher = TuiMatcher.tuiModeMatcher,
-            _op_mode = PuppetModeRepl,
-            _op_currCmdOut = RawCmdResult BufferSlice.listEmpty
-          }
-
-  let puppetState =
-        PuppetState
-          { _ps_idx = idx,
-            _ps_outputParser = (outParserSt :!: outParser),
-            _ps_process = Nothing
-          }
   pure
     ( Puppet
         { _pup_idx = idx,
@@ -156,12 +156,10 @@ newPuppet idx PuppetCfg {..} = do
           _pup_getCwdCmd = _pc_getCwdCmd,
           _pup_mkCdCmd = _pc_mkCdCmd,
           _pup_startProcess = startProcess,
-          _pup_initState = puppetState,
           _pup_switchEnterHook = _pc_switchEnterHook,
           _pup_switchExitHook = _pc_switchExitHook,
           _pup_cleanPromptP = _pc_cleanPromptP
-        },
-      puppetState
+        }
     )
 
 watchHandleInput :: Handle -> TVar Bool -> IO ()
@@ -184,8 +182,8 @@ muxLoop_ !queue !env !st0 = do
     waitInput :: IO ([MuxCmd], Bool, Bool)
     waitInput = do
       let (p1 :!: p2) = _mst_puppetSt st0
-          md1Av = p1 ^? ps_process . _Just . pp_dataAvailable
-          md2Av = p2 ^? ps_process . _Just . pp_dataAvailable
+          md1Av = p1 ^? _Just . ps_process . pp_dataAvailable
+          md2Av = p2 ^? _Just . ps_process . pp_dataAvailable
 
       atomically $ do
         inpMsg <- flushTQueue queue
@@ -206,17 +204,17 @@ muxLoop_ !queue !env !st0 = do
 
     muxReadFromPuppet :: MuxState -> PuppetIdx -> IO (Maybe BufferSlice, MuxState)
     muxReadFromPuppet st idx =
-      case st ^. mst_puppetSt . pupIdx idx . ps_process of
+      case st ^. mst_puppetSt . pupIdx idx of
         Nothing -> pure (Nothing, st)
-        Just pp -> do
+        Just (_ps_process -> pp) -> do
           wasAv <- atomically $ swapTVar (_pp_dataAvailable pp) False
           res <-
             readLoopStep (_pp_readSliceSt pp) >>= \case
               Nothing -> pure (Nothing, st)
               Just (slice, newReadSt) -> do
                 let newSt =
-                      st & mst_puppetSt . pupIdx idx . ps_process
-                        ?~ (pp {_pp_readSliceSt = newReadSt})
+                      st & mst_puppetSt . pupIdx idx . _Just . ps_process
+                        .~ (pp {_pp_readSliceSt = newReadSt})
                 pure (Just slice, newSt)
           when wasAv (watchHandleInput (_pp_inputH pp) (_pp_dataAvailable pp))
           pure res

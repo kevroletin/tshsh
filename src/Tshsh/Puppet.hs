@@ -28,7 +28,6 @@ module Tshsh.Puppet
     pup_getCwdCmd,
     pup_mkCdCmd,
     pup_startProcess,
-    pup_initState,
     pup_switchEnterHook,
     pup_switchExitHook,
     pup_cleanPromptP,
@@ -112,7 +111,7 @@ $(makeLenses 'OutputParserSt)
 data PuppetState = PuppetState
   { _ps_idx :: PuppetIdx,
     _ps_outputParser :: ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
-    _ps_process :: Maybe PuppetProcess
+    _ps_process :: PuppetProcess
   }
 
 $(makeLenses 'PuppetState)
@@ -142,8 +141,7 @@ data Puppet = Puppet
     _pup_promptMatcher :: StreamConsumer ByteString Int,
     _pup_getCwdCmd :: GetCwd,
     _pup_mkCdCmd :: Text -> Text,
-    _pup_startProcess :: IO PuppetProcess,
-    _pup_initState :: PuppetState,
+    _pup_startProcess :: IO PuppetState,
     _pup_switchEnterHook :: IO (),
     _pup_switchExitHook :: IO (),
     -- + remove partially entered command

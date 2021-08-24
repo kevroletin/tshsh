@@ -49,7 +49,7 @@ logSliceList msg n bl = do
 onSyncCwdOut :: MuxState -> (PuppetIdx, ByteString) -> IO ()
 onSyncCwdOut st (i, x) = do
   hPutStr stderr $ "~> " <> (show (i, x) :: Text) <> "\n"
-  case st ^. mst_puppetSt . pupIdx i . ps_process of
+  case st ^? mst_puppetSt . pupIdx i . _Just . ps_process of
     Just p -> BS.hPut (_pp_inputH p) x
     Nothing -> pure ()
 
@@ -90,49 +90,55 @@ runMuxPrograms_ st puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
 
 runMuxPrograms :: MuxState -> PuppetIdx -> BufferSlice -> IO MuxState
 runMuxPrograms st puppetIdx inp = do
-  let cmdOutPSt = st ^. mst_puppetSt . pupIdx puppetIdx . ps_outputParser
-  (prevCmdOut, newCmdOutP, newMuxProg) <-
-    runMuxPrograms_ st puppetIdx inp (_mst_prevCmdOut st, cmdOutPSt, _mst_syncCwdP st)
-  pure
-    ( st & mst_puppetSt . pupIdx puppetIdx . ps_outputParser .~ newCmdOutP
-        & mst_syncCwdP .~ newMuxProg
-        & mst_prevCmdOut .~ prevCmdOut
-    )
+  case st ^? mst_puppetSt . pupIdx puppetIdx . _Just . ps_outputParser of
+    Nothing -> pure st
+    Just cmdOutPSt -> do
+      (prevCmdOut, newCmdOutP, newMuxProg) <-
+        runMuxPrograms_ st puppetIdx inp (_mst_prevCmdOut st, cmdOutPSt, _mst_syncCwdP st)
+      pure
+        ( st & mst_puppetSt . pupIdx puppetIdx . _Just . ps_outputParser .~ newCmdOutP
+            & mst_syncCwdP .~ newMuxProg
+            & mst_prevCmdOut .~ prevCmdOut
+        )
 
 whenJustC :: Maybe (a -> a) -> a -> a
 whenJustC Nothing cont = cont
 whenJustC (Just act) cont = act cont
 
-switchPuppets :: MuxEnv -> MuxState -> IO (Maybe MuxState)
-switchPuppets env st0 = do
+switchPuppets :: MuxEnv -> MuxState -> Maybe PuppetMode -> IO (Maybe MuxState)
+switchPuppets env st0 prevMode = do
+  let (Just fromMode) =
+        (st0 ^? mst_currentPuppet . _Just . ps_mode)
+          <|> prevMode
   let fromIdx = st0 ^. mst_currentPuppetIdx
   let toIdx = nextPuppet (st0 ^. mst_currentPuppetIdx)
   let st = st0 {_mst_currentPuppetIdx = toIdx}
-  let (toSt :!: fromSt) = st ^. mst_sortedPuppets
+  let (mToSt :!: mFromSt) = st ^. mst_sortedPuppets
   let (toPup :!: fromPup) = env ^. menv_sortedPuppets st
 
-  (toProc, startedNewProc, newSt) <-
-    case _ps_process toSt of
-      Just pid -> pure (pid, False, st)
+  (startedNewProc, toSt, newSt) <-
+    case mToSt of
+      Just x -> pure (False, x, st)
       Nothing -> do
         Protolude.putStrLn ("\r\nStarting " <> show (_pup_cmd toPup) <> " ..\r\n" :: Text)
-        pid <- _pup_startProcess toPup
-        pure (pid, True, st & mst_currentPuppet . ps_process ?~ pid)
+        newSt <- _pup_startProcess toPup
+        pure (True, newSt, st & mst_currentPuppet ?~ newSt)
 
   let selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
       adapt idx p = Adapter (selectInp idx) (idx,) p
-      clearPromptToC = AndThen (adapt toIdx $ _pup_cleanPromptP toPup toProc)
+      clearPromptToC = AndThen (adapt toIdx $ _pup_cleanPromptP toPup (_ps_process toSt))
 
   {- ORMOLU_DISABLE -}
   let mSyncCwdC =
-        case _ps_process fromSt of
+        case mFromSt of
           Nothing -> Nothing
-          Just fromProc ->
+          Just fromSt ->
             Just
               ( \cont ->
+                  let fromPid = fromSt ^. ps_process . pp_pid in
                   whenC (fromSt ^. ps_mode == PuppetModeRepl)
-                    (AndThen (adapt fromIdx $ _pup_cleanPromptP fromPup fromProc)) $
-                  syncCwdC (_pp_pid toProc :!: _pp_pid fromProc) env toIdx $
+                    (AndThen (adapt fromIdx $ _pup_cleanPromptP fromPup (_ps_process fromSt))) $
+                  syncCwdC ((toSt ^. ps_process . pp_pid) :!: fromPid) env toIdx $
                   cont
               )
       program =
@@ -142,16 +148,16 @@ switchPuppets env st0 = do
                _pup_switchEnterHook toPup
            ) $
         ( \cont ->
-            case (fromSt ^. ps_mode, toSt ^. ps_mode) of
-              (fromMode, PuppetModeTUI) ->
+            case toSt ^. ps_mode of
+              PuppetModeTUI ->
                 unlessC startedNewProc
                   ( liftP_ $ do
                       when (fromMode == PuppetModeRepl)
                         (BS.hPut stdout "\ESC[?1049h")   -- enable alternative screen buffer ("TUI" mode)
-                      jiggleTtySize (_pp_pts toProc)     -- a hack to force a TUI app to redraw it's interface
+                      jiggleTtySize (toSt ^. ps_process . pp_pts)     -- a hack to force a TUI app to redraw it's interface
                    )
                 cont
-              (fromMode, PuppetModeRepl) ->
+              PuppetModeRepl ->
                 whenC (fromMode == PuppetModeTUI)
                   ( liftP_ -- clear tui interface
                       (do BS.hPut stdout "\ESC[?1049l" -- disable alternative screen buffer (disable "TUI" mode)
@@ -169,7 +175,6 @@ switchPuppets env st0 = do
         liftP_ (hPutStrLn stderr "~ Switch puppets program finished")
         finishP
   {- ORMOLU_ENABLE -}
-
   mProgram <-
     eatOutputsM (onSyncCwdOut newSt) (() :!: program) >>= \case
       Cont (_ :!: consCont) ->
@@ -183,7 +188,7 @@ switchPuppets env st0 = do
 muxOnTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
 muxOnTermInput st str = do
   muxLog (st ^. mst_currentPuppetIdx, str)
-  case st ^. mst_currentPuppet . ps_process of
+  case st ^? mst_currentPuppet . _Just . ps_process of
     Nothing -> pure ()
     Just p -> BS.hPut (_pp_inputH p) str
   pure (Just st)
@@ -192,8 +197,8 @@ muxOnKeyBinding :: MuxEnv -> MuxState -> MuxKeyCommands -> IO (Maybe MuxState)
 muxOnKeyBinding env st key = do
   hPutStrLn stderr ("Key< " <> show key)
   case key of
-    MuxKeySwitch ->
-      switchPuppets env st
+    MuxKeySwitch -> do
+      switchPuppets env st Nothing
     MuxKeyCopyLastOut -> do
       copyToXClipboard . unStrippedCmdResult $ _mst_prevCmdOut st
       pure (Just st)
@@ -231,33 +236,34 @@ muxBody _env st (PuppetOutput puppetIdx inp@(BufferSlice _ buf size)) = do
       hPutBuf stdout ptr size
   Just <$> runMuxPrograms st puppetIdx inp
 muxBody _env st WindowResize = do
-  traverse_ syncTtySize (st ^? mst_currentPuppet . ps_process . _Just . pp_pts)
-  traverse_ syncTtySize (st ^? mst_otherPuppet . ps_process . _Just . pp_pts)
+  traverse_ syncTtySize (st ^? mst_currentPuppet . _Just . ps_process . pp_pts)
+  traverse_ syncTtySize (st ^? mst_otherPuppet . _Just . ps_process . pp_pts)
   pure (Just st)
-muxBody env st0 SwitchPuppet = switchPuppets env st0
+muxBody env st0 SwitchPuppet = do
+  switchPuppets env st0 Nothing
 muxBody env st0 (ChildExited exitedPid) = do
-  let (currSt :!: otherSt) = st0 ^. mst_sortedPuppets
-  let (currPup :!: otherPup) = env ^. menv_sortedPuppets st0
-  case _ps_process currSt of
+  let (mCurrSt :!: mOtherSt) = st0 ^. mst_sortedPuppets
+  case mCurrSt of
     Nothing -> pure Nothing
-    Just currPid ->
-      if _pp_pid currPid == exitedPid
+    Just currSt ->
+      if currSt ^. ps_process . pp_pid == exitedPid
         then
-          if _mst_keepAlive st0 || isJust (_ps_process otherSt)
+          if _mst_keepAlive st0 || isJust mOtherSt
             then
               switchPuppets
                 env
-                ( st0 & mst_currentPuppet .~ _pup_initState currPup
+                ( st0 & mst_currentPuppet .~ Nothing
                     & mst_syncCwdP .~ Nothing
                 )
+                (Just $ currSt ^. ps_mode)
             else pure Nothing
-        else case _ps_process otherSt of
+        else case mOtherSt of
           Nothing ->
             pure (Just st0)
-          Just otherPid ->
-            if _pp_pid otherPid == exitedPid
+          Just otherSt ->
+            if otherSt ^. ps_process . pp_pid == exitedPid
               then
                 pure . Just $
-                  st0 & mst_otherPuppet .~ _pup_initState otherPup
+                  st0 & mst_otherPuppet .~ Nothing
                     & mst_syncCwdP .~ Nothing
               else pure (Just st0)

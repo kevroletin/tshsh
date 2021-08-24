@@ -49,7 +49,7 @@ data MuxKeyCommands
   deriving (Show)
 
 data MuxState = MuxState
-  { _mst_puppetSt :: Pair PuppetState PuppetState,
+  { _mst_puppetSt :: Pair (Maybe PuppetState) (Maybe PuppetState),
     _mst_currentPuppetIdx :: PuppetIdx,
     _mst_syncCwdP :: Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
     _mst_keepAlive :: Bool,
@@ -79,19 +79,19 @@ sortPup_ :: PuppetIdx -> Pair a a -> Pair a a
 sortPup_ Puppet1 (a :!: b) = (a :!: b)
 sortPup_ Puppet2 (a :!: b) = (b :!: a)
 
-mst_currentPuppet :: Lens' MuxState PuppetState
+mst_currentPuppet :: Lens' MuxState (Maybe PuppetState)
 mst_currentPuppet f m =
   let idx = m ^. mst_currentPuppetIdx
       ls = mst_puppetSt . pupIdx idx
    in (\x -> m & ls .~ x) <$> f (m ^. ls)
 
-mst_otherPuppet :: Lens' MuxState PuppetState
+mst_otherPuppet :: Lens' MuxState (Maybe PuppetState)
 mst_otherPuppet f m =
   let idx = nextPuppet (m ^. mst_currentPuppetIdx)
       ls = mst_puppetSt . pupIdx idx
    in (\x -> m & ls .~ x) <$> f (m ^. ls)
 
-mst_sortedPuppets :: Lens' MuxState (Pair PuppetState PuppetState)
+mst_sortedPuppets :: Lens' MuxState (Pair (Maybe PuppetState) (Maybe PuppetState))
 mst_sortedPuppets f m =
   let idx = m ^. mst_currentPuppetIdx
       ls = mst_puppetSt . sortPup idx
