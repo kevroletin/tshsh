@@ -2,29 +2,33 @@
 
 ## Planned features
 
+### alpha1
 * [Done] switch shells using a key binding
 * [Done] synchronize cwd 
 * [Done] capture text output of a previous command
 * [Done] lazy puppet startup
 * [Done] restart a puppet after it terminates
-* synchronize env variables after switching
-* synchronize xterm state (cursor visibility, background/foreground colors,
-  etc.)
-* config file, the default configuration for popular shells
+* [Done] handle tui in a meaningful way
+* copy-paste previous command output using a key binding
+  * maybe we should ignore empty command output
+* edit previous command output in an editor
+  * make command configurahble
+* config file, default configuration for popular shells
+* limit amount of buffered command output
+
+### Following releases
+* e2e tests for TUI apps
+* multiple puppets
+* configurable leader-key keybindings
+* tui for commands and puppet statuses
+* escape sequences debugger: turn escape sequences into human-readable explanation
 * interactive configuration dialog, help writing a parser for a prompt
-* [Maybe] restore partially typed command
-* handle tui in a meaningful way (maybe send WINCH with the hope that the tui app will
-  redraw itself, send ^R, ^L)
+* synchronize env variables after switching
+* track xterm state (window title, cursor visibility, background/foreground colors, etc.)
 
 ## Current problems
 
-* no config file
-* switching back/forth to TUI apps works for VIM and ranger but might not work
-  for other apps
 * output from an inactive puppet is just discarded; as a result, we can miss ANSI
   escaped sequences which try to configure terminal (especially bracket paste
   mode);
-* a few hard-coded hacks like disabling bracket paste mode.
-* no packaging procedure; executing shell commands like stty, xclip, kill and our
-  acquire_tty_wrapper
-* no user guide
+* window title is not cleaned after switching

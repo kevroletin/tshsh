@@ -13,3 +13,5 @@ nohup firefox tshsh.eventlog.html &
 nohup firefox tshsh.svg &
 
 stack test
+stack build --pedantic --fast
+stack exec -- sh -c 'for i in $(find -name "*.hs" -not -path "./.stack-work/*"); do ormolu -o -XBangPatterns -i $i; done'
