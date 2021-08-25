@@ -7,6 +7,8 @@ module Tshsh.Muxer.Types
     menv_defaultPuppet,
     menv_puppets,
     menv_currentPuppet,
+    menv_sigQueue,
+    menv_dataAvailable,
     MuxKeyCommands (..),
     MuxState (..),
     mst_puppets,
@@ -21,8 +23,6 @@ module Tshsh.Muxer.Types
     Mux (..),
     mux_env,
     mux_st,
-    mux_queue,
-    mux_dataAvailable,
   )
 where
 
@@ -36,8 +36,10 @@ import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Puppet
 
 data MuxEnv = MuxEnv
-  { _menv_puppets :: Map PuppetIdx Puppet,
-    _menv_defaultPuppet :: Puppet
+  { _menv_puppets :: Map PuppetIdx PuppetCfg,
+    _menv_defaultPuppet :: PuppetIdx,
+    _menv_dataAvailable :: TVar (Set PuppetIdx),
+    _menv_sigQueue :: TQueue MuxCmd
   }
 
 data MuxState = MuxState
@@ -51,9 +53,7 @@ data MuxState = MuxState
   }
 
 data Mux = Mux
-  { _mux_queue :: TQueue MuxCmd,
-    _mux_dataAvailable :: TVar (Set PuppetIdx),
-    _mux_env :: MuxEnv,
+  { _mux_env :: MuxEnv,
     _mux_st :: MuxState
   }
 
@@ -71,7 +71,7 @@ mst_prevPuppet f m =
   let ls = mst_puppets . at (m ^. mst_prevPuppetIdx)
    in (\x -> m & ls .~ x) <$> f (m ^. ls)
 
-menv_currentPuppet :: MuxState -> Lens' MuxEnv (Maybe Puppet)
+menv_currentPuppet :: MuxState -> Lens' MuxEnv (Maybe PuppetCfg)
 menv_currentPuppet st f env =
   let ls = menv_puppets . at (st ^. mst_currentPuppetIdx)
    in (\x -> env & ls .~ x) <$> f (env ^. ls)

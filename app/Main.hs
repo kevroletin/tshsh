@@ -40,6 +40,26 @@ data DedicatedPuppets
   | PupShh
   deriving (Enum, Show)
 
+-- TODO: this is very error-prone
+zshIdx, shhIdx, rangerIdx, viIdx, pythonIdx, shIdx :: PuppetIdx
+zshIdx = PuppetIdx 1
+shhIdx = PuppetIdx 2
+rangerIdx = PuppetIdx 3
+viIdx = PuppetIdx 4
+pythonIdx = PuppetIdx 5
+shIdx = PuppetIdx 6
+
+pupCfgs :: Map PuppetIdx PuppetCfg
+pupCfgs =
+  Map.fromList
+    [ (zshIdx, zshCfg),
+      (shhIdx, shhCfg),
+      (rangerIdx, rangerCfg),
+      (viIdx, viCfg),
+      (pythonIdx, pythonCfg),
+      (shIdx, shCfg)
+    ]
+
 keyBindings :: Either Text (KeyParserState MuxKeyCommands)
 keyBindings =
   mkKeyParser
@@ -51,7 +71,15 @@ keyBindings =
         "leader key"
         [ KeyAct "c" "copy previous output" MuxKeyCopyLastOut,
           KeyAct "e" "edit previous output" MuxKeyEditLastOut,
-          KeyAct "z" "switch" MuxKeySwitch
+          KeyPrefix
+            "s"
+            "switch"
+            [ KeyAct "r" "ranger" (MuxKeySwitchPuppet rangerIdx),
+              KeyAct "s" "shh" (MuxKeySwitchPuppet shhIdx),
+              KeyAct "p" "python" (MuxKeySwitchPuppet pythonIdx),
+              KeyAct "v" "vi" (MuxKeySwitchPuppet viIdx),
+              KeyAct "z" "zsh" (MuxKeySwitchPuppet zshIdx)
+            ]
         ]
     ]
 
@@ -60,8 +88,10 @@ main = do
   let (Right kb) = keyBindings
 
   (opts, args) <- parseArgs
-  let cfg1 = maybe "shh" cs (args ^? ix 0) `getPuppetCfg` shhCfg
-  let cfg2 = maybe "zsh" cs (args ^? ix 1) `getPuppetCfg` zshCfg
+  let cmd1 = maybe "shh" cs (args ^? ix 0)
+      cmd2 = maybe "zsh" cs (args ^? ix 1)
+      Just (idx1, cfg1) = find (\(_, cfg) -> _pc_cmd cfg == cmd1) $ Map.toList pupCfgs
+      Just (idx2, cfg2) = find (\(_, cfg) -> _pc_cmd cfg == cmd2) $ Map.toList pupCfgs
 
   -- TODO: this check doesn't save us from the situation when provided argument
   -- cause a program startup failure. We need to test this scenario
@@ -79,11 +109,6 @@ main = do
 
   dataAvailable <- newTVarIO Set.empty
 
-  let idx1 = PuppetIdx 1
-      idx2 = PuppetIdx 2
-  pup1 <- newPuppet idx1 cfg1 dataAvailable
-  pup2 <- newPuppet idx2 cfg2 dataAvailable
-
   bracket
     configureStdinTty
     restoreStdinTty
@@ -92,15 +117,15 @@ main = do
       setupSignalHandlers sigQueue
       forkReadUserInput sigQueue
 
-      pup1st <- _pup_startProcess pup1
+      pup1st <- startPuppetProcess dataAvailable idx1 cfg1
 
       let mux =
             Mux
-              sigQueue
-              dataAvailable
               MuxEnv
-                { _menv_puppets = Map.fromList [(idx1, pup1), (idx2, pup2)],
-                  _menv_defaultPuppet = pup1
+                { _menv_puppets = pupCfgs,
+                  _menv_defaultPuppet = idx1,
+                  _menv_dataAvailable = dataAvailable,
+                  _menv_sigQueue = sigQueue
                 }
               MuxState
                 { _mst_puppets = Map.fromList [(idx1, pup1st)],

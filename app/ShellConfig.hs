@@ -5,6 +5,7 @@ module ShellConfig
     shhCfg,
     zshCfg,
     rangerCfg,
+    viCfg,
     errorCfg,
     getPuppetCfg,
   )
@@ -99,6 +100,13 @@ rangerCfg =
       _pc_cleanPromptP = \_ -> Finish (Right ()),
       _pc_switchEnterHook = pure (),
       _pc_switchExitHook = pure ()
+    }
+
+viCfg :: PuppetCfg
+viCfg =
+  rangerCfg
+    { _pc_cmd = "vi",
+      _pc_cmdArgs = []
     }
 
 errorCfg :: PuppetCfg

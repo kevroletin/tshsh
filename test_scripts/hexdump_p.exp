@@ -43,7 +43,7 @@ if {$force_conservative} {
 
 
 set timeout -1
-spawn stack run --profile tshsh -- +RTS -p -RTS sh python
+spawn stack run --profile tshsh -- +RTS -p -RTS sh python3
 match_max 100000
 expect -exact "sh-4.4\$ "
 send -- "hexdump \$(find -type f -name tshsh | head -n 1)\n"

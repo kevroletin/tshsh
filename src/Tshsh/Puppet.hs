@@ -1,4 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Tshsh.Puppet
@@ -12,25 +11,13 @@ module Tshsh.Puppet
     pc_switchEnterHook,
     pc_switchExitHook,
     pc_cleanPromptP,
-    ReadLoopSt (..),
-    Puppet (..),
+    ReadLoopSt,
     PuppetProcess (..),
     pp_handle,
     pp_pid,
     pp_inputH,
     pp_pts,
     pp_readSliceSt,
-    pup_idx,
-    pup_cfg,
-    pup_cmd,
-    pup_cmdArgs,
-    pup_promptMatcher,
-    pup_getCwdCmd,
-    pup_mkCdCmd,
-    pup_startProcess,
-    pup_switchEnterHook,
-    pup_switchExitHook,
-    pup_cleanPromptP,
     PuppetState (..),
     ps_idx,
     ps_cfg,
@@ -58,6 +45,7 @@ import System.Process (ProcessHandle)
 import Tshsh.Commands
 import Tshsh.Data.BufferSlice (BufferSlice, SliceList (..))
 import Tshsh.Lang.Coroutine.CPS
+import Tshsh.ReadLoop (ReadLoopSt)
 import Tshsh.Stream
 
 data ShellModeAndOutput
@@ -80,13 +68,6 @@ data PuppetMode
   = PuppetModeTUI
   | PuppetModeRepl
   deriving (Eq, Ord, Show)
-
-data ReadLoopSt = ReadLoopSt
-  { _rl_capacity :: Int,
-    _rl_buff :: ForeignPtr Word8,
-    _rl_dataPtr :: ForeignPtr Word8,
-    _rl_fileHandle :: Handle
-  }
 
 data PuppetProcess = PuppetProcess
   { _pp_handle :: ProcessHandle,
@@ -133,22 +114,3 @@ $(makeLenses 'PuppetState)
 
 ps_mode :: Lens' PuppetState PuppetMode
 ps_mode = ps_outputParser . _1 . op_mode
-
-data Puppet = Puppet
-  { _pup_idx :: PuppetIdx,
-    _pup_cfg :: PuppetCfg,
-    _pup_cmd :: Text,
-    _pup_cmdArgs :: [Text],
-    _pup_promptMatcher :: StreamConsumer ByteString Int,
-    _pup_getCwdCmd :: GetCwd,
-    _pup_mkCdCmd :: Text -> Text,
-    _pup_startProcess :: IO PuppetState,
-    _pup_switchEnterHook :: IO (),
-    _pup_switchExitHook :: IO (),
-    -- + remove partially entered command
-    -- + cause a shell to output a prompt
-    -- + wait for a prompt
-    _pup_cleanPromptP :: PuppetAction
-  }
-
-$(makeLenses 'Puppet)
