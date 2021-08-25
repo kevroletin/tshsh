@@ -5,7 +5,7 @@ import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
 import qualified Data.Map.Strict as Map
-import Data.Strict.Tuple.Extended
+import qualified Data.Set as Set
 import Data.String.Conversions
 import Protolude
 import ShellConfig
@@ -31,6 +31,14 @@ ensureCmdExits cmd = do
       putStrLn ("Error: can't find executable " <> show cmd :: Text)
       exitFailure
     Just _ -> pure ()
+
+data DedicatedPuppets
+  = PupRanger
+  | PupZsh
+  | PupVi
+  | PupEmacs
+  | PupShh
+  deriving (Enum, Show)
 
 keyBindings :: Either Text (KeyParserState MuxKeyCommands)
 keyBindings =
@@ -69,29 +77,35 @@ main = do
   traverse_ openMuxLog (_cl_muxLog opts)
   stderrToFile (fromMaybe "/dev/null" $ _cl_log opts)
 
-  pup1 <- newPuppet Puppet1 cfg1
-  pup2 <- newPuppet Puppet2 cfg2
+  dataAvailable <- newTVarIO Set.empty
+
+  let idx1 = PuppetIdx 1
+      idx2 = PuppetIdx 2
+  pup1 <- newPuppet idx1 cfg1 dataAvailable
+  pup2 <- newPuppet idx2 cfg2 dataAvailable
 
   bracket
     configureStdinTty
     restoreStdinTty
     $ \_ -> do
-      muxQueue <- newTQueueIO
-      setupSignalHandlers muxQueue
-      forkReadUserInput muxQueue
+      sigQueue <- newTQueueIO
+      setupSignalHandlers sigQueue
+      forkReadUserInput sigQueue
 
       pup1st <- _pup_startProcess pup1
 
       let mux =
             Mux
-              muxQueue
+              sigQueue
+              dataAvailable
               MuxEnv
-                { _menv_puppets = pup1 :!: pup2
+                { _menv_puppets = Map.fromList [(idx1, pup1), (idx2, pup2)],
+                  _menv_defaultPuppet = pup1
                 }
               MuxState
-                { _mst_puppets = Map.fromList [(Puppet1, pup1st)],
-                  _mst_currentPuppetIdx = Puppet1,
-                  _mst_prevPuppetIdx = Puppet2,
+                { _mst_puppets = Map.fromList [(idx1, pup1st)],
+                  _mst_currentPuppetIdx = idx1,
+                  _mst_prevPuppetIdx = idx2,
                   _mst_syncCwdP = Nothing,
                   _mst_keepAlive = False,
                   _mst_inputParser = kb,

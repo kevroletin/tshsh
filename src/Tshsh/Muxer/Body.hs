@@ -10,6 +10,7 @@ import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
 import qualified Data.ByteString as BS
+import qualified Data.Map.Strict as Map
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text as T
@@ -113,8 +114,10 @@ switchPuppets env st0 prevMode = do
   let fromIdx = st0 ^. mst_currentPuppetIdx
   let toIdx = st0 ^. mst_prevPuppetIdx
   let st = st0 {_mst_currentPuppetIdx = toIdx, _mst_prevPuppetIdx = fromIdx}
-  let (mToSt :!: mFromSt) = st ^. mst_sortedPuppets
-  let (toPup :!: fromPup) = env ^. menv_sortedPuppets st
+  let mToSt = st ^. mst_currentPuppet
+  let mFromSt = st ^. mst_prevPuppet
+  let fromPup = (env ^? menv_puppets . ix fromIdx) & fromMaybe (panic "fromIdx is out of bounds")
+  let toPup = (env ^? menv_puppets . ix toIdx) & fromMaybe (panic "toIdx is out of bounds")
 
   (startedNewProc, toSt, newSt) <-
     case mToSt of
@@ -126,7 +129,7 @@ switchPuppets env st0 prevMode = do
 
   let selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
       adapt idx p = Adapter (selectInp idx) (idx,) p
-      clearPromptToC = AndThen (adapt toIdx $ _pup_cleanPromptP toPup (_ps_process toSt))
+      clearPromptToC = AndThen (adapt toIdx $ (toSt ^. ps_cfg . pc_cleanPromptP) (_ps_process toSt))
 
   {- ORMOLU_DISABLE -}
   let mSyncCwdC =
@@ -135,17 +138,16 @@ switchPuppets env st0 prevMode = do
           Just fromSt ->
             Just
               ( \cont ->
-                  let fromPid = fromSt ^. ps_process . pp_pid in
                   whenC (fromSt ^. ps_mode == PuppetModeRepl)
-                    (AndThen (adapt fromIdx $ _pup_cleanPromptP fromPup (_ps_process fromSt))) $
-                  syncCwdC ((toSt ^. ps_process . pp_pid) :!: fromPid) env (toIdx :!: fromIdx) $
+                    (AndThen (adapt fromIdx $ (fromSt ^. ps_cfg . pc_cleanPromptP) (_ps_process fromSt))) $
+                  syncCwdC toSt fromSt $
                   cont
               )
       program =
         liftP_
           ( do hPutStrLn stderr "~ Switch puppets program started"
-               _pup_switchExitHook fromPup
-               _pup_switchEnterHook toPup
+               (fromPup ^. pup_cfg . pc_switchExitHook)
+               (toPup ^. pup_cfg . pc_switchEnterHook)
            ) $
         ( \cont ->
             case toSt ^. ps_mode of
@@ -211,6 +213,8 @@ muxOnKeyBinding env st key = do
           T.writeFile fname prevOut
           void $ spawnProcess "emacsclient" ["-n", "-c", fname]
       pure (Just st)
+    MuxKeySwitchPuppet _newIdx ->
+      panic "TODO: not implemented"
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
 muxBody env st0 (TermInput bs) = do
@@ -242,28 +246,29 @@ muxBody _env st WindowResize = do
 muxBody env st0 SwitchPuppet = do
   switchPuppets env st0 Nothing
 muxBody env st0 (ChildExited exitedPid) = do
-  let (mCurrSt :!: mOtherSt) = st0 ^. mst_sortedPuppets
-  case mCurrSt of
+  case st0 ^. mst_currentPuppet of
     Nothing -> pure Nothing
     Just currSt ->
       if currSt ^. ps_process . pp_pid == exitedPid
-        then
-          if _mst_keepAlive st0 || isJust mOtherSt
+        then do
+          let newPuppets = Map.delete (_ps_idx currSt) (_mst_puppets st0)
+          if _mst_keepAlive st0 || not (Map.null newPuppets)
             then
               switchPuppets
                 env
                 ( st0 & mst_currentPuppet .~ Nothing
+                    & mst_puppets .~ newPuppets
                     & mst_syncCwdP .~ Nothing
                 )
                 (Just $ currSt ^. ps_mode)
             else pure Nothing
-        else case mOtherSt of
+        else case find (\(_, ps) -> ps ^. ps_process . pp_pid == exitedPid) $ Map.toList (_mst_puppets st0) of
           Nothing ->
             pure (Just st0)
-          Just otherSt ->
-            if otherSt ^. ps_process . pp_pid == exitedPid
-              then
-                pure . Just $
-                  st0 & mst_prevPuppet .~ Nothing
-                    & mst_syncCwdP .~ Nothing
-              else pure (Just st0)
+          Just (exitedIdx, _) ->
+            pure . Just $
+              ( if exitedIdx == _mst_prevPuppetIdx st0
+                  then st0 & mst_syncCwdP .~ Nothing
+                  else st0
+              )
+                & mst_puppets %~ (Map.delete exitedIdx)

@@ -18,6 +18,7 @@ import Control.Concurrent.STM
 import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
+import qualified Data.Set as Set
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import Foreign hiding (void)
@@ -89,8 +90,9 @@ readLoop name fromH act = do
 newPuppet ::
   PuppetIdx ->
   PuppetCfg ->
+  TVar (Set PuppetIdx) ->
   IO Puppet
-newPuppet idx PuppetCfg {..} = do
+newPuppet idx cfg@PuppetCfg {..} dataAvail = do
   let outParser = toEv (raceMatchersP `pipe` accumCmdOutP `pipe` stripCmdOutP)
 
   let outParserSt =
@@ -127,15 +129,15 @@ newPuppet idx PuppetCfg {..} = do
         -- TODO: handle process startup failures
         (Just pid) <- getPid p
 
-        dataAvailable <- newTVarIO False
         readSlice <- readLoopInit masterH
 
-        watchHandleInput masterH dataAvailable
+        watchFileInput masterH dataAvail (Set.insert idx)
 
         hPutStrLn stderr ("Started: " <> (show pid :: Text))
         pure $
           PuppetState
             { _ps_idx = idx,
+              _ps_cfg = cfg,
               _ps_outputParser = (outParserSt :!: outParser),
               _ps_process =
                 PuppetProcess
@@ -143,13 +145,13 @@ newPuppet idx PuppetCfg {..} = do
                     _pp_pid = pid,
                     _pp_inputH = masterH,
                     _pp_pts = pts,
-                    _pp_dataAvailable = dataAvailable,
                     _pp_readSliceSt = readSlice
                   }
             }
   pure
     ( Puppet
         { _pup_idx = idx,
+          _pup_cfg = cfg,
           _pup_cmd = _pc_cmd,
           _pup_cmdArgs = _pc_cmdArgs,
           _pup_promptMatcher = _pc_promptMatcher,
@@ -162,38 +164,33 @@ newPuppet idx PuppetCfg {..} = do
         }
     )
 
-watchHandleInput :: Handle -> TVar Bool -> IO ()
-watchHandleInput h var = do
+watchFileInput :: Handle -> TVar a -> (a -> a) -> IO ()
+watchFileInput h var act = do
   void . forkIO $ do
     _ <- hWaitForInput h (-1)
-    atomically $ writeTVar var True
+    atomically $ modifyTVar var act
 
-muxLoop_ :: TQueue MuxCmd -> MuxEnv -> MuxState -> IO ()
-muxLoop_ !queue !env !st0 = do
-  (inpMsg, d1Av, d2Av) :: ([MuxCmd], Bool, Bool) <- waitInput
+muxLoop_ :: TQueue MuxCmd -> TVar (Set PuppetIdx) -> MuxEnv -> MuxState -> IO ()
+muxLoop_ !queue !dataAvail !env !st0 = do
+  (inpMsg, readyPup) :: ([MuxCmd], Set PuppetIdx) <- waitInput
+
+  let loop [] st = pure st
+      loop (x : xs) st = handlePuppetInput x st >>= loop xs
 
   handleInpMsg inpMsg (Just st0)
-    >>= whenAv d1Av (handlePuppetInput Puppet1)
-    >>= whenAv d2Av (handlePuppetInput Puppet2)
+    >>= loop (Set.toList readyPup)
     >>= \case
       Nothing -> pure ()
-      Just newSt -> muxLoop_ queue env newSt
+      Just newSt -> muxLoop_ queue dataAvail env newSt
   where
-    waitInput :: IO ([MuxCmd], Bool, Bool)
-    waitInput = do
-      let md1Av = st0 ^? mst_puppets . ix Puppet1 . ps_process . pp_dataAvailable
-          md2Av = st0 ^? mst_puppets . ix Puppet2 . ps_process . pp_dataAvailable
-
+    waitInput :: IO ([MuxCmd], Set PuppetIdx)
+    waitInput =
       atomically $ do
         inpMsg <- flushTQueue queue
-        av1 <- maybe (pure False) readTVar md1Av
-        av2 <- maybe (pure False) readTVar md2Av
-        if not (null inpMsg) || av1 || av2
-          then pure (inpMsg, av1, av2)
-          else retry
-
-    whenAv True act st = act st
-    whenAv False _ st = pure st
+        readyPup <- swapTVar dataAvail Set.empty
+        if null inpMsg && Set.null readyPup
+          then retry
+          else pure (inpMsg, readyPup)
 
     muxBodyL e s cmd = muxLog cmd >> muxBody e s cmd
 
@@ -206,7 +203,6 @@ muxLoop_ !queue !env !st0 = do
       case st ^? mst_puppets . ix idx of
         Nothing -> pure (Nothing, st)
         Just (_ps_process -> pp) -> do
-          wasAv <- atomically $ swapTVar (_pp_dataAvailable pp) False
           res <-
             readLoopStep (_pp_readSliceSt pp) >>= \case
               Nothing -> pure (Nothing, st)
@@ -215,7 +211,7 @@ muxLoop_ !queue !env !st0 = do
                       st & mst_puppets . ix idx . ps_process
                         .~ (pp {_pp_readSliceSt = newReadSt})
                 pure (Just slice, newSt)
-          when wasAv (watchHandleInput (_pp_inputH pp) (_pp_dataAvailable pp))
+          watchFileInput (_pp_inputH pp) dataAvail (Set.insert idx)
           pure res
 
     handlePuppetInput _ Nothing = pure Nothing
@@ -227,7 +223,7 @@ muxLoop_ !queue !env !st0 = do
           muxBodyL env newSt (PuppetOutput idx slice)
 
 muxLoop :: Mux -> IO ()
-muxLoop (Mux q e s) = muxLoop_ q e s
+muxLoop (Mux q d e s) = muxLoop_ q d e s
 
 setupSignalHandlers :: TQueue MuxCmd -> IO ()
 setupSignalHandlers queue = do

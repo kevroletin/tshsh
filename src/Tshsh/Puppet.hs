@@ -19,9 +19,9 @@ module Tshsh.Puppet
     pp_pid,
     pp_inputH,
     pp_pts,
-    pp_dataAvailable,
     pp_readSliceSt,
     pup_idx,
+    pup_cfg,
     pup_cmd,
     pup_cmdArgs,
     pup_promptMatcher,
@@ -33,6 +33,7 @@ module Tshsh.Puppet
     pup_cleanPromptP,
     PuppetState (..),
     ps_idx,
+    ps_cfg,
     ps_outputParser,
     ps_process,
     ps_mode,
@@ -48,7 +49,6 @@ module Tshsh.Puppet
   )
 where
 
-import Control.Concurrent.STM
 import Control.Lens
 import Data.Strict.Tuple.Extended ()
 import Foreign
@@ -93,31 +93,10 @@ data PuppetProcess = PuppetProcess
     _pp_pid :: ProcessID,
     _pp_inputH :: Handle,
     _pp_pts :: FilePath,
-    _pp_dataAvailable :: TVar Bool,
     _pp_readSliceSt :: ReadLoopSt
   }
 
 $(makeLenses 'PuppetProcess)
-
-data OutputParserSt = OutputParserSt
-  { _op_mode :: PuppetMode,
-    _op_promptMatcher :: StreamConsumer ByteString Int,
-    _op_tuiModeMatcher :: StreamConsumer ByteString (Bool, Int),
-    _op_currCmdOut :: RawCmdResult
-  }
-
-$(makeLenses 'OutputParserSt)
-
-data PuppetState = PuppetState
-  { _ps_idx :: PuppetIdx,
-    _ps_outputParser :: ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
-    _ps_process :: PuppetProcess
-  }
-
-$(makeLenses 'PuppetState)
-
-ps_mode :: Lens' PuppetState PuppetMode
-ps_mode = ps_outputParser . _1 . op_mode
 
 type PuppetAction = PuppetProcess -> Program () StrippedCmdResult ByteString IO
 
@@ -134,8 +113,30 @@ data PuppetCfg = PuppetCfg
 
 $(makeLenses 'PuppetCfg)
 
+data OutputParserSt = OutputParserSt
+  { _op_mode :: PuppetMode,
+    _op_promptMatcher :: StreamConsumer ByteString Int,
+    _op_tuiModeMatcher :: StreamConsumer ByteString (Bool, Int),
+    _op_currCmdOut :: RawCmdResult
+  }
+
+$(makeLenses 'OutputParserSt)
+
+data PuppetState = PuppetState
+  { _ps_idx :: PuppetIdx,
+    _ps_cfg :: PuppetCfg,
+    _ps_outputParser :: ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
+    _ps_process :: PuppetProcess
+  }
+
+$(makeLenses 'PuppetState)
+
+ps_mode :: Lens' PuppetState PuppetMode
+ps_mode = ps_outputParser . _1 . op_mode
+
 data Puppet = Puppet
   { _pup_idx :: PuppetIdx,
+    _pup_cfg :: PuppetCfg,
     _pup_cmd :: Text,
     _pup_cmdArgs :: [Text],
     _pup_promptMatcher :: StreamConsumer ByteString Int,
