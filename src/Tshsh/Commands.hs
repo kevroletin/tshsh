@@ -1,23 +1,18 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE StrictData #-}
-{-# LANGUAGE TemplateHaskell #-}
-
 module Tshsh.Commands where
 
 import Protolude
 import System.Posix (ProcessID)
-import Tshsh.Data.BufferSlice (BufferSlice)
 
-data PuppetIdx = Puppet1 | Puppet2 deriving (Eq, Ord, Show, Enum)
+newtype PuppetIdx = PuppetIdx Int deriving (Eq, Ord, Show, Enum)
 
-nextPuppet :: PuppetIdx -> PuppetIdx
-nextPuppet Puppet1 = Puppet2
-nextPuppet Puppet2 = Puppet1
-
-data MuxCmd
-  = TermInput BufferSlice
-  | PuppetOutput PuppetIdx BufferSlice
-  | WindowResize
-  | SwitchPuppet
+data MuxSignal
+  = WindowResize
   | ChildExited ProcessID
+  deriving (Show)
+
+data MuxKeyCommands
+  = MuxKeyCopyLastOut
+  | MuxKeyEditLastOut
+  | MuxKeySwitch
+  | MuxKeySwitchPuppet PuppetIdx
   deriving (Show)

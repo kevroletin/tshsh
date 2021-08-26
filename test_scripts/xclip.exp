@@ -43,7 +43,7 @@ if {$force_conservative} {
 
 
 set timeout -1
-spawn stack run tshsh -- sh python
+spawn stack run tshsh -- sh python3
 match_max 100000
 expect -exact "sh-4.4\$ "
 send -- "echo \"'value from sh'\"\r"

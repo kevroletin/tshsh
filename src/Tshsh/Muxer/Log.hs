@@ -2,14 +2,17 @@ module Tshsh.Muxer.Log
   ( muxLogFile,
     muxLog,
     openMuxLog,
+    logSliceList,
   )
 where
 
 import Control.Concurrent
 import qualified Data.Text as T
 import Protolude
-import System.IO
+import System.IO hiding (hPutStr)
 import System.IO.Unsafe
+import Tshsh.Data.BufferSlice (SliceList (..))
+import qualified Tshsh.Data.BufferSlice as BufferSlice
 
 muxLogFile :: MVar Handle
 muxLogFile = unsafePerformIO newEmptyMVar
@@ -28,3 +31,11 @@ openMuxLog fName = do
   hSetBuffering muxF LineBuffering
   hSetBinaryMode muxF True
   putMVar muxLogFile muxF
+
+logSliceList :: Text -> Int -> SliceList -> IO ()
+logSliceList msg n bl = do
+  hPutStr stderr msg
+  hPutStr stderr (show $ BufferSlice.listConcat (BufferSlice.listTake n bl) :: Text)
+  when (BufferSlice.listLength bl > n) $
+    hPutStr stderr ("..." :: Text)
+  hPutStr stderr ("\n" :: Text)

@@ -1,31 +1,37 @@
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Tshsh.Muxer.Body where
+module Tshsh.Muxer.Handlers
+  ( onTermInput,
+    onKeyBinding,
+    onPuppetOutput,
+    onSwitchPuppets,
+    onSignal,
+  )
+where
 
 import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
 import qualified Data.ByteString as BS
+import qualified Data.Map.Strict as Map
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Foreign hiding (void)
-import Protolude hiding (hPutStrLn, log, tryIO)
+import Protolude hiding (log, tryIO)
 import System.Console.ANSI
-import System.IO hiding (hPutStr)
+import System.IO (hClose, hPutBuf)
 import System.IO.Temp
 import System.Process
 import Tshsh.Commands
-import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
-import qualified Tshsh.Data.BufferSlice as BufferSlice
-import Tshsh.KeyParser
+import Tshsh.Data.BufferSlice (BufferSlice (..))
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Muxer.Log
+import Tshsh.Muxer.PuppetProcess
 import Tshsh.Muxer.SyncCwd
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
@@ -38,18 +44,10 @@ copyToXClipboard str =
     T.hPutStr inP str
     hClose inP
 
-logSliceList :: Text -> Int -> SliceList -> IO ()
-logSliceList msg n bl = do
-  hPutStr stderr msg
-  hPutStr stderr (show $ BufferSlice.listConcat (BufferSlice.listTake n bl) :: Text)
-  when (BufferSlice.listLength bl > n) $
-    hPutStr stderr ("..." :: Text)
-  hPutStr stderr ("\n" :: Text)
-
 onSyncCwdOut :: MuxState -> (PuppetIdx, ByteString) -> IO ()
 onSyncCwdOut st (i, x) = do
   hPutStr stderr $ "~> " <> (show (i, x) :: Text) <> "\n"
-  case st ^? mst_puppetSt . pupIdx i . _Just . ps_process of
+  case st ^? mst_puppets . ix i . ps_process of
     Just p -> BS.hPut (_pp_inputH p) x
     Nothing -> pure ()
 
@@ -85,18 +83,18 @@ runMuxPrograms_ st puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
               Cont (() :!: consCont) -> do
                 loop prevCmdOut0 (Just consCont) =<< stepOut prodCont
               Res r -> do
-                hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
+                hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
                 loop prevCmdOut0 Nothing =<< stepOut prodCont
 
 runMuxPrograms :: MuxState -> PuppetIdx -> BufferSlice -> IO MuxState
 runMuxPrograms st puppetIdx inp = do
-  case st ^? mst_puppetSt . pupIdx puppetIdx . _Just . ps_outputParser of
+  case st ^? mst_puppets . ix puppetIdx . ps_outputParser of
     Nothing -> pure st
     Just cmdOutPSt -> do
       (prevCmdOut, newCmdOutP, newMuxProg) <-
         runMuxPrograms_ st puppetIdx inp (_mst_prevCmdOut st, cmdOutPSt, _mst_syncCwdP st)
       pure
-        ( st & mst_puppetSt . pupIdx puppetIdx . _Just . ps_outputParser .~ newCmdOutP
+        ( st & mst_puppets . ix puppetIdx . ps_outputParser .~ newCmdOutP
             & mst_syncCwdP .~ newMuxProg
             & mst_prevCmdOut .~ prevCmdOut
         )
@@ -105,28 +103,29 @@ whenJustC :: Maybe (a -> a) -> a -> a
 whenJustC Nothing cont = cont
 whenJustC (Just act) cont = act cont
 
-switchPuppets :: MuxEnv -> MuxState -> Maybe PuppetMode -> IO (Maybe MuxState)
-switchPuppets env st0 prevMode = do
+switchPuppetsTo :: MuxEnv -> MuxState -> PuppetIdx -> Maybe PuppetMode -> IO (Maybe MuxState)
+switchPuppetsTo env st0 toIdx prevMode = do
   let (Just fromMode) =
         (st0 ^? mst_currentPuppet . _Just . ps_mode)
           <|> prevMode
   let fromIdx = st0 ^. mst_currentPuppetIdx
-  let toIdx = nextPuppet (st0 ^. mst_currentPuppetIdx)
-  let st = st0 {_mst_currentPuppetIdx = toIdx}
-  let (mToSt :!: mFromSt) = st ^. mst_sortedPuppets
-  let (toPup :!: fromPup) = env ^. menv_sortedPuppets st
+  let st = st0 {_mst_currentPuppetIdx = toIdx, _mst_prevPuppetIdx = fromIdx}
+  let mToSt = st ^. mst_currentPuppet
+  let mFromSt = st ^. mst_prevPuppet
+  let fromPup = (env ^? menv_puppets . ix fromIdx) & fromMaybe (panic "fromIdx is out of bounds")
+  let toPup = (env ^? menv_puppets . ix toIdx) & fromMaybe (panic "toIdx is out of bounds")
 
   (startedNewProc, toSt, newSt) <-
     case mToSt of
       Just x -> pure (False, x, st)
       Nothing -> do
-        Protolude.putStrLn ("\r\nStarting " <> show (_pup_cmd toPup) <> " ..\r\n" :: Text)
-        newSt <- _pup_startProcess toPup
+        Protolude.putStrLn ("\r\nStarting " <> show (_pc_cmd toPup) <> " ..\r\n" :: Text)
+        newSt <- startPuppetProcess (_menv_outputAvailable env) toIdx toPup
         pure (True, newSt, st & mst_currentPuppet ?~ newSt)
 
   let selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
       adapt idx p = Adapter (selectInp idx) (idx,) p
-      clearPromptToC = AndThen (adapt toIdx $ _pup_cleanPromptP toPup (_ps_process toSt))
+      clearPromptToC = AndThen (adapt toIdx $ (toSt ^. ps_cfg . pc_cleanPromptP) (_ps_process toSt))
 
   {- ORMOLU_DISABLE -}
   let mSyncCwdC =
@@ -135,17 +134,16 @@ switchPuppets env st0 prevMode = do
           Just fromSt ->
             Just
               ( \cont ->
-                  let fromPid = fromSt ^. ps_process . pp_pid in
                   whenC (fromSt ^. ps_mode == PuppetModeRepl)
-                    (AndThen (adapt fromIdx $ _pup_cleanPromptP fromPup (_ps_process fromSt))) $
-                  syncCwdC ((toSt ^. ps_process . pp_pid) :!: fromPid) env toIdx $
+                    (AndThen (adapt fromIdx $ (fromSt ^. ps_cfg . pc_cleanPromptP) (_ps_process fromSt))) $
+                  syncCwdC toSt fromSt $
                   cont
               )
       program =
         liftP_
-          ( do hPutStrLn stderr "~ Switch puppets program started"
-               _pup_switchExitHook fromPup
-               _pup_switchEnterHook toPup
+          ( do hPutStrLn stderr ("~ Switch puppets program started" :: Text)
+               (fromPup ^. pc_switchExitHook)
+               (toPup ^.  pc_switchEnterHook)
            ) $
         ( \cont ->
             case toSt ^. ps_mode of
@@ -172,7 +170,7 @@ switchPuppets env st0 prevMode = do
                 whenJustC mSyncCwdC
                 cont
           ) $
-        liftP_ (hPutStrLn stderr "~ Switch puppets program finished")
+        liftP_ (hPutStrLn stderr ("~ Switch puppets program finished" :: Text))
         finishP
   {- ORMOLU_ENABLE -}
   mProgram <-
@@ -180,90 +178,86 @@ switchPuppets env st0 prevMode = do
       Cont (_ :!: consCont) ->
         pure (Just consCont)
       Res r -> do
-        hPutStrLn stderr $ "Sync cwd terminated with: " <> show r
+        hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
         pure Nothing
 
   pure $ Just (newSt & mst_syncCwdP .~ mProgram)
 
-muxOnTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
-muxOnTermInput st str = do
+onTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
+onTermInput st str = do
   muxLog (st ^. mst_currentPuppetIdx, str)
   case st ^? mst_currentPuppet . _Just . ps_process of
     Nothing -> pure ()
     Just p -> BS.hPut (_pp_inputH p) str
   pure (Just st)
 
-muxOnKeyBinding :: MuxEnv -> MuxState -> MuxKeyCommands -> IO (Maybe MuxState)
-muxOnKeyBinding env st key = do
-  hPutStrLn stderr ("Key< " <> show key)
+onKeyBinding :: MuxEnv -> MuxState -> MuxKeyCommands -> IO (Maybe MuxState)
+onKeyBinding env st key = do
+  hPutStrLn stderr ("Key< " <> show key :: Text)
   case key of
     MuxKeySwitch -> do
-      switchPuppets env st Nothing
+      switchPuppetsTo env st (st ^. mst_prevPuppetIdx) Nothing
     MuxKeyCopyLastOut -> do
       copyToXClipboard . unStrippedCmdResult $ _mst_prevCmdOut st
       pure (Just st)
     MuxKeyEditLastOut -> do
       let prevOut = unStrippedCmdResult (_mst_prevCmdOut st)
       unless (T.all isSpace prevOut) $ do
-        hPutStrLn stderr "Os < emacsclient"
+        hPutStrLn stderr ("Os < emacsclient" :: Text)
         void . tryIO $ do
           fname <- emptySystemTempFile "tshsh_cmdout"
           T.writeFile fname prevOut
           void $ spawnProcess "emacsclient" ["-n", "-c", fname]
       pure (Just st)
+    MuxKeySwitchPuppet newIdx ->
+      switchPuppetsTo env st newIdx Nothing
 
-muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
-muxBody env st0 (TermInput bs) = do
-  let str0 = BufferSlice.sliceToByteString bs
-
-      loop _ Nothing = pure Nothing
-      loop res (Just st) =
-        case res of
-          KeyParserData out next ->
-            loop next =<< muxOnTermInput st out
-          KeyParserAction act next -> do
-            loop next =<< muxOnKeyBinding env st act
-          KeyParserNull next ->
-            pure $ Just (next, st)
-  loop (keyParserRun (_mst_inputParser st0) str0) (Just st0) >>= \case
-    Nothing ->
-      pure Nothing
-    Just (newKeyParser, newSt) ->
-      pure $ Just (newSt {_mst_inputParser = newKeyParser})
-muxBody _env st (PuppetOutput puppetIdx inp@(BufferSlice _ buf size)) = do
+onPuppetOutput :: MuxEnv -> MuxState -> PuppetIdx -> BufferSlice -> IO (Maybe MuxState)
+onPuppetOutput _env st puppetIdx inp@(BufferSlice _ buf size) = do
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     withForeignPtr buf $ \ptr -> do
       hPutBuf stdout ptr size
   Just <$> runMuxPrograms st puppetIdx inp
-muxBody _env st WindowResize = do
+
+onSwitchPuppets :: MuxEnv -> MuxState -> IO (Maybe MuxState)
+onSwitchPuppets env st0 = do
+  switchPuppetsTo env st0 (st0 ^. mst_prevPuppetIdx) Nothing
+
+onSignal :: MuxEnv -> MuxState -> MuxSignal -> IO (Maybe MuxState)
+onSignal _env st WindowResize = do
   traverse_ syncTtySize (st ^? mst_currentPuppet . _Just . ps_process . pp_pts)
-  traverse_ syncTtySize (st ^? mst_otherPuppet . _Just . ps_process . pp_pts)
+  traverse_ syncTtySize (st ^? mst_prevPuppet . _Just . ps_process . pp_pts)
   pure (Just st)
-muxBody env st0 SwitchPuppet = do
-  switchPuppets env st0 Nothing
-muxBody env st0 (ChildExited exitedPid) = do
-  let (mCurrSt :!: mOtherSt) = st0 ^. mst_sortedPuppets
-  case mCurrSt of
+onSignal env st0 (ChildExited exitedPid) = do
+  case st0 ^. mst_currentPuppet of
     Nothing -> pure Nothing
     Just currSt ->
       if currSt ^. ps_process . pp_pid == exitedPid
-        then
-          if _mst_keepAlive st0 || isJust mOtherSt
-            then
-              switchPuppets
-                env
+        then do
+          let newPuppets = Map.delete (_ps_idx currSt) (_mst_puppets st0)
+          let newSt =
                 ( st0 & mst_currentPuppet .~ Nothing
+                    & mst_puppets .~ newPuppets
                     & mst_syncCwdP .~ Nothing
                 )
-                (Just $ currSt ^. ps_mode)
-            else pure Nothing
-        else case mOtherSt of
+          if not (Map.null newPuppets)
+            then
+              let toIdx =
+                    case Map.lookup (_mst_prevPuppetIdx st0) newPuppets of
+                      Nothing -> let (x, _) = Map.findMin newPuppets in x
+                      Just _ -> _mst_prevPuppetIdx st0
+               in switchPuppetsTo env newSt toIdx (Just $ currSt ^. ps_mode)
+            else
+              if _mst_keepAlive st0
+                then switchPuppetsTo env newSt (_menv_defaultPuppet env) (Just $ currSt ^. ps_mode)
+                else pure Nothing
+        else case find (\(_, ps) -> ps ^. ps_process . pp_pid == exitedPid) $ Map.toList (_mst_puppets st0) of
           Nothing ->
             pure (Just st0)
-          Just otherSt ->
-            if otherSt ^. ps_process . pp_pid == exitedPid
-              then
-                pure . Just $
-                  st0 & mst_otherPuppet .~ Nothing
-                    & mst_syncCwdP .~ Nothing
-              else pure (Just st0)
+          Just (exitedIdx, _) ->
+            pure . Just $
+              ( if exitedIdx == _mst_prevPuppetIdx st0
+                  then st0 & mst_syncCwdP .~ Nothing
+                  else st0
+              )
+                & mst_puppets %~ (Map.delete exitedIdx)

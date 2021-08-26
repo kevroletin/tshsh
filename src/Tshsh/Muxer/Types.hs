@@ -3,106 +3,94 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Tshsh.Muxer.Types
-  ( MuxEnv (..),
+  ( TshshCfg (..),
+    tsh_puppets,
+    tsh_firstPuppetIdx,
+    tsh_secondPuppetIdx,
+    tsh_keepAlive,
+    tsh_keyBindings,
+    MuxEnv (..),
+    menv_defaultPuppet,
     menv_puppets,
     menv_currentPuppet,
-    menv_sortedPuppets,
+    menv_sigQueue,
+    menv_outputAvailable,
+    menv_inputAvailable,
     MuxKeyCommands (..),
     MuxState (..),
-    mst_puppetSt,
+    mst_puppets,
     mst_currentPuppetIdx,
-    mux_env,
-    mux_st,
-    mux_queue,
+    mst_prevPuppetIdx,
     mst_keepAlive,
     mst_inputParser,
     mst_prevCmdOut,
-    pupIdx,
-    sortPup,
-    sortPup_,
     mst_currentPuppet,
-    mst_otherPuppet,
-    mst_sortedPuppets,
+    mst_prevPuppet,
     mst_syncCwdP,
+    mst_readInputSt,
     Mux (..),
+    mux_env,
+    mux_st,
   )
 where
 
-import Control.Concurrent.STM (TQueue)
+import Control.Concurrent.STM (TQueue, TVar)
 import Control.Lens
 import qualified Data.ByteString as BS
-import Data.Strict.Tuple
 import Protolude hiding (hPutStrLn, log, tryIO)
 import Tshsh.Commands
 import Tshsh.KeyParser
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Puppet
 
-newtype MuxEnv = MuxEnv
-  { _menv_puppets :: Pair Puppet Puppet
+data TshshCfg = TshshCfg
+  { _tsh_puppets :: Map PuppetIdx PuppetCfg,
+    _tsh_firstPuppetIdx :: PuppetIdx,
+    _tsh_secondPuppetIdx :: PuppetIdx,
+    _tsh_keyBindings :: [KeyAction MuxKeyCommands],
+    _tsh_keepAlive :: Bool
   }
 
-data MuxKeyCommands
-  = MuxKeyCopyLastOut
-  | MuxKeyEditLastOut
-  | MuxKeySwitch
-  deriving (Show)
+data MuxEnv = MuxEnv
+  { _menv_puppets :: Map PuppetIdx PuppetCfg,
+    _menv_defaultPuppet :: PuppetIdx,
+    _menv_outputAvailable :: TVar (Set PuppetIdx),
+    _menv_inputAvailable :: TVar Bool,
+    _menv_sigQueue :: TQueue MuxSignal
+  }
 
 data MuxState = MuxState
-  { _mst_puppetSt :: Pair (Maybe PuppetState) (Maybe PuppetState),
+  { _mst_puppets :: Map PuppetIdx PuppetState,
     _mst_currentPuppetIdx :: PuppetIdx,
+    _mst_prevPuppetIdx :: PuppetIdx,
     _mst_syncCwdP :: Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
     _mst_keepAlive :: Bool,
     _mst_inputParser :: KeyParserState MuxKeyCommands,
-    _mst_prevCmdOut :: StrippedCmdResult
+    _mst_prevCmdOut :: StrippedCmdResult,
+    _mst_readInputSt :: ReadLoopSt
   }
 
 data Mux = Mux
-  { _mux_queue :: TQueue MuxCmd,
-    _mux_env :: MuxEnv,
+  { _mux_env :: MuxEnv,
     _mux_st :: MuxState
   }
 
+$(makeLenses 'TshshCfg)
 $(makeLenses 'MuxState)
 $(makeLenses 'MuxEnv)
 $(makeLenses 'Mux)
 
-pupIdx :: PuppetIdx -> Lens' (Pair a a) a
-pupIdx Puppet1 f (a :!: b) = (:!: b) <$> f a
-pupIdx Puppet2 f (a :!: b) = (a :!:) <$> f b
-
-sortPup :: PuppetIdx -> Lens' (Pair a a) (Pair a a)
-sortPup Puppet1 f (a :!: b) = f (a :!: b)
-sortPup Puppet2 f (a :!: b) = (\(a' :!: b') -> b' :!: a') <$> f (b :!: a)
-
-sortPup_ :: PuppetIdx -> Pair a a -> Pair a a
-sortPup_ Puppet1 (a :!: b) = (a :!: b)
-sortPup_ Puppet2 (a :!: b) = (b :!: a)
-
 mst_currentPuppet :: Lens' MuxState (Maybe PuppetState)
 mst_currentPuppet f m =
-  let idx = m ^. mst_currentPuppetIdx
-      ls = mst_puppetSt . pupIdx idx
+  let ls = mst_puppets . at (m ^. mst_currentPuppetIdx)
    in (\x -> m & ls .~ x) <$> f (m ^. ls)
 
-mst_otherPuppet :: Lens' MuxState (Maybe PuppetState)
-mst_otherPuppet f m =
-  let idx = nextPuppet (m ^. mst_currentPuppetIdx)
-      ls = mst_puppetSt . pupIdx idx
+mst_prevPuppet :: Lens' MuxState (Maybe PuppetState)
+mst_prevPuppet f m =
+  let ls = mst_puppets . at (m ^. mst_prevPuppetIdx)
    in (\x -> m & ls .~ x) <$> f (m ^. ls)
 
-mst_sortedPuppets :: Lens' MuxState (Pair (Maybe PuppetState) (Maybe PuppetState))
-mst_sortedPuppets f m =
-  let idx = m ^. mst_currentPuppetIdx
-      ls = mst_puppetSt . sortPup idx
-   in (\x -> m & ls .~ x) <$> f (m ^. ls)
-
-menv_currentPuppet :: MuxState -> Lens' MuxEnv Puppet
+menv_currentPuppet :: MuxState -> Lens' MuxEnv (Maybe PuppetCfg)
 menv_currentPuppet st f env =
-  let ls = menv_puppets . pupIdx (st ^. mst_currentPuppetIdx)
-   in (\x -> env & ls .~ x) <$> f (env ^. ls)
-
-menv_sortedPuppets :: MuxState -> Lens' MuxEnv (Pair Puppet Puppet)
-menv_sortedPuppets st f env =
-  let ls = menv_puppets . sortPup (st ^. mst_currentPuppetIdx)
+  let ls = menv_puppets . at (st ^. mst_currentPuppetIdx)
    in (\x -> env & ls .~ x) <$> f (env ^. ls)
