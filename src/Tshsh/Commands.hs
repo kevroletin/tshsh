@@ -7,8 +7,7 @@ import Tshsh.Data.BufferSlice (BufferSlice)
 newtype PuppetIdx = PuppetIdx Int deriving (Eq, Ord, Show, Enum)
 
 data MuxCmd
-  = TermInput BufferSlice
-  | PuppetOutput PuppetIdx BufferSlice
+  = PuppetOutput PuppetIdx BufferSlice
   | WindowResize
   | SwitchPuppet
   | ChildExited ProcessID

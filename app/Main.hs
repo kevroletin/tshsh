@@ -1,11 +1,9 @@
 module Main where
 
 import Cli
-import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
 import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
 import Data.String.Conversions
 import Protolude
 import ShellConfig
@@ -14,7 +12,6 @@ import System.IO (BufferMode (..), hFlush, hSetBuffering)
 import System.Posix
 import Tshsh.KeyParser
 import Tshsh.Muxer
-import Tshsh.Tty
 
 stderrToFile :: Text -> IO ()
 stderrToFile fName = do
@@ -32,61 +29,56 @@ ensureCmdExits cmd = do
       exitFailure
     Just _ -> pure ()
 
-data DedicatedPuppets
-  = PupRanger
-  | PupZsh
-  | PupVi
-  | PupEmacs
+data Puppets
+  = PupZsh
   | PupShh
+  | PupRanger
+  | PupVi
+  | PupPython
+  | PupSh
   deriving (Enum, Show)
 
--- TODO: this is very error-prone
-zshIdx, shhIdx, rangerIdx, viIdx, pythonIdx, shIdx :: PuppetIdx
-zshIdx = PuppetIdx 1
-shhIdx = PuppetIdx 2
-rangerIdx = PuppetIdx 3
-viIdx = PuppetIdx 4
-pythonIdx = PuppetIdx 5
-shIdx = PuppetIdx 6
+pupIdx :: Enum e => e -> PuppetIdx
+pupIdx = PuppetIdx . fromEnum
 
 pupCfgs :: Map PuppetIdx PuppetCfg
-pupCfgs =
-  Map.fromList
-    [ (zshIdx, zshCfg),
-      (shhIdx, shhCfg),
-      (rangerIdx, rangerCfg),
-      (viIdx, viCfg),
-      (pythonIdx, pythonCfg),
-      (shIdx, shCfg)
-    ]
+pupCfgs = Map.fromList [(pupIdx i, c) | (i, c) <- cfgs]
+  where
+    cfgs =
+      [ (PupZsh, zshCfg),
+        (PupShh, shhCfg),
+        (PupRanger, rangerCfg),
+        (PupVi, viCfg),
+        (PupPython, pythonCfg),
+        (PupSh, shCfg)
+      ]
 
-keyBindings :: Either Text (KeyParserState MuxKeyCommands)
+keyBindings :: [KeyAction MuxKeyCommands]
 keyBindings =
-  mkKeyParser
-    [ -- Ctrl-z
-      KeyAct "\SUB" "switch" MuxKeySwitch,
-      -- Ctrl-x
-      KeyPrefix
-        "\CAN"
-        "leader key"
-        [ KeyAct "c" "copy previous output" MuxKeyCopyLastOut,
-          KeyAct "e" "edit previous output" MuxKeyEditLastOut,
-          KeyPrefix
-            "s"
-            "switch"
-            [ KeyAct "r" "ranger" (MuxKeySwitchPuppet rangerIdx),
-              KeyAct "s" "shh" (MuxKeySwitchPuppet shhIdx),
-              KeyAct "p" "python" (MuxKeySwitchPuppet pythonIdx),
-              KeyAct "v" "vi" (MuxKeySwitchPuppet viIdx),
-              KeyAct "z" "zsh" (MuxKeySwitchPuppet zshIdx)
-            ]
-        ]
-    ]
+  [ -- Ctrl-z
+    KeyAct "\SUB" "switch" MuxKeySwitch,
+    -- Ctrl-x
+    KeyPrefix
+      "\CAN"
+      "leader key"
+      [ KeyAct "c" "copy previous output" MuxKeyCopyLastOut,
+        KeyAct "e" "edit previous output" MuxKeyEditLastOut,
+        KeyPrefix
+          "s"
+          "switch"
+          [ KeyAct "r" "ranger" (switchPuppet PupRanger),
+            KeyAct "s" "shh" (switchPuppet PupShh),
+            KeyAct "p" "python" (switchPuppet PupPython),
+            KeyAct "v" "vi" (switchPuppet PupVi),
+            KeyAct "z" "zsh" (switchPuppet PupZsh)
+          ]
+      ]
+  ]
+  where
+    switchPuppet x = MuxKeySwitchPuppet (pupIdx x)
 
 main :: IO ()
 main = do
-  let (Right kb) = keyBindings
-
   (opts, args) <- parseArgs
   let cmd1 = maybe "shh" cs (args ^? ix 0)
       cmd2 = maybe "zsh" cs (args ^? ix 1)
@@ -107,36 +99,11 @@ main = do
   traverse_ openMuxLog (_cl_muxLog opts)
   stderrToFile (fromMaybe "/dev/null" $ _cl_log opts)
 
-  dataAvailable <- newTVarIO Set.empty
-
-  bracket
-    configureStdinTty
-    restoreStdinTty
-    $ \_ -> do
-      sigQueue <- newTQueueIO
-      setupSignalHandlers sigQueue
-      forkReadUserInput sigQueue
-
-      pup1st <- startPuppetProcess dataAvailable idx1 cfg1
-
-      let mux =
-            Mux
-              MuxEnv
-                { _menv_puppets = pupCfgs,
-                  _menv_defaultPuppet = idx1,
-                  _menv_dataAvailable = dataAvailable,
-                  _menv_sigQueue = sigQueue
-                }
-              MuxState
-                { _mst_puppets = Map.fromList [(idx1, pup1st)],
-                  _mst_currentPuppetIdx = idx1,
-                  _mst_prevPuppetIdx = idx2,
-                  _mst_syncCwdP = Nothing,
-                  _mst_keepAlive = False,
-                  _mst_inputParser = kb,
-                  _mst_prevCmdOut = StrippedCmdResult ""
-                }
-
-      muxLoop mux
-
-  pure ()
+  tshshMain
+    TshshCfg
+      { _tsh_puppets = pupCfgs,
+        _tsh_firstPuppetIdx = idx1,
+        _tsh_secondPuppetIdx = idx2,
+        _tsh_keyBindings = keyBindings,
+        _tsh_keepAlive = False
+      }

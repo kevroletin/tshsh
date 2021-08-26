@@ -20,14 +20,13 @@ import qualified Data.Text.IO as T
 import Foreign hiding (void)
 import Protolude hiding (log, tryIO)
 import System.Console.ANSI
-import System.IO (hClose, hPutBuf, hWaitForInput)
+import System.IO (hClose, hPutBuf)
 import System.IO.Temp
 import System.Posix
 import System.Process
 import Tshsh.Commands
 import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
 import qualified Tshsh.Data.BufferSlice as BufferSlice
-import Tshsh.KeyParser
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Muxer.Log
 import Tshsh.Muxer.ShellOutputParser
@@ -173,12 +172,6 @@ startPuppetProcess dataAvail idx cfg@PuppetCfg {..} = do
             }
       }
 
-watchFileInput :: Handle -> TVar a -> (a -> a) -> IO ()
-watchFileInput h var act = do
-  void . forkIO $ do
-    _ <- hWaitForInput h (-1)
-    atomically $ modifyTVar var act
-
 switchPuppets :: MuxEnv -> MuxState -> PuppetIdx -> Maybe PuppetMode -> IO (Maybe MuxState)
 switchPuppets env st0 toIdx prevMode = do
   let (Just fromMode) =
@@ -196,7 +189,7 @@ switchPuppets env st0 toIdx prevMode = do
       Just x -> pure (False, x, st)
       Nothing -> do
         Protolude.putStrLn ("\r\nStarting " <> show (_pc_cmd toPup) <> " ..\r\n" :: Text)
-        newSt <- startPuppetProcess (_menv_dataAvailable env) toIdx toPup
+        newSt <- startPuppetProcess (_menv_outputAvailable env) toIdx toPup
         pure (True, newSt, st & mst_currentPuppet ?~ newSt)
 
   let selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
@@ -289,23 +282,6 @@ muxOnKeyBinding env st key = do
       switchPuppets env st newIdx Nothing
 
 muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
-muxBody env st0 (TermInput bs) = do
-  let str0 = BufferSlice.sliceToByteString bs
-
-      loop _ Nothing = pure Nothing
-      loop res (Just st) =
-        case res of
-          KeyParserData out next ->
-            loop next =<< muxOnTermInput st out
-          KeyParserAction act next -> do
-            loop next =<< muxOnKeyBinding env st act
-          KeyParserNull next ->
-            pure $ Just (next, st)
-  loop (keyParserRun (_mst_inputParser st0) str0) (Just st0) >>= \case
-    Nothing ->
-      pure Nothing
-    Just (newKeyParser, newSt) ->
-      pure $ Just (newSt {_mst_inputParser = newKeyParser})
 muxBody _env st (PuppetOutput puppetIdx inp@(BufferSlice _ buf size)) = do
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     withForeignPtr buf $ \ptr -> do

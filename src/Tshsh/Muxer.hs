@@ -7,15 +7,14 @@ module Tshsh.Muxer
     module Tshsh.Puppet,
     openMuxLog,
     setupSignalHandlers,
-    forkReadUserInput,
-    muxLoop,
+    tshshMain,
   )
 where
 
-import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Lens
 import Control.Monad
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.String.Conversions
 import Protolude hiding (tryIO)
@@ -23,42 +22,89 @@ import System.Posix
 import System.Posix.Signals.Exts
 import Tshsh.Commands
 import Tshsh.Data.BufferSlice (BufferSlice (..))
+import qualified Tshsh.Data.BufferSlice as BufferSlice
+import Tshsh.KeyParser
 import Tshsh.Muxer.Body
 import Tshsh.Muxer.Log
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
-import Tshsh.ReadLoop (readLoop, readLoopStep)
+import Tshsh.ReadLoop
+import Tshsh.Tty
 
-muxLoop_ :: MuxEnv -> MuxState -> IO ()
-muxLoop_ !env !st0 = do
-  (inpMsg, readyPup) :: ([MuxCmd], Set PuppetIdx) <- waitInput
+muxLoop :: MuxEnv -> MuxState -> IO ()
+muxLoop !env !st0 = do
+  (sigMsg, termInpAv, readyPup) <- waitInput
 
-  let loop [] st = pure st
-      loop (x : xs) st = handlePuppetInput x st >>= loop xs
+  let handlAllOut [] st = pure st
+      handlAllOut (x : xs) st = do
+        handlePuppetOutput x st >>= handlAllOut xs
 
-  handleInpMsg inpMsg (Just st0)
-    >>= loop (Set.toList readyPup)
+  handleSigMsg sigMsg (Just st0)
+    >>= handlAllOut (Set.toList readyPup)
+    >>= whenAv termInpAv handleTermInput
     >>= \case
       Nothing -> pure ()
-      Just newSt -> muxLoop_ env newSt
+      Just newSt -> muxLoop env newSt
   where
-    waitInput :: IO ([MuxCmd], Set PuppetIdx)
+    whenAv False _ st = pure st
+    whenAv True act st = act st
+
+    waitInput :: IO ([MuxCmd], Bool, Set PuppetIdx)
     waitInput =
       atomically $ do
-        inpMsg <- flushTQueue (_menv_sigQueue env)
-        readyPup <- swapTVar (_menv_dataAvailable env) Set.empty
-        if null inpMsg && Set.null readyPup
+        sigMsg <- flushTQueue (_menv_sigQueue env)
+        termInp <- swapTVar (_menv_inputAvailable env) False
+        readyPup <- swapTVar (_menv_outputAvailable env) Set.empty
+        -- pure (sigMsg, termInp, readyPup)
+        if null sigMsg && not termInp && Set.null readyPup
           then retry
-          else pure (inpMsg, readyPup)
+          else pure (sigMsg, termInp, readyPup)
 
     muxBodyL e s cmd = muxLog cmd >> muxBody e s cmd
 
-    handleInpMsg [] st = pure st
-    handleInpMsg _ Nothing = pure Nothing
-    handleInpMsg (cmd : rest) (Just st) = muxBodyL env st cmd >>= handleInpMsg rest
+    handleSigMsg [] st = pure st
+    handleSigMsg _ Nothing = pure Nothing
+    handleSigMsg (cmd : rest) (Just st) = muxBodyL env st cmd >>= handleSigMsg rest
 
-    muxReadFromPuppet :: MuxState -> PuppetIdx -> IO (Maybe BufferSlice, MuxState)
-    muxReadFromPuppet st idx =
+    readTermInput :: MuxState -> IO (Maybe BufferSlice, MuxState)
+    readTermInput st = do
+      res <-
+        readLoopStep (_mst_readInputSt st) >>= \case
+          Nothing -> do
+            pure (Nothing, st)
+          Just (slice, newReadSt) -> do
+            pure (Just slice, st {_mst_readInputSt = newReadSt})
+      watchFileInput stdin (_menv_inputAvailable env) (const True)
+      pure res
+
+    handleTermInput :: Maybe MuxState -> IO (Maybe MuxState)
+    handleTermInput Nothing = pure Nothing
+    handleTermInput (Just st1) = do
+      (mSlice, newSt) <- readTermInput st1
+      -- case mSlice of
+      --   Nothing -> pure (Just newSt)
+      --   Just slice -> do
+      --     muxOnTermInput newSt (BufferSlice.sliceToByteString slice)
+      case mSlice of
+        Nothing -> pure (Just newSt)
+        Just (BufferSlice.sliceToByteString -> str0) -> do
+          let loop _ Nothing = pure Nothing
+              loop res (Just st) =
+                case res of
+                  KeyParserData out next ->
+                    loop next =<< muxOnTermInput st out
+                  KeyParserAction act next -> do
+                    loop next =<< muxOnKeyBinding env st act
+                  KeyParserNull next ->
+                    pure $ Just (next, st)
+          loop (keyParserRun (_mst_inputParser st1) str0) (Just st1) >>= \case
+            Nothing ->
+              pure $ Just newSt
+            Just (newKeyParser, newSt2) ->
+              pure $ Just (newSt2 {_mst_inputParser = newKeyParser})
+
+    readPuppetOutput :: MuxState -> PuppetIdx -> IO (Maybe BufferSlice, MuxState)
+    readPuppetOutput st idx = do
       case st ^? mst_puppets . ix idx of
         Nothing -> pure (Nothing, st)
         Just (_ps_process -> pp) -> do
@@ -70,23 +116,69 @@ muxLoop_ !env !st0 = do
                       st & mst_puppets . ix idx . ps_process
                         .~ (pp {_pp_readSliceSt = newReadSt})
                 pure (Just slice, newSt)
-          watchFileInput (_pp_inputH pp) (_menv_dataAvailable env) (Set.insert idx)
+          watchFileInput (_pp_inputH pp) (_menv_outputAvailable env) (Set.insert idx)
           pure res
 
-    handlePuppetInput _ Nothing = pure Nothing
-    handlePuppetInput idx (Just st) = do
-      (mSlice, newSt) <- muxReadFromPuppet st idx
+    handlePuppetOutput _ Nothing = pure Nothing
+    handlePuppetOutput idx (Just st) = do
+      (mSlice, newSt) <- readPuppetOutput st idx
       case mSlice of
         Nothing -> pure (Just newSt)
         Just slice -> do
-          muxBodyL env newSt (PuppetOutput idx slice)
+          res <- muxBodyL env newSt (PuppetOutput idx slice)
+          pure res
 
-muxLoop :: Mux -> IO ()
-muxLoop (Mux e s) = muxLoop_ e s
+tshshMain :: TshshCfg -> IO ()
+tshshMain TshshCfg {..} = do
+  kb <- case mkKeyParser _tsh_keyBindings of
+    Left err -> do
+      putStrLn ("Malformed keybinding cfg:  " <> show err :: Text)
+      exitFailure
+    Right p -> pure p
+
+  let idx1 = _tsh_firstPuppetIdx
+      idx2 = _tsh_secondPuppetIdx
+      Just cfg1 = Map.lookup idx1 _tsh_puppets
+
+  bracket
+    configureStdinTty
+    restoreStdinTty
+    $ \_ -> do
+      inAvailable <- newTVarIO False
+      readInputSt <- readLoopInit stdin
+      watchFileInput stdin inAvailable (const True)
+      outAvailable <- newTVarIO Set.empty
+      sigQueue <- newTQueueIO
+
+      setupSignalHandlers sigQueue
+
+      pup1st <- startPuppetProcess outAvailable idx1 cfg1
+
+      let env =
+            MuxEnv
+              { _menv_puppets = _tsh_puppets,
+                _menv_defaultPuppet = idx1,
+                _menv_outputAvailable = outAvailable,
+                _menv_inputAvailable = inAvailable,
+                _menv_sigQueue = sigQueue
+              }
+      let st =
+            MuxState
+              { _mst_puppets = Map.fromList [(idx1, pup1st)],
+                _mst_currentPuppetIdx = idx1,
+                _mst_prevPuppetIdx = idx2,
+                _mst_syncCwdP = Nothing,
+                _mst_keepAlive = False,
+                _mst_inputParser = kb,
+                _mst_prevCmdOut = StrippedCmdResult "",
+                _mst_readInputSt = readInputSt
+              }
+
+      muxLoop env st
 
 setupSignalHandlers :: TQueue MuxCmd -> IO ()
 setupSignalHandlers queue = do
-  -- catch susp and child inpMsg
+  -- catch susp and child sigMsg
   _ <- installHandler windowChange (Catch (atomically $ writeTQueue queue WindowResize)) Nothing
   let suspendSig = atomically $ writeTQueue queue SwitchPuppet
   _ <- installHandler keyboardStop (Catch suspendSig) Nothing
@@ -99,9 +191,3 @@ setupSignalHandlers queue = do
         atomically $ writeTQueue queue (ChildExited siginfoPid)
   _ <- installHandler processStatusChanged (CatchInfo onChildSig) Nothing
   pure ()
-
-forkReadUserInput :: TQueue MuxCmd -> IO ()
-forkReadUserInput queue = do
-  void . forkIO $
-    readLoop "[Read stdin thread]" stdin $ \str ->
-      atomically . writeTQueue queue $ TermInput str

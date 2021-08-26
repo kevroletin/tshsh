@@ -3,14 +3,16 @@ module Tshsh.ReadLoop
     readLoopInit,
     readLoop,
     ReadLoopSt,
+    watchFileInput,
   )
 where
 
+import Control.Concurrent.STM
 import Control.Exception.Safe (tryIO)
 import Control.Monad
 import Foreign hiding (void)
 import Protolude hiding (log, tryIO)
-import System.IO (hGetBufSome)
+import System.IO (hGetBufSome, hWaitForInput)
 import qualified Tshsh.Constants as Const
 import Tshsh.Data.BufferSlice (BufferSlice (..))
 
@@ -35,7 +37,7 @@ readLoopStep st0 =
             }
         )
   where
-    readSlice st@ReadLoopSt {..} =
+    readSlice st@ReadLoopSt {..} = do
       withForeignPtr _rl_dataPtr (\ptr -> hGetBufSome _rl_fileHandle ptr _rl_capacity) >>= \case
         n | n > 0 -> do
           let res = BufferSlice _rl_buff _rl_dataPtr n
@@ -67,3 +69,9 @@ readLoop name fromH act = do
   case res of
     Left err -> hPutStrLn stderr (name <> " " <> show err)
     Right _ -> pure ()
+
+watchFileInput :: Handle -> TVar a -> (a -> a) -> IO ()
+watchFileInput h var act = do
+  void . forkIO $ do
+    _ <- hWaitForInput h (-1)
+    atomically $ modifyTVar var act

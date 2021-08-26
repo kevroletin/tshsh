@@ -3,12 +3,19 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Tshsh.Muxer.Types
-  ( MuxEnv (..),
+  ( TshshCfg (..),
+    tsh_puppets,
+    tsh_firstPuppetIdx,
+    tsh_secondPuppetIdx,
+    tsh_keepAlive,
+    tsh_keyBindings,
+    MuxEnv (..),
     menv_defaultPuppet,
     menv_puppets,
     menv_currentPuppet,
     menv_sigQueue,
-    menv_dataAvailable,
+    menv_outputAvailable,
+    menv_inputAvailable,
     MuxKeyCommands (..),
     MuxState (..),
     mst_puppets,
@@ -20,6 +27,7 @@ module Tshsh.Muxer.Types
     mst_currentPuppet,
     mst_prevPuppet,
     mst_syncCwdP,
+    mst_readInputSt,
     Mux (..),
     mux_env,
     mux_st,
@@ -35,10 +43,19 @@ import Tshsh.KeyParser
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Puppet
 
+data TshshCfg = TshshCfg
+  { _tsh_puppets :: Map PuppetIdx PuppetCfg,
+    _tsh_firstPuppetIdx :: PuppetIdx,
+    _tsh_secondPuppetIdx :: PuppetIdx,
+    _tsh_keyBindings :: [KeyAction MuxKeyCommands],
+    _tsh_keepAlive :: Bool
+  }
+
 data MuxEnv = MuxEnv
   { _menv_puppets :: Map PuppetIdx PuppetCfg,
     _menv_defaultPuppet :: PuppetIdx,
-    _menv_dataAvailable :: TVar (Set PuppetIdx),
+    _menv_outputAvailable :: TVar (Set PuppetIdx),
+    _menv_inputAvailable :: TVar Bool,
     _menv_sigQueue :: TQueue MuxCmd
   }
 
@@ -49,7 +66,8 @@ data MuxState = MuxState
     _mst_syncCwdP :: Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
     _mst_keepAlive :: Bool,
     _mst_inputParser :: KeyParserState MuxKeyCommands,
-    _mst_prevCmdOut :: StrippedCmdResult
+    _mst_prevCmdOut :: StrippedCmdResult,
+    _mst_readInputSt :: ReadLoopSt
   }
 
 data Mux = Mux
@@ -57,6 +75,7 @@ data Mux = Mux
     _mux_st :: MuxState
   }
 
+$(makeLenses 'TshshCfg)
 $(makeLenses 'MuxState)
 $(makeLenses 'MuxEnv)
 $(makeLenses 'Mux)
