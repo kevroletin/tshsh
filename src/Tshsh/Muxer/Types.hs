@@ -56,7 +56,7 @@ data MuxEnv = MuxEnv
     _menv_defaultPuppet :: PuppetIdx,
     _menv_outputAvailable :: TVar (Set PuppetIdx),
     _menv_inputAvailable :: TVar Bool,
-    _menv_sigQueue :: TQueue MuxCmd
+    _menv_sigQueue :: TQueue MuxSignal
   }
 
 data MuxState = MuxState

@@ -2,11 +2,9 @@
 
 module Tshsh.Muxer
   ( module Tshsh.Muxer.Types,
-    module Tshsh.Muxer.Body,
     module Tshsh.Commands,
     module Tshsh.Puppet,
     openMuxLog,
-    setupSignalHandlers,
     tshshMain,
   )
 where
@@ -24,8 +22,9 @@ import Tshsh.Commands
 import Tshsh.Data.BufferSlice (BufferSlice (..))
 import qualified Tshsh.Data.BufferSlice as BufferSlice
 import Tshsh.KeyParser
-import Tshsh.Muxer.Body
+import qualified Tshsh.Muxer.Handlers as Handlers
 import Tshsh.Muxer.Log
+import Tshsh.Muxer.PuppetProcess
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
 import Tshsh.ReadLoop
@@ -49,7 +48,7 @@ muxLoop !env !st0 = do
     whenAv False _ st = pure st
     whenAv True act st = act st
 
-    waitInput :: IO ([MuxCmd], Bool, Set PuppetIdx)
+    waitInput :: IO ([MuxSignal], Bool, Set PuppetIdx)
     waitInput =
       atomically $ do
         sigMsg <- flushTQueue (_menv_sigQueue env)
@@ -60,11 +59,9 @@ muxLoop !env !st0 = do
           then retry
           else pure (sigMsg, termInp, readyPup)
 
-    muxBodyL e s cmd = muxLog cmd >> muxBody e s cmd
-
     handleSigMsg [] st = pure st
     handleSigMsg _ Nothing = pure Nothing
-    handleSigMsg (cmd : rest) (Just st) = muxBodyL env st cmd >>= handleSigMsg rest
+    handleSigMsg (cmd : rest) (Just st) = Handlers.onSignal env st cmd >>= handleSigMsg rest
 
     readTermInput :: MuxState -> IO (Maybe BufferSlice, MuxState)
     readTermInput st = do
@@ -81,10 +78,6 @@ muxLoop !env !st0 = do
     handleTermInput Nothing = pure Nothing
     handleTermInput (Just st1) = do
       (mSlice, newSt) <- readTermInput st1
-      -- case mSlice of
-      --   Nothing -> pure (Just newSt)
-      --   Just slice -> do
-      --     muxOnTermInput newSt (BufferSlice.sliceToByteString slice)
       case mSlice of
         Nothing -> pure (Just newSt)
         Just (BufferSlice.sliceToByteString -> str0) -> do
@@ -92,9 +85,9 @@ muxLoop !env !st0 = do
               loop res (Just st) =
                 case res of
                   KeyParserData out next ->
-                    loop next =<< muxOnTermInput st out
+                    loop next =<< Handlers.onTermInput st out
                   KeyParserAction act next -> do
-                    loop next =<< muxOnKeyBinding env st act
+                    loop next =<< Handlers.onKeyBinding env st act
                   KeyParserNull next ->
                     pure $ Just (next, st)
           loop (keyParserRun (_mst_inputParser st1) str0) (Just st1) >>= \case
@@ -125,7 +118,7 @@ muxLoop !env !st0 = do
       case mSlice of
         Nothing -> pure (Just newSt)
         Just slice -> do
-          res <- muxBodyL env newSt (PuppetOutput idx slice)
+          res <- Handlers.onPuppetOutput env newSt idx slice
           pure res
 
 tshshMain :: TshshCfg -> IO ()
@@ -176,12 +169,9 @@ tshshMain TshshCfg {..} = do
 
       muxLoop env st
 
-setupSignalHandlers :: TQueue MuxCmd -> IO ()
+setupSignalHandlers :: TQueue MuxSignal -> IO ()
 setupSignalHandlers queue = do
-  -- catch susp and child sigMsg
   _ <- installHandler windowChange (Catch (atomically $ writeTQueue queue WindowResize)) Nothing
-  let suspendSig = atomically $ writeTQueue queue SwitchPuppet
-  _ <- installHandler keyboardStop (Catch suspendSig) Nothing
 
   _ <- setStoppedChildFlag True
   let onChildSig :: SignalInfo -> IO ()

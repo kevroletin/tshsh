@@ -1,18 +1,22 @@
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Tshsh.Muxer.Body where
+module Tshsh.Muxer.Handlers
+  ( onTermInput,
+    onKeyBinding,
+    onPuppetOutput,
+    onSwitchPuppets,
+    onSignal,
+  )
+where
 
-import Control.Concurrent.STM
 import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text as T
@@ -22,19 +26,15 @@ import Protolude hiding (log, tryIO)
 import System.Console.ANSI
 import System.IO (hClose, hPutBuf)
 import System.IO.Temp
-import System.Posix
 import System.Process
 import Tshsh.Commands
-import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
-import qualified Tshsh.Data.BufferSlice as BufferSlice
+import Tshsh.Data.BufferSlice (BufferSlice (..))
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Muxer.Log
-import Tshsh.Muxer.ShellOutputParser
+import Tshsh.Muxer.PuppetProcess
 import Tshsh.Muxer.SyncCwd
-import qualified Tshsh.Muxer.TuiModeMatcher as TuiMatcher
 import Tshsh.Muxer.Types
 import Tshsh.Puppet
-import Tshsh.ReadLoop
 import Tshsh.Tty
 
 copyToXClipboard :: Text -> IO ()
@@ -43,14 +43,6 @@ copyToXClipboard str =
     (Just inP, _, _, _) <- createProcess $ (proc "xclip" ["-selection", "clipboard", "-in"]) {std_in = CreatePipe}
     T.hPutStr inP str
     hClose inP
-
-logSliceList :: Text -> Int -> SliceList -> IO ()
-logSliceList msg n bl = do
-  hPutStr stderr msg
-  hPutStr stderr (show $ BufferSlice.listConcat (BufferSlice.listTake n bl) :: Text)
-  when (BufferSlice.listLength bl > n) $
-    hPutStr stderr ("..." :: Text)
-  hPutStr stderr ("\n" :: Text)
 
 onSyncCwdOut :: MuxState -> (PuppetIdx, ByteString) -> IO ()
 onSyncCwdOut st (i, x) = do
@@ -111,69 +103,8 @@ whenJustC :: Maybe (a -> a) -> a -> a
 whenJustC Nothing cont = cont
 whenJustC (Just act) cont = act cont
 
-startPuppetProcess ::
-  TVar (Set PuppetIdx) ->
-  PuppetIdx ->
-  PuppetCfg ->
-  IO PuppetState
-startPuppetProcess dataAvail idx cfg@PuppetCfg {..} = do
-  let outParser = toEv (raceMatchersP `pipe` accumCmdOutP `pipe` stripCmdOutP)
-
-  let outParserSt =
-        OutputParserSt
-          { _op_promptMatcher = _pc_promptMatcher,
-            _op_tuiModeMatcher = TuiMatcher.tuiModeMatcher,
-            _op_mode = PuppetModeRepl,
-            _op_currCmdOut = RawCmdResult BufferSlice.listEmpty
-          }
-
-  (master, slave) <- openPseudoTerminal
-  masterH <- fdToHandle master
-  slaveH <- fdToHandle slave
-  pts <- getSlaveTerminalName master
-
-  -- _ <- system ("stty -F " <> pts <> " $(stty --save)")
-  syncTtySize pts
-
-  (_, _, _, p) <-
-    createProcess
-      -- To implement jobs control a process needs
-      -- 1. to become a session leader
-      -- 2. to acquire a controlling terminal so that it's children inherit the same terminal
-      (proc "acquire_tty_wrapper" (fmap cs (_pc_cmd : _pc_cmdArgs)))
-        { std_in = UseHandle slaveH,
-          std_out = UseHandle slaveH,
-          std_err = UseHandle slaveH
-          -- new_session = True,
-          -- create_group = False,
-          -- this one is not implemented in rts that why we wrote an acquire_tty_wrapper
-          -- aquire_tty = True
-        }
-  -- TODO: handle process startup failures
-  (Just pid) <- getPid p
-
-  readSlice <- readLoopInit masterH
-
-  watchFileInput masterH dataAvail (Set.insert idx)
-
-  hPutStrLn stderr ("Started: " <> (show pid :: Text))
-  pure $
-    PuppetState
-      { _ps_idx = idx,
-        _ps_cfg = cfg,
-        _ps_outputParser = (outParserSt :!: outParser),
-        _ps_process =
-          PuppetProcess
-            { _pp_handle = p,
-              _pp_pid = pid,
-              _pp_inputH = masterH,
-              _pp_pts = pts,
-              _pp_readSliceSt = readSlice
-            }
-      }
-
-switchPuppets :: MuxEnv -> MuxState -> PuppetIdx -> Maybe PuppetMode -> IO (Maybe MuxState)
-switchPuppets env st0 toIdx prevMode = do
+switchPuppetsTo :: MuxEnv -> MuxState -> PuppetIdx -> Maybe PuppetMode -> IO (Maybe MuxState)
+switchPuppetsTo env st0 toIdx prevMode = do
   let (Just fromMode) =
         (st0 ^? mst_currentPuppet . _Just . ps_mode)
           <|> prevMode
@@ -252,20 +183,20 @@ switchPuppets env st0 toIdx prevMode = do
 
   pure $ Just (newSt & mst_syncCwdP .~ mProgram)
 
-muxOnTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
-muxOnTermInput st str = do
+onTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
+onTermInput st str = do
   muxLog (st ^. mst_currentPuppetIdx, str)
   case st ^? mst_currentPuppet . _Just . ps_process of
     Nothing -> pure ()
     Just p -> BS.hPut (_pp_inputH p) str
   pure (Just st)
 
-muxOnKeyBinding :: MuxEnv -> MuxState -> MuxKeyCommands -> IO (Maybe MuxState)
-muxOnKeyBinding env st key = do
+onKeyBinding :: MuxEnv -> MuxState -> MuxKeyCommands -> IO (Maybe MuxState)
+onKeyBinding env st key = do
   hPutStrLn stderr ("Key< " <> show key :: Text)
   case key of
     MuxKeySwitch -> do
-      switchPuppets env st (st ^. mst_prevPuppetIdx) Nothing
+      switchPuppetsTo env st (st ^. mst_prevPuppetIdx) Nothing
     MuxKeyCopyLastOut -> do
       copyToXClipboard . unStrippedCmdResult $ _mst_prevCmdOut st
       pure (Just st)
@@ -279,21 +210,25 @@ muxOnKeyBinding env st key = do
           void $ spawnProcess "emacsclient" ["-n", "-c", fname]
       pure (Just st)
     MuxKeySwitchPuppet newIdx ->
-      switchPuppets env st newIdx Nothing
+      switchPuppetsTo env st newIdx Nothing
 
-muxBody :: MuxEnv -> MuxState -> MuxCmd -> IO (Maybe MuxState)
-muxBody _env st (PuppetOutput puppetIdx inp@(BufferSlice _ buf size)) = do
+onPuppetOutput :: MuxEnv -> MuxState -> PuppetIdx -> BufferSlice -> IO (Maybe MuxState)
+onPuppetOutput _env st puppetIdx inp@(BufferSlice _ buf size) = do
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     withForeignPtr buf $ \ptr -> do
       hPutBuf stdout ptr size
   Just <$> runMuxPrograms st puppetIdx inp
-muxBody _env st WindowResize = do
+
+onSwitchPuppets :: MuxEnv -> MuxState -> IO (Maybe MuxState)
+onSwitchPuppets env st0 = do
+  switchPuppetsTo env st0 (st0 ^. mst_prevPuppetIdx) Nothing
+
+onSignal :: MuxEnv -> MuxState -> MuxSignal -> IO (Maybe MuxState)
+onSignal _env st WindowResize = do
   traverse_ syncTtySize (st ^? mst_currentPuppet . _Just . ps_process . pp_pts)
   traverse_ syncTtySize (st ^? mst_prevPuppet . _Just . ps_process . pp_pts)
   pure (Just st)
-muxBody env st0 SwitchPuppet = do
-  switchPuppets env st0 (st0 ^. mst_prevPuppetIdx) Nothing
-muxBody env st0 (ChildExited exitedPid) = do
+onSignal env st0 (ChildExited exitedPid) = do
   case st0 ^. mst_currentPuppet of
     Nothing -> pure Nothing
     Just currSt ->
@@ -311,10 +246,10 @@ muxBody env st0 (ChildExited exitedPid) = do
                     case Map.lookup (_mst_prevPuppetIdx st0) newPuppets of
                       Nothing -> let (x, _) = Map.findMin newPuppets in x
                       Just _ -> _mst_prevPuppetIdx st0
-               in switchPuppets env newSt toIdx (Just $ currSt ^. ps_mode)
+               in switchPuppetsTo env newSt toIdx (Just $ currSt ^. ps_mode)
             else
               if _mst_keepAlive st0
-                then switchPuppets env newSt (_menv_defaultPuppet env) (Just $ currSt ^. ps_mode)
+                then switchPuppetsTo env newSt (_menv_defaultPuppet env) (Just $ currSt ^. ps_mode)
                 else pure Nothing
         else case find (\(_, ps) -> ps ^. ps_process . pp_pid == exitedPid) $ Map.toList (_mst_puppets st0) of
           Nothing ->
