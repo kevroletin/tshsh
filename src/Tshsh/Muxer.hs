@@ -145,7 +145,7 @@ tshshMain TshshCfg {..} = do
 
       setupSignalHandlers sigQueue
 
-      pup1st <- startPuppetProcess outAvailable idx1 cfg1
+      pup1st <- startPuppetProcess Nothing outAvailable idx1 cfg1
 
       let env =
             MuxEnv

@@ -99,14 +99,15 @@ rangerCfg =
       _pc_cdCmd =
         CdProgram
           ( \cwd _pp ->
-              Output "\ESC\ESC " $
-                Output ":" $
-                  -- TODO: oh oh
-                  Lift (threadDelay 10000) $ \() ->
-                    Output "cd " $
-                      Output (encodeUtf8 cwd) $
-                        Output "\n" $
-                          finishP
+              -- TODO: oh oh, that sleep will block a main loop, we need Sleep construction
+              -- in Tshsh.Lang.Coroutine.CPS
+              let slowOutC msg cont = liftP_ (threadDelay 10000) $ Output msg cont
+               in slowOutC "\ESC\ACK" $
+                    slowOutC ":" $
+                      slowOutC "cd " $
+                        slowOutC (encodeUtf8 cwd) $
+                          slowOutC "\r" $
+                            finishP
           ),
       _pc_cleanPromptP = \_ -> Output "\ESC" finishP,
       _pc_switchEnterHook = pure (),

@@ -107,37 +107,36 @@ switchPuppetsTo env st0 toIdx prevMode = do
           <|> prevMode
   let fromIdx = st0 ^. mst_currentPuppetIdx
   let st = st0 {_mst_currentPuppetIdx = toIdx, _mst_prevPuppetIdx = fromIdx}
-  let mToSt = st ^. mst_currentPuppet
   let mFromSt = st ^. mst_prevPuppet
   let fromPup = (env ^? menv_puppets . ix fromIdx) & fromMaybe (panic "fromIdx is out of bounds")
   let toPup = (env ^? menv_puppets . ix toIdx) & fromMaybe (panic "toIdx is out of bounds")
 
-  (startedNewProc, toSt, newSt) <-
-    case mToSt of
-      Just x -> pure (False, x, st)
-      Nothing -> do
-        Protolude.putStrLn ("\r\nStarting " <> show (_pc_cmd toPup) <> " ..\r\n" :: Text)
-        newSt <- startPuppetProcess (_menv_outputAvailable env) toIdx toPup
-        pure (True, newSt, st & mst_currentPuppet ?~ newSt)
+  {- ORMOLU_DISABLE -}
+  let startPupC mCwd cont =
+        case st ^. mst_puppets . at toIdx of
+          Just x ->
+            cont (False, x)
+          Nothing ->
+            Lift ( do
+              Protolude.putStrLn ("\r\nStarting " <> show (_pc_cmd toPup) <> " ..\r\n" :: Text)
+              startPuppetProcess mCwd (_menv_outputAvailable env) toIdx toPup
+            ) $ \newPupSt ->
+            ModifyState (mst_puppets . at toIdx ?~ newPupSt) $
+            cont (True, newPupSt)
 
   let clearPromptHookC pupSt = AndThen (adaptPuppetAct pupSt $ (pupSt ^. ps_cfg . pc_cleanPromptP) (_ps_process pupSt))
 
-  {- ORMOLU_DISABLE -}
-  let mSyncCwdC =
+  let mGetCwd cont =
         case mFromSt of
-          Nothing -> (\x -> x)
+          Nothing -> cont Nothing
           Just fromSt ->
-            ( \cont ->
-                clearPromptHookC fromSt $
-                syncCwdC toSt fromSt $
-                cont
-            )
+            getPuppetCwd fromSt cont
       runSwitchHooks =
         liftP_
           ( do (fromPup ^. pc_switchExitHook)
                (toPup ^.  pc_switchEnterHook)
            )
-      restoreTermStateC cont =
+      restoreTermStateC (startedNewProc, toSt) cont =
         case toSt ^. ps_mode of
           PuppetModeTUI ->
             unlessC startedNewProc
@@ -157,47 +156,45 @@ switchPuppetsTo env st0 toIdx prevMode = do
             -- clear the current line and until the end of screen, go to up
             liftP_ (BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
             cont
-      clearPromptToC cont =
+      clearPromptToC (startedNewProc, toSt) cont =
         case toSt ^. ps_mode of
           PuppetModeTUI ->
             -- the problem here is that we ignore output of TUI apps and hence
             -- we unable to write any meaningful condition to wait until an app
-            -- has started and became ready to receive interactive commands;
-            -- TODO: we wait here to cd, we can just start a process in a right
-            -- directory; but that adds complexity of starting a puppet from
-            -- Program
-            (if startedNewProc
-                -- TODO: oh oh
-                then (Lift (threadDelay 100000) . const)
-                else clearPromptHookC toSt) $
-            cont
+            -- has started and became ready to receive interactive commands; so
+            -- trying to run interactive commands in a TUI app after start will
+            -- require adding a magic delay here
+            if startedNewProc
+               then cont
+               else clearPromptHookC toSt cont
           PuppetModeRepl ->
-            (if startedNewProc
-                then (WaitInput . const)
-                else clearPromptHookC toSt) $
-            cont
+            if startedNewProc
+               then WaitInput (const cont)
+               else clearPromptHookC toSt cont
       program =
         liftP_ (hPutStrLn stderr ("~ Switch puppets program started" :: Text)) $
-        runSwitchHooks $
-        restoreTermStateC $
-        clearPromptToC $
-        mSyncCwdC $
-        liftP_ (hPutStrLn stderr ("~ Switch puppets program finished" :: Text))
-        finishP
+        mGetCwd $ \mCwd ->
+        startPupC mCwd $ \p@(startedNewProc, toSt) ->
+        adaptUnitStP (
+          runSwitchHooks $
+          restoreTermStateC p $
+          clearPromptToC p $
+          unlessC startedNewProc
+            (puppetCdC toSt mCwd) $
+          liftP_ (hPutStrLn stderr ("~ Switch puppets program finished" :: Text))
+          finishP
+        )
   {- ORMOLU_ENABLE -}
 
-  if (isGetCwdNoSupport $ _pc_getCwdCmd toPup) || (isCdNoSupport $ _pc_cdCmd toPup)
-    then pure $ Just (newSt & mst_syncCwdP .~ Nothing)
-    else do
-      mProgram <-
-        eatOutputsM (onSyncCwdOut newSt) (() :!: program) >>= \case
-          Cont (_ :!: consCont) ->
-            pure (Just consCont)
-          Res r -> do
-            hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
-            pure Nothing
+  (newSt, mProgram) <-
+    eatOutputsM (onSyncCwdOut st) (st :!: program) >>= \case
+      Cont (newSt :!: cont) ->
+        pure (newSt, Just cont)
+      Res (newSt :!: r) -> do
+        hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
+        pure (newSt, Nothing)
 
-      pure $ Just (newSt & mst_syncCwdP .~ (adaptUnitStP @MuxState <$> mProgram))
+  pure $ Just (newSt & mst_syncCwdP .~ mProgram)
 
 onTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
 onTermInput st str = do
@@ -254,7 +251,6 @@ onSignal env st0 (ChildExited exitedPid) = do
           let newSt =
                 ( st0 & mst_currentPuppet .~ Nothing
                     & mst_puppets .~ newPuppets
-                    & mst_syncCwdP .~ Nothing
                 )
           if not (Map.null newPuppets)
             then
@@ -272,8 +268,4 @@ onSignal env st0 (ChildExited exitedPid) = do
             pure (Just st0)
           Just (exitedIdx, _) ->
             pure . Just $
-              ( if exitedIdx == _mst_prevPuppetIdx st0
-                  then st0 & mst_syncCwdP .~ Nothing
-                  else st0
-              )
-                & mst_puppets %~ (Map.delete exitedIdx)
+              st0 & mst_puppets %~ (Map.delete exitedIdx)

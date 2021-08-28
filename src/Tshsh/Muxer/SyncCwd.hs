@@ -32,7 +32,7 @@ stripUnquote :: Text -> Text
 stripUnquote (T.strip -> str) =
   fromMaybe str (unquote_ '"' str <|> unquote_ '\'' str)
 
-runCmd :: PuppetIdx -> Text -> ProgramCont () In Out IO Text
+runCmd :: PuppetIdx -> Text -> ProgramCont st In Out IO Text
 runCmd idx cmd cont =
   Output (idx, encodeUtf8 (cmd <> "\n")) $
     let loop = WaitInput $ \(inIdx, str) ->
@@ -45,7 +45,7 @@ getProcessCwd :: ProcessID -> IO Text
 getProcessCwd pid =
   T.strip . T.pack <$> readProcess "readlink" ["/proc/" <> show pid <> "/cwd"] []
 
-getPuppetCwd :: PuppetState -> ProgramCont () In Out IO (Maybe Text)
+getPuppetCwd :: PuppetState -> ProgramCont st In Out IO (Maybe Text)
 getPuppetCwd st cont =
   case st ^. ps_cfg . pc_getCwdCmd of
     GetCwdCommand cmd ->
@@ -63,21 +63,27 @@ tryGetCurrCwdFromProc pupSt cont =
     GetCwdFromProcess ->
       Lift (getProcessCwd (pupSt ^. ps_process . pp_pid)) (cont . Just)
 
+puppetCdC :: PuppetState -> Maybe Text -> ProgramCont_ () In Out IO
+puppetCdC pupSt mCwd cont0 =
+  case mCwd of
+    Nothing -> cont0
+    Just cwd ->
+      tryGetCurrCwdFromProc pupSt $ \mCurrCwd ->
+        let same = Just True == ((cwd ==) <$> mCurrCwd)
+         in if same
+              then cont0
+              else cdC cwd cont0
+  where
+    cdC cwd cont =
+      case (pupSt ^. ps_cfg . pc_cdCmd) of
+        CdNoSupport -> cont
+        CdSimpleCommand mkCmd -> runCmd (pupSt ^. ps_idx) (mkCmd cwd) (const cont)
+        CdProgram act ->
+          adaptPuppetAct pupSt (act cwd (_ps_process pupSt)) `AndThen` cont
+
 syncCwdC :: PuppetState -> PuppetState -> ProgramCont_ () In Out IO
 syncCwdC toSt fromSt cont0 =
-  let cdToPupC cwd cont =
-        case (toSt ^. ps_cfg . pc_cdCmd) of
-          CdNoSupport -> cont
-          CdSimpleCommand mkCmd -> runCmd (toSt ^. ps_idx) (mkCmd cwd) (const cont)
-          CdProgram act ->
-            adaptPuppetAct toSt (act cwd (_ps_process toSt)) `AndThen` cont
-   in Lift (hPutStrLn stderr ("~ SyncCwd program started" :: Text)) $ \_ ->
-        getPuppetCwd fromSt $ \case
-          Nothing -> cont0
-          Just cwd ->
-            liftP_ (hPutStrLn stderr ("~ SyncCwd: prev cwd " <> cwd)) $
-              tryGetCurrCwdFromProc toSt $ \mCurrCwd ->
-                let same = Just True == ((cwd ==) <$> mCurrCwd)
-                 in if same
-                      then cont0
-                      else cdToPupC cwd cont0
+  liftP_ (hPutStrLn stderr ("~ SyncCwd program started" :: Text)) $
+    getPuppetCwd fromSt $ \mCwd ->
+      puppetCdC toSt mCwd $
+        cont0

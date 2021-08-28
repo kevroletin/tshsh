@@ -63,5 +63,5 @@ waitInputC_ :: ProgramCont_ st i o m
 waitInputC_ cont = WaitInput $ \_ -> cont
 {-# INLINE waitInputC_ #-}
 
-adaptUnitStP :: forall st i o m ev. ProgramEv ev () i o m -> ProgramEv ev st i o m
-adaptUnitStP (PEv p) = PEv (AdapterSt united p)
+adaptUnitStP :: Program () i o m -> Program st i o m
+adaptUnitStP = AdapterSt united
