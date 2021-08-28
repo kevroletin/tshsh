@@ -2,7 +2,6 @@ module Tshsh.Muxer.SyncCwd where
 
 import Control.Lens
 import qualified Data.ByteString as BS
-import Data.String.Conversions
 import qualified Data.Text as T
 import Protolude
 import System.Posix (ProcessID)
@@ -14,6 +13,12 @@ import Tshsh.Puppet
 type In = (PuppetIdx, StrippedCmdResult)
 
 type Out = (PuppetIdx, BS.ByteString)
+
+adaptPuppetAct :: PuppetState -> Program st i t m -> Program st (PuppetIdx, i) (PuppetIdx, t) m
+adaptPuppetAct pupSt = adapt (_ps_idx pupSt)
+  where
+    selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
+    adapt idx p = Adapter (selectInp idx) (idx,) p
 
 unquote_ :: Char -> Text -> Maybe Text
 unquote_ c0 str0 = do
@@ -40,49 +45,39 @@ getProcessCwd :: ProcessID -> IO Text
 getProcessCwd pid =
   T.strip . T.pack <$> readProcess "readlink" ["/proc/" <> show pid <> "/cwd"] []
 
--- TODO: too many cs conversions
+getPuppetCwd :: PuppetState -> ProgramCont () In Out IO (Maybe Text)
+getPuppetCwd st cont =
+  case st ^. ps_cfg . pc_getCwdCmd of
+    GetCwdCommand cmd ->
+      runCmd (st ^. ps_idx) cmd (cont . Just . stripUnquote)
+    GetCwdFromProcess ->
+      Lift (getProcessCwd (st ^. ps_process . pp_pid)) (cont . Just)
+    GetCwdNoSupport ->
+      (cont Nothing)
+
+tryGetCurrCwdFromProc :: PuppetState -> ProgramCont st i o IO (Maybe Text)
+tryGetCurrCwdFromProc pupSt cont =
+  case pupSt ^. ps_cfg . pc_getCwdCmd of
+    GetCwdNoSupport -> cont Nothing
+    GetCwdCommand _ -> cont Nothing
+    GetCwdFromProcess ->
+      Lift (getProcessCwd (pupSt ^. ps_process . pp_pid)) (cont . Just)
+
 syncCwdC :: PuppetState -> PuppetState -> ProgramCont_ () In Out IO
 syncCwdC toSt fromSt cont0 =
-  let toPid = toSt ^. ps_process . pp_pid
-      fromPid = fromSt ^. ps_process . pp_pid
-      toP = _ps_cfg toSt
-      fromP = _ps_cfg fromSt
-      toIdx = _ps_idx toSt
-      fromIdx = _ps_idx fromSt
-      getPrevCwd noSupportCont cont =
-        case fromP ^. pc_getCwdCmd of
-          GetCwdCommand cmd ->
-            runCmd fromIdx cmd cont
-          GetCwdFromProcess ->
-            Lift (getProcessCwd fromPid) (cont . cs)
-          GetCwdNoSupport ->
-            noSupportCont
-      tryGetCurrCwdFromProc cont =
-        case toP ^. pc_getCwdCmd of
-          GetCwdNoSupport -> cont Nothing
-          GetCwdCommand _ -> cont Nothing
-          GetCwdFromProcess ->
-            Lift (getProcessCwd toPid) $ \x -> cont (Just x)
-      -- TODO: copy-paste from Handlers.hs
-      selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
-      adapt idx p = Adapter (selectInp idx) (idx,) p
-      cdToPupC cwd cont =
-        case (_pc_cdCmd toP) of
+  let cdToPupC cwd cont =
+        case (toSt ^. ps_cfg . pc_cdCmd) of
           CdNoSupport -> cont
-          CdSimpleCommand mkCmd -> runCmd toIdx (mkCmd cwd) (const cont)
+          CdSimpleCommand mkCmd -> runCmd (toSt ^. ps_idx) (mkCmd cwd) (const cont)
           CdProgram act ->
-            adapt (_ps_idx toSt) (act cwd (_ps_process toSt)) `AndThen` cont
+            adaptPuppetAct toSt (act cwd (_ps_process toSt)) `AndThen` cont
    in Lift (hPutStrLn stderr ("~ SyncCwd program started" :: Text)) $ \_ ->
-        getPrevCwd
-          cont0
-          ( \cwd' ->
-              let cwd = stripUnquote cwd'
-               in liftP_ (hPutStrLn stderr ("~ SyncCwd: prev cwd " <> cwd)) $
-                    tryGetCurrCwdFromProc $ \mCurrCwd ->
-                      let same = case mCurrCwd of
-                            Nothing -> False
-                            Just x -> x == cwd
-                       in if same
-                            then cont0
-                            else cdToPupC cwd cont0
-          )
+        getPuppetCwd fromSt $ \case
+          Nothing -> cont0
+          Just cwd ->
+            liftP_ (hPutStrLn stderr ("~ SyncCwd: prev cwd " <> cwd)) $
+              tryGetCurrCwdFromProc toSt $ \mCurrCwd ->
+                let same = Just True == ((cwd ==) <$> mCurrCwd)
+                  in if same
+                      then cont0
+                      else cdToPupC cwd cont0

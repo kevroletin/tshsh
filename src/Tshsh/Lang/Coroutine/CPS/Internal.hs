@@ -18,7 +18,7 @@
 -- Although we provide AndThen combinator, and it should be quite fast, in many
 -- cases it can be replaces with CPS style of programming. However, one area
 -- where CPS fails is composing programs with different state/input/output
--- types. In this case one can use Adapter, AdapterSt and AndThen.
+-- types. In this case one can use Adapter, AdapterAll and AndThen.
 --
 -- We've optimized AndThen so that both constructing programs (similar to
 -- monodic >>=) and evaluating a single node should have O(1) amortized
@@ -92,7 +92,8 @@ data Program st i o m where
   -- mo - pending input to the first program in next list
   -- next - list of Programs in 'Ev state (they are ready to consume input by stepIn)
   Pipe :: PipeRevList st i o' m -> Maybe o' -> PipeList st o' o m -> Program st i o m
-  AdapterSt :: Lens' st st' -> (i -> Maybe i') -> (o' -> o) -> Program st' i' o' m -> Program st i o m
+  AdapterAll :: Lens' st st' -> (i -> Maybe i') -> (o' -> o) -> Program st' i' o' m -> Program st i o m
+  AdapterSt :: Lens' st st' -> Program st' i o m -> Program st i o m
   Adapter :: (i -> Maybe i') -> (o' -> o) -> Program st i' o' m -> Program st i o m
   AndThen :: Program st i o m -> Program st i o m -> Program st i o m
   BuffInput :: Maybe i -> Program st i o m -> Program st i o m
@@ -124,6 +125,7 @@ instance (Show o) => Show (Program st i o m) where
   show (Finish _) = "Finish"
   show Pipe {} = "Pipe"
   show Adapter {} = "Adapter"
+  show AdapterAll {} = "AdapterAll"
   show AdapterSt {} = "AdapterSt"
   show AndThen {} = "AndThen"
   show BuffInput {} = "BuffInp"
@@ -195,12 +197,20 @@ stepUnsafe mi (st :!: Adapter proj inj p) =
     ContNoOut (newSt :!: PEv newP) ->
       pure $ ContNoOut (newSt :!: coerce (Adapter proj inj newP))
     ResOut res -> pure $ ResOut res
-stepUnsafe mi (st :!: AdapterSt stLens proj inj p) =
+stepUnsafe mi (st :!: AdapterSt stLens p) =
+  stepUnsafe mi (st ^. stLens :!: p) >>= \case
+    ContOut o (newSt :!: PEv newP) ->
+      pure $ ContOut o ((st & stLens .~ newSt) :!: coerce (AdapterSt stLens newP))
+    ContNoOut (newSt :!: PEv newP) ->
+      pure $ ContNoOut ((st & stLens .~ newSt) :!: coerce (AdapterSt stLens newP))
+    ResOut (newSt :!: res) ->
+      pure $ ResOut ((st & stLens .~ newSt) :!: res)
+stepUnsafe mi (st :!: AdapterAll stLens proj inj p) =
   stepUnsafe (proj =<< mi) (st ^. stLens :!: p) >>= \case
     ContOut o (newSt :!: PEv newP) ->
-      pure $ ContOut (inj o) ((st & stLens .~ newSt) :!: coerce (AdapterSt stLens proj inj newP))
+      pure $ ContOut (inj o) ((st & stLens .~ newSt) :!: coerce (AdapterAll stLens proj inj newP))
     ContNoOut (newSt :!: PEv newP) ->
-      pure $ ContNoOut ((st & stLens .~ newSt) :!: coerce (AdapterSt stLens proj inj newP))
+      pure $ ContNoOut ((st & stLens .~ newSt) :!: coerce (AdapterAll stLens proj inj newP))
     ResOut (newSt :!: res) ->
       pure $ ResOut ((st & stLens .~ newSt) :!: res)
 stepUnsafe i (st :!: AndThen (AndThen a b) c) = stepUnsafe i (st :!: AndThen a (AndThen b c))
@@ -243,7 +253,7 @@ isEv (Pipe _ _ xs0) =
       go PipeNil = True
       go (PipeCons x xs) = isEv x && go xs
    in go xs0
-isEv (AdapterSt _ _ _ p) = isEv p
+isEv (AdapterAll _ _ _ p) = isEv p
 isEv (Adapter _ _ p) = isEv p
 isEv (AndThen p1 _) = isEv p1
 isEv (BuffInput Nothing p) = isEv p

@@ -119,9 +119,7 @@ switchPuppetsTo env st0 toIdx prevMode = do
         newSt <- startPuppetProcess (_menv_outputAvailable env) toIdx toPup
         pure (True, newSt, st & mst_currentPuppet ?~ newSt)
 
-  let selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
-      adapt idx p = Adapter (selectInp idx) (idx,) p
-      clearPromptHookC pupSt = AndThen (adapt (_ps_idx pupSt) $ (pupSt ^. ps_cfg . pc_cleanPromptP) (_ps_process pupSt))
+  let clearPromptHookC pupSt = AndThen (adaptPuppetAct pupSt $ (pupSt ^. ps_cfg . pc_cleanPromptP) (_ps_process pupSt))
 
   {- ORMOLU_DISABLE -}
   let mSyncCwdC =

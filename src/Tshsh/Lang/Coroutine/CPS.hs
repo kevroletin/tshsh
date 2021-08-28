@@ -23,9 +23,11 @@ module Tshsh.Lang.Coroutine.CPS
     liftP_,
     finishP,
     waitInputC_,
+    adaptUnitStP,
   )
 where
 
+import Control.Lens
 import Data.Strict.Tuple
 import Protolude
 import Tshsh.Lang.Coroutine.CPS.Folds
@@ -60,3 +62,6 @@ finishP = Finish (Right ())
 waitInputC_ :: ProgramCont_ st i o m
 waitInputC_ cont = WaitInput $ \_ -> cont
 {-# INLINE waitInputC_ #-}
+
+adaptUnitStP :: Program () i o m -> Program st i o m
+adaptUnitStP = AdapterSt united
