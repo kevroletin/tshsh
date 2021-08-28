@@ -58,7 +58,7 @@ pythonCfg =
   defShellCfg
     { _pc_cmd = "python3",
       _pc_promptMatcher = mkSeqMatcher ">>> ",
-      _pc_cdCmd = CdSimpleCommand (\dir -> " import os; os.chdir('" <> dir <> "')"),
+      _pc_cdCmd = CdSimpleCommand (\dir -> "import os; os.chdir('" <> dir <> "')"),
       _pc_cleanPromptP =
         ( \pp ->
             liftP_

@@ -9,10 +9,10 @@
 * [Done] lazy puppet startup
 * [Done] restart a puppet after it terminates
 * [Done] handle tui in a meaningful way
-* copy-paste previous command output using a key binding
-  * maybe we should ignore empty command output
-* edit previous command output in an editor
+* [Done] copy-paste previous command output using a key binding
+* [IN_PROGRESS] edit previous command output in an editor
   * make command configurahble
+  * 
 * config file, default configuration for popular shells
 * limit amount of buffered command output
 
