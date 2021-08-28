@@ -139,12 +139,15 @@ switchPuppetsTo env st0 toIdx prevMode = do
       restoreTermStateC (startedNewProc, toSt) cont =
         case toSt ^. ps_mode of
           PuppetModeTUI ->
+             -- enable alternative screen buffer ("TUI" mode)
+            liftP_ (when (fromMode == PuppetModeRepl) (BS.hPut stdout "\ESC[?1049h")) $
             unlessC startedNewProc
-              ( liftP_ $ do
-                  when (fromMode == PuppetModeRepl)
-                    (BS.hPut stdout "\ESC[?1049h")   -- enable alternative screen buffer ("TUI" mode)
-                  jiggleTtySize (toSt ^. ps_process . pp_pts)     -- a hack to force a TUI app to redraw it's interface
-                )
+              ( case toSt ^. ps_cfg . pc_refreshTui of
+                  RefreshTuiJiggleTty ->
+                    liftP_ (jiggleTtySize (toSt ^. ps_process . pp_pts))
+                  RefreshTuiSendOutput str ->
+                    Output (toSt ^. ps_idx, str)
+               )
             cont
           PuppetModeRepl ->
             whenC (fromMode == PuppetModeTUI)

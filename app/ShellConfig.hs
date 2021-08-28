@@ -34,7 +34,8 @@ defShellCfg =
               waitInputC_
                 finishP
         ),
-      _pc_initMode = PuppetModeRepl
+      _pc_initMode = PuppetModeRepl,
+      _pc_refreshTui = RefreshTuiJiggleTty
     }
 
 shCfg :: PuppetCfg
@@ -112,7 +113,8 @@ rangerCfg =
       _pc_cleanPromptP = \_ -> Output "\ESC" finishP,
       _pc_switchEnterHook = pure (),
       _pc_switchExitHook = pure (),
-      _pc_initMode = PuppetModeTUI
+      _pc_initMode = PuppetModeTUI,
+      _pc_refreshTui = RefreshTuiSendOutput "\f"
     }
 
 viCfg :: PuppetCfg
@@ -122,7 +124,8 @@ viCfg =
       _pc_cmdArgs = [],
       _pc_getCwdCmd = GetCwdNoSupport,
       _pc_cdCmd = CdNoSupport,
-      _pc_cleanPromptP = const finishP
+      _pc_cleanPromptP = const finishP,
+      _pc_refreshTui = RefreshTuiJiggleTty
     }
 
 errorCfg :: PuppetCfg

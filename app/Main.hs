@@ -57,6 +57,8 @@ keyBindings :: [KeyAction MuxKeyCommands]
 keyBindings =
   [ -- Ctrl-z
     KeyAct "\SUB" "switch" MuxKeySwitch,
+    -- Ctrl-o
+    KeyAct "\SI" "switch" (switchPuppet PupRanger),
     -- Ctrl-x
     KeyPrefix
       "\CAN"

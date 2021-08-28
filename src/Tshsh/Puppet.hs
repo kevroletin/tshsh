@@ -5,6 +5,7 @@ module Tshsh.Puppet
     isGetCwdNoSupport,
     CdCfg (..),
     isCdNoSupport,
+    RefreshTuiCfg (..),
     PuppetCfg (..),
     pc_cmd,
     pc_cmdArgs,
@@ -15,6 +16,7 @@ module Tshsh.Puppet
     pc_switchExitHook,
     pc_cleanPromptP,
     pc_initMode,
+    pc_refreshTui,
     ReadLoopSt,
     PuppetProcess (..),
     pp_handle,
@@ -84,6 +86,10 @@ isCdNoSupport :: CdCfg -> Bool
 isCdNoSupport CdNoSupport = True
 isCdNoSupport _ = False
 
+data RefreshTuiCfg
+  = RefreshTuiJiggleTty
+  | RefreshTuiSendOutput ByteString
+
 data PuppetMode
   = PuppetModeTUI
   | PuppetModeRepl
@@ -108,7 +114,8 @@ data PuppetCfg = PuppetCfg
     _pc_switchEnterHook :: IO (),
     _pc_switchExitHook :: IO (),
     _pc_cleanPromptP :: PuppetAction,
-    _pc_initMode :: PuppetMode
+    _pc_initMode :: PuppetMode,
+    _pc_refreshTui :: RefreshTuiCfg
   }
 
 $(makeLenses 'PuppetCfg)
