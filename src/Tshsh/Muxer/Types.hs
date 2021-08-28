@@ -63,7 +63,7 @@ data MuxState = MuxState
   { _mst_puppets :: Map PuppetIdx PuppetState,
     _mst_currentPuppetIdx :: PuppetIdx,
     _mst_prevPuppetIdx :: PuppetIdx,
-    _mst_syncCwdP :: Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
+    _mst_syncCwdP :: Maybe (ProgramEv 'Ev MuxState (PuppetIdx, StrippedCmdResult) (PuppetIdx, BS.ByteString) IO),
     _mst_keepAlive :: Bool,
     _mst_inputParser :: KeyParserState MuxKeyCommands,
     _mst_prevCmdOut :: StrippedCmdResult,

@@ -78,6 +78,6 @@ syncCwdC toSt fromSt cont0 =
             liftP_ (hPutStrLn stderr ("~ SyncCwd: prev cwd " <> cwd)) $
               tryGetCurrCwdFromProc toSt $ \mCurrCwd ->
                 let same = Just True == ((cwd ==) <$> mCurrCwd)
-                  in if same
+                 in if same
                       then cont0
                       else cdToPupC cwd cont0

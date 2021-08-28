@@ -58,43 +58,44 @@ runMuxPrograms_ ::
   BufferSlice ->
   ( StrippedCmdResult,
     ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
-    Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)
+    Maybe (ProgramEv 'Ev MuxState (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)
   ) ->
   IO
-    ( StrippedCmdResult,
+    ( MuxState,
+      StrippedCmdResult,
       ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
-      Maybe (ProgramEv 'Ev () (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)
+      Maybe (ProgramEv 'Ev MuxState (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)
     )
-runMuxPrograms_ st puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
-  loop prevCmdOut0 mConsumer0 =<< stepInput i producer0
+runMuxPrograms_ st0 puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
+  loop st0 prevCmdOut0 mConsumer0 =<< stepInput i producer0
   where
-    loop prevCmdOut mConsumer = \case
+    loop !st prevCmdOut mConsumer = \case
       ResOut (_ :!: r) -> do
         throwIO . FatalError $ "Input parser " <> show puppetIdx <> " terminated with: " <> show r
       ContNoOut prodCont ->
-        pure (prevCmdOut, prodCont, mConsumer)
+        pure (st, prevCmdOut, prodCont, mConsumer)
       ContOut newCmdOut prodCont -> do
         case mConsumer of
           Nothing ->
             -- remember newCmdOut only if SyncCwd is not running
-            loop newCmdOut Nothing =<< stepOut prodCont
+            loop st newCmdOut Nothing =<< stepOut prodCont
           Just consumer ->
-            feedInputM (onSyncCwdOut st) (puppetIdx, newCmdOut) (() :!: consumer) >>= \case
-              Cont (() :!: consCont) -> do
-                loop prevCmdOut0 (Just consCont) =<< stepOut prodCont
-              Res r -> do
-                hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
-                loop prevCmdOut0 Nothing =<< stepOut prodCont
+            feedInputM (onSyncCwdOut st) (puppetIdx, newCmdOut) (st :!: consumer) >>= \case
+              Cont (newSt :!: consCont) -> do
+                loop newSt prevCmdOut0 (Just consCont) =<< stepOut prodCont
+              Res (newSt :!: res) -> do
+                hPutStrLn stderr $ ("Sync cwd terminated with: " <> show res :: Text)
+                loop newSt prevCmdOut0 Nothing =<< stepOut prodCont
 
 runMuxPrograms :: MuxState -> PuppetIdx -> BufferSlice -> IO MuxState
 runMuxPrograms st puppetIdx inp = do
   case st ^? mst_puppets . ix puppetIdx . ps_outputParser of
     Nothing -> pure st
     Just cmdOutPSt -> do
-      (prevCmdOut, newCmdOutP, newMuxProg) <-
+      (newSt, prevCmdOut, newCmdOutP, newMuxProg) <-
         runMuxPrograms_ st puppetIdx inp (_mst_prevCmdOut st, cmdOutPSt, _mst_syncCwdP st)
       pure
-        ( st & mst_puppets . ix puppetIdx . ps_outputParser .~ newCmdOutP
+        ( newSt & mst_puppets . ix puppetIdx . ps_outputParser .~ newCmdOutP
             & mst_syncCwdP .~ newMuxProg
             & mst_prevCmdOut .~ prevCmdOut
         )
@@ -196,7 +197,7 @@ switchPuppetsTo env st0 toIdx prevMode = do
             hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
             pure Nothing
 
-      pure $ Just (newSt & mst_syncCwdP .~ mProgram)
+      pure $ Just (newSt & mst_syncCwdP .~ (adaptUnitStP @MuxState <$> mProgram))
 
 onTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
 onTermInput st str = do
