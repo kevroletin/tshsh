@@ -99,10 +99,6 @@ runMuxPrograms st puppetIdx inp = do
             & mst_prevCmdOut .~ prevCmdOut
         )
 
-whenJustC :: Maybe (a -> a) -> a -> a
-whenJustC Nothing cont = cont
-whenJustC (Just act) cont = act cont
-
 switchPuppetsTo :: MuxEnv -> MuxState -> PuppetIdx -> Maybe PuppetMode -> IO (Maybe MuxState)
 switchPuppetsTo env st0 toIdx prevMode = do
   let (Just fromMode) =
@@ -125,63 +121,84 @@ switchPuppetsTo env st0 toIdx prevMode = do
 
   let selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
       adapt idx p = Adapter (selectInp idx) (idx,) p
-      clearPromptToC = AndThen (adapt toIdx $ (toSt ^. ps_cfg . pc_cleanPromptP) (_ps_process toSt))
+      clearPromptHookC pupSt = AndThen (adapt (_ps_idx pupSt) $ (pupSt ^. ps_cfg . pc_cleanPromptP) (_ps_process pupSt))
 
   {- ORMOLU_DISABLE -}
   let mSyncCwdC =
         case mFromSt of
-          Nothing -> Nothing
+          Nothing -> (\x -> x)
           Just fromSt ->
-            Just
-              ( \cont ->
-                  whenC (fromSt ^. ps_mode == PuppetModeRepl)
-                    (AndThen (adapt fromIdx $ (fromSt ^. ps_cfg . pc_cleanPromptP) (_ps_process fromSt))) $
-                  syncCwdC toSt fromSt $
-                  cont
-              )
-      program =
+            ( \cont ->
+                clearPromptHookC fromSt $
+                syncCwdC toSt fromSt $
+                cont
+            )
+      runSwitchHooks =
         liftP_
-          ( do hPutStrLn stderr ("~ Switch puppets program started" :: Text)
-               (fromPup ^. pc_switchExitHook)
+          ( do (fromPup ^. pc_switchExitHook)
                (toPup ^.  pc_switchEnterHook)
-           ) $
-        ( \cont ->
-            case toSt ^. ps_mode of
-              PuppetModeTUI ->
-                unlessC startedNewProc
-                  ( liftP_ $ do
-                      when (fromMode == PuppetModeRepl)
-                        (BS.hPut stdout "\ESC[?1049h")   -- enable alternative screen buffer ("TUI" mode)
-                      jiggleTtySize (toSt ^. ps_process . pp_pts)     -- a hack to force a TUI app to redraw it's interface
-                   )
-                cont
-              PuppetModeRepl ->
-                whenC (fromMode == PuppetModeTUI)
-                  ( liftP_ -- clear tui interface
-                      (do BS.hPut stdout "\ESC[?1049l" -- disable alternative screen buffer (disable "TUI" mode)
-                          showCursor
-                       )
-                   ) $
-                -- clear the current line and until the end of screen, go to up
-                liftP_ (BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
-                (if startedNewProc
-                   then (WaitInput . const)
-                   else clearPromptToC) $
-                whenJustC mSyncCwdC
-                cont
-          ) $
+           )
+      restoreTermStateC cont =
+        case toSt ^. ps_mode of
+          PuppetModeTUI ->
+            unlessC startedNewProc
+              ( liftP_ $ do
+                  when (fromMode == PuppetModeRepl)
+                    (BS.hPut stdout "\ESC[?1049h")   -- enable alternative screen buffer ("TUI" mode)
+                  jiggleTtySize (toSt ^. ps_process . pp_pts)     -- a hack to force a TUI app to redraw it's interface
+                )
+            cont
+          PuppetModeRepl ->
+            whenC (fromMode == PuppetModeTUI)
+              ( liftP_ -- clear tui interface
+                  (do BS.hPut stdout "\ESC[?1049l" -- disable alternative screen buffer (disable "TUI" mode)
+                      showCursor
+                    )
+                ) $
+            -- clear the current line and until the end of screen, go to up
+            liftP_ (BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
+            cont
+      clearPromptToC cont =
+        case toSt ^. ps_mode of
+          PuppetModeTUI ->
+            -- the problem here is that we ignore output of TUI apps and hence
+            -- we unable to write any meaningful condition to wait until an app
+            -- has started and became ready to receive interactive commands;
+            -- TODO: we wait here to cd, we can just start a process in a right
+            -- directory; but that adds complexity of starting a puppet from
+            -- Program
+            (if startedNewProc
+                -- TODO: oh oh
+                then (Lift (threadDelay 100000) . const)
+                else clearPromptHookC toSt) $
+            cont
+          PuppetModeRepl ->
+            (if startedNewProc
+                then (WaitInput . const)
+                else clearPromptHookC toSt) $
+            cont
+      program =
+        liftP_ (hPutStrLn stderr ("~ Switch puppets program started" :: Text)) $
+        runSwitchHooks $
+        restoreTermStateC $
+        clearPromptToC $
+        mSyncCwdC $
         liftP_ (hPutStrLn stderr ("~ Switch puppets program finished" :: Text))
         finishP
   {- ORMOLU_ENABLE -}
-  mProgram <-
-    eatOutputsM (onSyncCwdOut newSt) (() :!: program) >>= \case
-      Cont (_ :!: consCont) ->
-        pure (Just consCont)
-      Res r -> do
-        hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
-        pure Nothing
 
-  pure $ Just (newSt & mst_syncCwdP .~ mProgram)
+  if (isGetCwdNoSupport $ _pc_getCwdCmd toPup) || (isCdNoSupport $ _pc_cdCmd toPup)
+    then pure $ Just (newSt & mst_syncCwdP .~ Nothing)
+    else do
+      mProgram <-
+        eatOutputsM (onSyncCwdOut newSt) (() :!: program) >>= \case
+          Cont (_ :!: consCont) ->
+            pure (Just consCont)
+          Res r -> do
+            hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
+            pure Nothing
+
+      pure $ Just (newSt & mst_syncCwdP .~ mProgram)
 
 onTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
 onTermInput st str = do

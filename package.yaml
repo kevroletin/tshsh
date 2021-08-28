@@ -46,8 +46,10 @@ dependencies:
 
 default-extensions:
 - StrictData
+- TupleSections
 - DataKinds
 - BangPatterns
+- ViewPatterns
 - DeriveAnyClass
 - DeriveGeneric
 - DerivingStrategies

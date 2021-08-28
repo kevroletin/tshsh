@@ -31,7 +31,7 @@ startPuppetProcess dataAvail idx cfg@PuppetCfg {..} = do
         OutputParserSt
           { _op_promptMatcher = _pc_promptMatcher,
             _op_tuiModeMatcher = TuiMatcher.tuiModeMatcher,
-            _op_mode = PuppetModeRepl,
+            _op_mode = _pc_initMode,
             _op_currCmdOut = RawCmdResult BufferSlice.listEmpty
           }
 

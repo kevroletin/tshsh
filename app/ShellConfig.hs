@@ -25,7 +25,7 @@ defShellCfg =
       _pc_cmdArgs = [],
       _pc_promptMatcher = mkBracketMatcher "sh-" "$ ",
       _pc_getCwdCmd = GetCwdFromProcess,
-      _pc_mkCdCmd = (\dir -> "cd '" <> dir <> "'"),
+      _pc_cdCmd = CdSimpleCommand (\dir -> " cd '" <> dir <> "'"),
       _pc_switchEnterHook = pure (),
       _pc_switchExitHook = pure (),
       _pc_cleanPromptP =
@@ -33,7 +33,8 @@ defShellCfg =
             liftP_ (BS.hPut (_pp_inputH pp) "\ETX") $ -- Ctrl-C
               waitInputC_
                 finishP
-        )
+        ),
+      _pc_initMode = PuppetModeRepl
     }
 
 shCfg :: PuppetCfg
@@ -57,7 +58,7 @@ pythonCfg =
   defShellCfg
     { _pc_cmd = "python3",
       _pc_promptMatcher = mkSeqMatcher ">>> ",
-      _pc_mkCdCmd = (\dir -> "import os; os.chdir('" <> dir <> "')"),
+      _pc_cdCmd = CdSimpleCommand (\dir -> " import os; os.chdir('" <> dir <> "')"),
       _pc_cleanPromptP =
         ( \pp ->
             liftP_
@@ -76,7 +77,7 @@ shhCfg =
     { _pc_cmd = "shh",
       _pc_promptMatcher = mkBracketMatcher "\ESC[1;36m\206\187\ESC[m  \ESC[1;32m" "\ESC[m  ",
       _pc_getCwdCmd = GetCwdCommand "pwd",
-      _pc_mkCdCmd = (\dir -> "cd \"" <> dir <> "\""),
+      _pc_cdCmd = CdSimpleCommand (\dir -> " cd \"" <> dir <> "\""),
       _pc_switchEnterHook = BS.hPut stdout "\x1b[?2004l" -- disable bracket paste mode
     }
 
@@ -95,18 +96,32 @@ rangerCfg =
       -- TODO: need a dummy matcher
       _pc_promptMatcher = mkSeqMatcher "\ESC[K\ESC[?2004h",
       _pc_getCwdCmd = GetCwdFromProcess,
-      -- TODO: need a program here
-      _pc_mkCdCmd = (\_ -> ""),
-      _pc_cleanPromptP = \_ -> Finish (Right ()),
+      _pc_cdCmd =
+        CdProgram
+          ( \cwd _pp ->
+              Output "\ESC\ESC " $
+                Output ":" $
+                  -- TODO: oh oh
+                  Lift (threadDelay 10000) $ \() ->
+                    Output "cd " $
+                      Output (encodeUtf8 cwd) $
+                        Output "\n" $
+                          finishP
+          ),
+      _pc_cleanPromptP = \_ -> Output "\ESC" finishP,
       _pc_switchEnterHook = pure (),
-      _pc_switchExitHook = pure ()
+      _pc_switchExitHook = pure (),
+      _pc_initMode = PuppetModeTUI
     }
 
 viCfg :: PuppetCfg
 viCfg =
   rangerCfg
     { _pc_cmd = "vi",
-      _pc_cmdArgs = []
+      _pc_cmdArgs = [],
+      _pc_getCwdCmd = GetCwdNoSupport,
+      _pc_cdCmd = CdNoSupport,
+      _pc_cleanPromptP = const finishP
     }
 
 errorCfg :: PuppetCfg

@@ -1,16 +1,20 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Tshsh.Puppet
-  ( GetCwd (..),
+  ( GetCwdCfg (..),
+    isGetCwdNoSupport,
+    CdCfg (..),
+    isCdNoSupport,
     PuppetCfg (..),
     pc_cmd,
     pc_cmdArgs,
     pc_promptMatcher,
     pc_getCwdCmd,
-    pc_mkCdCmd,
+    pc_cdCmd,
     pc_switchEnterHook,
     pc_switchExitHook,
     pc_cleanPromptP,
+    pc_initMode,
     ReadLoopSt,
     PuppetProcess (..),
     pp_handle,
@@ -60,9 +64,25 @@ newtype RawCmdResult = RawCmdResult {unRawCmdResult :: SliceList}
 data StrippedCmdResult = StrippedCmdResult {unStrippedCmdResult :: ~Text}
   deriving (Show)
 
-data GetCwd
-  = GetCwdCommand Text
+type PuppetAction = PuppetProcess -> Program () StrippedCmdResult ByteString IO
+
+data GetCwdCfg
+  = GetCwdNoSupport
+  | GetCwdCommand Text
   | GetCwdFromProcess
+
+isGetCwdNoSupport :: GetCwdCfg -> Bool
+isGetCwdNoSupport GetCwdNoSupport = True
+isGetCwdNoSupport _ = False
+
+data CdCfg
+  = CdNoSupport
+  | CdSimpleCommand (Text -> Text)
+  | CdProgram (Text -> PuppetAction)
+
+isCdNoSupport :: CdCfg -> Bool
+isCdNoSupport CdNoSupport = True
+isCdNoSupport _ = False
 
 data PuppetMode
   = PuppetModeTUI
@@ -79,17 +99,16 @@ data PuppetProcess = PuppetProcess
 
 $(makeLenses 'PuppetProcess)
 
-type PuppetAction = PuppetProcess -> Program () StrippedCmdResult ByteString IO
-
 data PuppetCfg = PuppetCfg
   { _pc_cmd :: Text,
     _pc_cmdArgs :: [Text],
     _pc_promptMatcher :: StreamConsumer ByteString Int,
-    _pc_getCwdCmd :: GetCwd,
-    _pc_mkCdCmd :: Text -> Text,
+    _pc_getCwdCmd :: GetCwdCfg,
+    _pc_cdCmd :: CdCfg,
     _pc_switchEnterHook :: IO (),
     _pc_switchExitHook :: IO (),
-    _pc_cleanPromptP :: PuppetAction
+    _pc_cleanPromptP :: PuppetAction,
+    _pc_initMode :: PuppetMode
   }
 
 $(makeLenses 'PuppetCfg)
