@@ -145,7 +145,7 @@ tshshMain TshshCfg {..} = do
 
       setupSignalHandlers sigQueue
 
-      pup1st <- startPuppetProcess outAvailable idx1 cfg1
+      pup1st <- startPuppetProcess Nothing outAvailable idx1 cfg1
 
       let env =
             MuxEnv
@@ -160,7 +160,7 @@ tshshMain TshshCfg {..} = do
               { _mst_puppets = Map.fromList [(idx1, pup1st)],
                 _mst_currentPuppetIdx = idx1,
                 _mst_prevPuppetIdx = idx2,
-                _mst_syncCwdP = Nothing,
+                _mst_switchPupP = Nothing,
                 _mst_keepAlive = False,
                 _mst_inputParser = kb,
                 _mst_prevCmdOut = StrippedCmdResult "",

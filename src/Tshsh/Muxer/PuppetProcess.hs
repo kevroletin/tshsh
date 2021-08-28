@@ -7,6 +7,7 @@ import Control.Concurrent.STM
 import qualified Data.Set as Set
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
+import qualified Data.Text as T
 import Protolude
 import System.Posix
 import System.Process
@@ -20,18 +21,19 @@ import Tshsh.ReadLoop
 import Tshsh.Tty
 
 startPuppetProcess ::
+  Maybe (Text) ->
   TVar (Set PuppetIdx) ->
   PuppetIdx ->
   PuppetCfg ->
   IO PuppetState
-startPuppetProcess dataAvail idx cfg@PuppetCfg {..} = do
+startPuppetProcess mCwd dataAvail idx cfg@PuppetCfg {..} = do
   let outParser = toEv (raceMatchersP `pipe` accumCmdOutP `pipe` stripCmdOutP)
 
   let outParserSt =
         OutputParserSt
           { _op_promptMatcher = _pc_promptMatcher,
             _op_tuiModeMatcher = TuiMatcher.tuiModeMatcher,
-            _op_mode = PuppetModeRepl,
+            _op_mode = _pc_initMode,
             _op_currCmdOut = RawCmdResult BufferSlice.listEmpty
           }
 
@@ -49,7 +51,8 @@ startPuppetProcess dataAvail idx cfg@PuppetCfg {..} = do
       -- 1. to become a session leader
       -- 2. to acquire a controlling terminal so that it's children inherit the same terminal
       (proc "acquire_tty_wrapper" (fmap cs (_pc_cmd : _pc_cmdArgs)))
-        { std_in = UseHandle slaveH,
+        { cwd = T.unpack <$> mCwd,
+          std_in = UseHandle slaveH,
           std_out = UseHandle slaveH,
           std_err = UseHandle slaveH
           -- new_session = True,
