@@ -101,103 +101,108 @@ runMuxPrograms st puppetIdx inp = do
         )
 
 switchPuppetsTo :: MuxEnv -> MuxState -> PuppetIdx -> Maybe PuppetMode -> IO (Maybe MuxState)
-switchPuppetsTo env st0 toIdx prevMode = do
-  let (Just fromMode) =
-        (st0 ^? mst_currentPuppet . _Just . ps_mode)
-          <|> prevMode
-  let fromIdx = st0 ^. mst_currentPuppetIdx
-  let st = st0 {_mst_currentPuppetIdx = toIdx, _mst_prevPuppetIdx = fromIdx}
-  let mFromSt = st ^. mst_prevPuppet
-  let fromPup = (env ^? menv_puppets . ix fromIdx) & fromMaybe (panic "fromIdx is out of bounds")
-  let toPup = (env ^? menv_puppets . ix toIdx) & fromMaybe (panic "toIdx is out of bounds")
+switchPuppetsTo env st0 toIdx prevMode
+  | st0 ^. mst_currentPuppetIdx == toIdx =
+    if st0 ^. mst_currentPuppetIdx == st0 ^. mst_prevPuppetIdx
+      then pure (Just st0)
+      else switchPuppetsTo env st0 (st0 ^. mst_prevPuppetIdx) Nothing
+  | otherwise = do
+    let (Just fromMode) =
+          (st0 ^? mst_currentPuppet . _Just . ps_mode)
+            <|> prevMode
+    let fromIdx = st0 ^. mst_currentPuppetIdx
+    let st = st0 {_mst_currentPuppetIdx = toIdx, _mst_prevPuppetIdx = fromIdx}
+    let mFromSt = st ^. mst_prevPuppet
+    let fromPup = (env ^? menv_puppets . ix fromIdx) & fromMaybe (panic "fromIdx is out of bounds")
+    let toPup = (env ^? menv_puppets . ix toIdx) & fromMaybe (panic "toIdx is out of bounds")
 
-  {- ORMOLU_DISABLE -}
-  let startPupC mCwd cont =
-        case st ^. mst_puppets . at toIdx of
-          Just x ->
-            cont (False, x)
-          Nothing ->
-            Lift ( do
-              Protolude.putStrLn ("\r\nStarting " <> show (_pc_cmd toPup) <> " ..\r\n" :: Text)
-              startPuppetProcess mCwd (_menv_outputAvailable env) toIdx toPup
-            ) $ \newPupSt ->
-            ModifyState (mst_puppets . at toIdx ?~ newPupSt) $
-            cont (True, newPupSt)
+    {- ORMOLU_DISABLE -}
+    let startPupC mCwd cont =
+          case st ^. mst_puppets . at toIdx of
+            Just x ->
+              cont (False, x)
+            Nothing ->
+              Lift ( do
+                Protolude.putStrLn ("\r\nStarting " <> show (_pc_cmd toPup) <> " ..\r\n" :: Text)
+                startPuppetProcess mCwd (_menv_outputAvailable env) toIdx toPup
+              ) $ \newPupSt ->
+              ModifyState (mst_puppets . at toIdx ?~ newPupSt) $
+              cont (True, newPupSt)
 
-  let clearPromptHookC pupSt = AndThen (adaptPuppetAct pupSt $ (pupSt ^. ps_cfg . pc_cleanPromptP) (_ps_process pupSt))
+    let clearPromptHookC pupSt = AndThen (adaptPuppetAct pupSt $ (pupSt ^. ps_cfg . pc_cleanPromptP) (_ps_process pupSt))
 
-  let mGetCwd cont =
-        case mFromSt of
-          Nothing -> cont Nothing
-          Just fromSt ->
-            getPuppetCwd fromSt cont
-      runSwitchHooks =
-        liftP_
-          ( do (fromPup ^. pc_switchExitHook)
-               (toPup ^.  pc_switchEnterHook)
-           )
-      restoreTermStateC (startedNewProc, toSt) cont =
-        case toSt ^. ps_mode of
-          PuppetModeTUI ->
-             -- enable alternative screen buffer ("TUI" mode)
-            liftP_ (when (fromMode == PuppetModeRepl) (BS.hPut stdout "\ESC[?1049h")) $
+    let mGetCwd cont =
+          case mFromSt of
+            Nothing -> cont Nothing
+            Just fromSt ->
+              getPuppetCwd fromSt cont
+        runSwitchHooks =
+          liftP_
+            ( do (fromPup ^. pc_switchExitHook)
+                 (toPup ^.  pc_switchEnterHook)
+            )
+        restoreTermStateC (startedNewProc, toSt) cont =
+          case toSt ^. ps_mode of
+            PuppetModeTUI ->
+              -- enable alternative screen buffer ("TUI" mode)
+              liftP_ (when (fromMode == PuppetModeRepl) (BS.hPut stdout "\ESC[?1049h")) $
+              unlessC startedNewProc
+                ( case toSt ^. ps_cfg . pc_refreshTui of
+                    RefreshTuiJiggleTty ->
+                      liftP_ (jiggleTtySize (toSt ^. ps_process . pp_pts))
+                    RefreshTuiSendOutput str ->
+                      Output (toSt ^. ps_idx, str)
+                )
+              cont
+            PuppetModeRepl ->
+              whenC (fromMode == PuppetModeTUI)
+                ( liftP_ -- clear tui interface
+                    (do BS.hPut stdout "\ESC[?1049l" -- disable alternative screen buffer (disable "TUI" mode)
+                        showCursor
+                      )
+                  ) $
+              -- clear the current line and until the end of screen, go to up
+              liftP_ (BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
+              cont
+        clearPromptToC (startedNewProc, toSt) cont =
+          case toSt ^. ps_mode of
+            PuppetModeTUI ->
+              -- the problem here is that we ignore output of TUI apps and hence
+              -- we unable to write any meaningful condition to wait until an app
+              -- has started and became ready to receive interactive commands; so
+              -- trying to run interactive commands in a TUI app after start will
+              -- require adding a magic delay here
+              if startedNewProc
+                then cont
+                else clearPromptHookC toSt cont
+            PuppetModeRepl ->
+              if startedNewProc
+                then WaitInput (const cont)
+                else clearPromptHookC toSt cont
+        program =
+          liftP_ (hPutStrLn stderr ("~ Switch puppets program started" :: Text)) $
+          mGetCwd $ \mCwd ->
+          startPupC mCwd $ \p@(startedNewProc, toSt) ->
+          adaptUnitStP (
+            runSwitchHooks $
+            restoreTermStateC p $
+            clearPromptToC p $
             unlessC startedNewProc
-              ( case toSt ^. ps_cfg . pc_refreshTui of
-                  RefreshTuiJiggleTty ->
-                    liftP_ (jiggleTtySize (toSt ^. ps_process . pp_pts))
-                  RefreshTuiSendOutput str ->
-                    Output (toSt ^. ps_idx, str)
-               )
-            cont
-          PuppetModeRepl ->
-            whenC (fromMode == PuppetModeTUI)
-              ( liftP_ -- clear tui interface
-                  (do BS.hPut stdout "\ESC[?1049l" -- disable alternative screen buffer (disable "TUI" mode)
-                      showCursor
-                    )
-                ) $
-            -- clear the current line and until the end of screen, go to up
-            liftP_ (BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
-            cont
-      clearPromptToC (startedNewProc, toSt) cont =
-        case toSt ^. ps_mode of
-          PuppetModeTUI ->
-            -- the problem here is that we ignore output of TUI apps and hence
-            -- we unable to write any meaningful condition to wait until an app
-            -- has started and became ready to receive interactive commands; so
-            -- trying to run interactive commands in a TUI app after start will
-            -- require adding a magic delay here
-            if startedNewProc
-               then cont
-               else clearPromptHookC toSt cont
-          PuppetModeRepl ->
-            if startedNewProc
-               then WaitInput (const cont)
-               else clearPromptHookC toSt cont
-      program =
-        liftP_ (hPutStrLn stderr ("~ Switch puppets program started" :: Text)) $
-        mGetCwd $ \mCwd ->
-        startPupC mCwd $ \p@(startedNewProc, toSt) ->
-        adaptUnitStP (
-          runSwitchHooks $
-          restoreTermStateC p $
-          clearPromptToC p $
-          unlessC startedNewProc
-            (puppetCdC toSt mCwd) $
-          liftP_ (hPutStrLn stderr ("~ Switch puppets program finished" :: Text))
-          finishP
-        )
-  {- ORMOLU_ENABLE -}
+              (puppetCdC toSt mCwd) $
+            liftP_ (hPutStrLn stderr ("~ Switch puppets program finished" :: Text))
+            finishP
+          )
+    {- ORMOLU_ENABLE -}
 
-  (newSt, mProgram) <-
-    eatOutputsM (onSyncCwdOut st) (st :!: program) >>= \case
-      Cont (newSt :!: cont) ->
-        pure (newSt, Just cont)
-      Res (newSt :!: r) -> do
-        hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
-        pure (newSt, Nothing)
+    (newSt, mProgram) <-
+      eatOutputsM (onSyncCwdOut st) (st :!: program) >>= \case
+        Cont (newSt :!: cont) ->
+          pure (newSt, Just cont)
+        Res (newSt :!: r) -> do
+          hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
+          pure (newSt, Nothing)
 
-  pure $ Just (newSt & mst_switchPupP .~ mProgram)
+    pure $ Just (newSt & mst_switchPupP .~ mProgram)
 
 onTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
 onTermInput st str = do
