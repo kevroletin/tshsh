@@ -93,10 +93,10 @@ runMuxPrograms st puppetIdx inp = do
     Nothing -> pure st
     Just cmdOutPSt -> do
       (newSt, prevCmdOut, newCmdOutP, newMuxProg) <-
-        runMuxPrograms_ st puppetIdx inp (_mst_prevCmdOut st, cmdOutPSt, _mst_syncCwdP st)
+        runMuxPrograms_ st puppetIdx inp (_mst_prevCmdOut st, cmdOutPSt, _mst_switchPupP st)
       pure
         ( newSt & mst_puppets . ix puppetIdx . ps_outputParser .~ newCmdOutP
-            & mst_syncCwdP .~ newMuxProg
+            & mst_switchPupP .~ newMuxProg
             & mst_prevCmdOut .~ prevCmdOut
         )
 
@@ -194,7 +194,7 @@ switchPuppetsTo env st0 toIdx prevMode = do
         hPutStrLn stderr $ ("Sync cwd terminated with: " <> show r :: Text)
         pure (newSt, Nothing)
 
-  pure $ Just (newSt & mst_syncCwdP .~ mProgram)
+  pure $ Just (newSt & mst_switchPupP .~ mProgram)
 
 onTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
 onTermInput st str = do
