@@ -15,15 +15,15 @@ import Data.Strict.Tuple
 import Protolude
 import Tshsh.Lang.Coroutine.CPS.Internal
 
-data ContRes st i o m where
-  Cont :: Pair st (ProgramEv 'Ev st i o m) -> ContRes st i o m
-  Res :: Pair st (Either Text ()) -> ContRes st i o m
+data ContRes st i o m r where
+  Cont :: Pair st (ProgramEv 'Ev st i o m r) -> ContRes st i o m r
+  Res :: Pair st (Either Text r) -> ContRes st i o m r
 
 $(makePrisms 'Res)
 
-deriving instance (Show st, Show i, Show o) => Show (ContRes st i o m)
+deriving instance (Show st, Show i, Show o, Show r) => Show (ContRes st i o m r)
 
-eatResOutputsM :: forall st i o m. Monad m => (o -> m ()) -> ContResOut st i o m -> m (ContRes st i o m)
+eatResOutputsM :: forall st i o m r. Monad m => (o -> m ()) -> ContResOut st i o m r -> m (ContRes st i o m r)
 eatResOutputsM f r = do
   let loop = \case
         ContNoOut cont -> pure (Cont cont)
@@ -34,10 +34,10 @@ eatResOutputsM f r = do
   loop r
 {-# INLINE eatResOutputsM #-}
 
-eatOutputsM :: forall st i o m prog. (ProgramLike prog st i o m, Monad m) => (o -> m ()) -> Pair st (prog st i o m) -> m (ContRes st i o m)
+eatOutputsM :: forall st i o m r prog. (ProgramLike prog st i o m r, Monad m) => (o -> m ()) -> Pair st (prog st i o m r) -> m (ContRes st i o m r)
 eatOutputsM f c = eatResOutputsM f =<< stepOut c
 {-# INLINE eatOutputsM #-}
 
-feedInputM :: forall st i o m. Monad m => (o -> m ()) -> i -> Pair st (ProgramEv 'Ev st i o m) -> m (ContRes st i o m)
+feedInputM :: forall st i o m r. Monad m => (o -> m ()) -> i -> Pair st (ProgramEv 'Ev st i o m r) -> m (ContRes st i o m r)
 feedInputM f i c = eatResOutputsM f =<< stepInput i c
 {-# INLINE feedInputM #-}

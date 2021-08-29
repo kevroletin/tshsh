@@ -43,13 +43,13 @@ import Protolude
 import Tshsh.Lang.Coroutine.CPS
 
 foldProgram ::
-  forall s st i o m prog.
-  (ProgramLike prog st i o m, Monad m) =>
+  forall s st i o r m prog.
+  (ProgramLike prog st i o m r, Monad m) =>
   (s -> o -> s) ->
   s ->
   [i] ->
-  Pair st (prog st i o m) ->
-  m (s, ContRes st i o m)
+  Pair st (prog st i o m r) ->
+  m (s, ContRes st i o m r)
 foldProgram f res0 xs0 c0 =
   let feedInput' !res [] c = pure (res, Cont c)
       feedInput' !res (x : xs) c = loop res xs =<< stepInput x c
@@ -60,10 +60,10 @@ foldProgram f res0 xs0 c0 =
         (ResOut r) -> pure (res, Res r)
    in loop res0 xs0 =<< stepOut c0
 
-accumProgram :: forall st i o m prog. (ProgramLike prog st i o m, Monad m) => [i] -> Pair st (prog st i o m) -> m ([o], ContRes st i o m)
+accumProgram :: forall st i o m r prog. (ProgramLike prog st i o m r, Monad m) => [i] -> Pair st (prog st i o m r) -> m ([o], ContRes st i o m r)
 accumProgram is c = first reverse <$> foldProgram (\s o -> o : s) [] is c
 
-foldResOutputs :: forall s st i o m. Monad m => (s -> o -> s) -> s -> ContResOut st i o m -> m (s, ContRes st i o m)
+foldResOutputs :: forall s st i o m r. Monad m => (s -> o -> s) -> s -> ContResOut st i o m r -> m (s, ContRes st i o m r)
 foldResOutputs f res0 r =
   let loop !res = \case
         ContNoOut cont -> pure (res, Cont cont)
@@ -72,33 +72,33 @@ foldResOutputs f res0 r =
    in loop res0 r
 
 foldOutputs ::
-  forall s st i o m prog.
-  (ProgramLike prog st i o m, Monad m) =>
+  forall s st i o m r prog.
+  (ProgramLike prog st i o m r, Monad m) =>
   (s -> o -> s) ->
   s ->
-  Pair st (prog st i o m) ->
-  m (s, ContRes st i o m)
+  Pair st (prog st i o m r) ->
+  m (s, ContRes st i o m r)
 foldOutputs a b c = foldResOutputs a b =<< stepOut c
 
-accumOutputs :: forall st i o m. Monad m => Pair st (Program st i o m) -> m ([o], ContRes st i o m)
+accumOutputs :: forall st i o m r. Monad m => Pair st (Program st i o m r) -> m ([o], ContRes st i o m r)
 accumOutputs c = first reverse <$> foldOutputs (\s o -> o : s) [] c
 
-feedInputFoldOutputs :: forall s st i o m. Monad m => (s -> o -> s) -> s -> i -> Pair st (Program st i o m) -> m (s, ContRes st i o m)
+feedInputFoldOutputs :: forall s st i o m r. Monad m => (s -> o -> s) -> s -> i -> Pair st (Program st i o m r) -> m (s, ContRes st i o m r)
 feedInputFoldOutputs f s i c =
   foldOutputs f s c >>= \case
     (s', Cont c') -> foldResOutputs f s' =<< stepInput i c'
     (s', Res o) -> pure (s', Res o)
 
-feedInputAccumOutputs :: forall st i o m. Monad m => i -> Pair st (Program st i o m) -> m ([o], ContRes st i o m)
+feedInputAccumOutputs :: forall st i o m r. Monad m => i -> Pair st (Program st i o m r) -> m ([o], ContRes st i o m r)
 feedInputAccumOutputs i c = first reverse <$> feedInputFoldOutputs (\s o -> o : s) [] i c
 
 evalProgramM ::
-  forall st i o m prog.
-  (ProgramLike prog st i o m, Monad m) =>
+  forall st i o m prog r.
+  (ProgramLike prog st i o m r, Monad m) =>
   (o -> m ()) ->
   m i ->
-  Pair st (prog st i o m) ->
-  m (Pair st (Either Text ()))
+  Pair st (prog st i o m r) ->
+  m (Pair st (Either Text r))
 evalProgramM onOut getIn c0 =
   let feedInputAccumOut c = do
         i <- getIn

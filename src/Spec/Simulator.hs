@@ -30,32 +30,32 @@ parseEnv str = traverse parseLine (T.lines str)
             then Left ("parseEvn: missing = " <> str)
             else Right (a, T.drop 1 b)
 
-finishOnErr :: Either Text s -> ProgramCont st i o m s
+finishOnErr :: Either Text s -> ProgramCont st i o m s r
 finishOnErr (Left err) _ = Finish (Left err)
 finishOnErr (Right a) c = c a
 
-inputFromShell :: Shell -> ProgramCont st (Shell, i) o m i
+inputFromShell :: Shell -> ProgramCont st (Shell, i) o m i r
 inputFromShell shell cont =
   WaitInput $ \(s, i) ->
     if s == shell
       then cont i
       else inputFromShell shell cont
 
-getEnv :: Shell -> ProgramCont st (Shell, Input) (Shell, Text) m [(Text, Text)]
+getEnv :: Shell -> ProgramCont st (Shell, Input) (Shell, Text) m [(Text, Text)] r
 getEnv shell cont =
   runCmd shell "env\n" $ \i ->
     finishOnErr
       (parseEnv i)
       cont
 
-getCwd :: Shell -> ProgramCont st (Shell, Input) (Shell, Text) m Text
+getCwd :: Shell -> ProgramCont st (Shell, Input) (Shell, Text) m Text r
 getCwd shell cont =
   runCmd shell "pwd\n" (cont . T.strip)
 
 stripAnsiEscapes :: Text -> Text
 stripAnsiEscapes x = x
 
-accumUntillPrompt :: Shell -> ProgramCont st (Shell, Input) o m Text
+accumUntillPrompt :: Shell -> ProgramCont st (Shell, Input) o m Text r
 accumUntillPrompt shell cont = loop []
   where
     loop res =
@@ -63,19 +63,19 @@ accumUntillPrompt shell cont = loop []
         Prompt -> cont (T.concat . reverse $ res)
         TextInput x -> loop (x : res)
 
-expect :: Shell -> Text -> ProgramCont_ st (Shell, Input) m o
+expect :: Shell -> Text -> ProgramCont_ st (Shell, Input) m o r
 expect shell exp cont =
   accumUntillPrompt shell $ \str ->
     if stripAnsiEscapes str == exp
       then cont
       else Finish . Left $ "expectation failed: " <> str <> " /= " <> exp
 
-runCmdNoOut :: Shell -> Text -> ProgramCont_ st (Shell, Input) (Shell, Text) m
+runCmdNoOut :: Shell -> Text -> ProgramCont_ st (Shell, Input) (Shell, Text) m r
 runCmdNoOut shell cmd cont =
   Output (shell, cmd) $
     expect shell (cmd) cont
 
-runCmd :: Shell -> Text -> ProgramCont st (Shell, Input) (Shell, Text) m Text
+runCmd :: Shell -> Text -> ProgramCont st (Shell, Input) (Shell, Text) m Text r
 runCmd shell cmd cont =
   Output (shell, cmd) $
     accumUntillPrompt shell $ \str ->
@@ -87,17 +87,17 @@ runCmd shell cmd cont =
                 then (cont (T.drop 1 b))
                 else Finish . Left $ ("expectation failed: " <> a <> "\n /= " <> cmd)
 
-setEnv :: Shell -> [(Text, Text)] -> ProgramCont_ st (Shell, Input) (Shell, Text) m
+setEnv :: Shell -> [(Text, Text)] -> ProgramCont_ st (Shell, Input) (Shell, Text) m r
 setEnv _ [] cont = cont
 setEnv shell ((a, b) : es) cont =
   runCmdNoOut shell ("export " <> a <> "=" <> b <> "\n") $
     setEnv shell es cont
 
-setCwd :: Shell -> Text -> ProgramCont_ st (Shell, Input) (Shell, Text) m
+setCwd :: Shell -> Text -> ProgramCont_ st (Shell, Input) (Shell, Text) m r
 setCwd shell cwd cont =
   runCmdNoOut shell ("cd '" <> cwd <> "'\n") cont
 
-syncEnv :: Program st (Shell, Input) (Shell, Text) m
+syncEnv :: Program st (Shell, Input) (Shell, Text) m ()
 syncEnv = getEnv Shell_1 $ \env ->
   getCwd Shell_1 $ \cwd ->
     setEnv Shell_2 env $
@@ -153,7 +153,7 @@ simulateEnvSync =
 -- Input "ls\nmain.cpp main.o\n" can be sent as Input "ls\n" : Input "main.cpp main.o\n"
 -- or in other combinations.
 simulate ::
-  Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text))) ->
+  Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) ()) ->
   [(Shell, Text, Text)] ->
   Either Text Text
 simulate p0 resp0 = getLog $ runProgram p0 resp0
@@ -167,7 +167,7 @@ simulate p0 resp0 = getLog $ runProgram p0 resp0
     arrange (a, b, c) = ((a, b), c)
 
     runProgram ::
-      Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text))) ->
+      Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) ()) ->
       [(Shell, Text, Text)] ->
       Either Text (Pair st (Either Text ()), EvalState)
     runProgram p resp =

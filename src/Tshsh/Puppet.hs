@@ -66,7 +66,7 @@ newtype RawCmdResult = RawCmdResult {unRawCmdResult :: SliceList}
 data StrippedCmdResult = StrippedCmdResult {unStrippedCmdResult :: ~Text}
   deriving (Show)
 
-type PuppetAction = PuppetProcess -> Program () StrippedCmdResult ByteString IO
+type PuppetAction = PuppetProcess -> Program () StrippedCmdResult ByteString IO ()
 
 data GetCwdCfg
   = GetCwdNoSupport
@@ -132,7 +132,7 @@ $(makeLenses 'OutputParserSt)
 data PuppetState = PuppetState
   { _ps_idx :: PuppetIdx,
     _ps_cfg :: PuppetCfg,
-    _ps_outputParser :: ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
+    _ps_outputParser :: ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO (),
     _ps_process :: PuppetProcess
   }
 

@@ -32,7 +32,7 @@ defShellCfg =
         ( \pp ->
             liftP_ (BS.hPut (_pp_inputH pp) "\ETX") $ -- Ctrl-C
               waitInputC_
-                finishP
+                finishP_
         ),
       _pc_initMode = PuppetModeRepl,
       _pc_refreshTui = RefreshTuiJiggleTty
@@ -50,7 +50,7 @@ shCfg =
                   BS.hPut (_pp_inputH pp) "\n"
               )
               $ waitInputC_
-                finishP
+                finishP_
         )
     }
 
@@ -68,7 +68,7 @@ pythonCfg =
                   BS.hPut (_pp_inputH pp) "\n"
               )
               $ waitInputC_
-                finishP
+                finishP_
         )
     }
 
@@ -108,9 +108,9 @@ rangerCfg =
                       slowOutC "cd " $
                         slowOutC (encodeUtf8 cwd) $
                           slowOutC "\r" $
-                            finishP
+                            finishP_
           ),
-      _pc_cleanPromptP = \_ -> Output "\ESC" finishP,
+      _pc_cleanPromptP = \_ -> Output "\ESC" finishP_,
       _pc_switchEnterHook = pure (),
       _pc_switchExitHook = pure (),
       _pc_initMode = PuppetModeTUI,
@@ -124,7 +124,7 @@ viCfg =
       _pc_cmdArgs = [],
       _pc_getCwdCmd = GetCwdNoSupport,
       _pc_cdCmd = CdNoSupport,
-      _pc_cleanPromptP = const finishP,
+      _pc_cleanPromptP = const finishP_,
       _pc_refreshTui = RefreshTuiJiggleTty
     }
 

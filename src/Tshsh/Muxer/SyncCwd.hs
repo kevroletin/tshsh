@@ -14,7 +14,7 @@ type In = (PuppetIdx, StrippedCmdResult)
 
 type Out = (PuppetIdx, BS.ByteString)
 
-adaptPuppetAct :: PuppetState -> Program st i t m -> Program st (PuppetIdx, i) (PuppetIdx, t) m
+adaptPuppetAct :: PuppetState -> Program st i t m r -> Program st (PuppetIdx, i) (PuppetIdx, t) m r
 adaptPuppetAct pupSt = adapt (_ps_idx pupSt)
   where
     selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
@@ -32,7 +32,7 @@ stripUnquote :: Text -> Text
 stripUnquote (T.strip -> str) =
   fromMaybe str (unquote_ '"' str <|> unquote_ '\'' str)
 
-runCmd :: PuppetIdx -> Text -> ProgramCont st In Out IO Text
+runCmd :: PuppetIdx -> Text -> ProgramCont st In Out IO Text r
 runCmd idx cmd cont =
   Output (idx, encodeUtf8 (cmd <> "\n")) $
     let loop = WaitInput $ \(inIdx, str) ->
@@ -45,7 +45,7 @@ getProcessCwd :: ProcessID -> IO Text
 getProcessCwd pid =
   T.strip . T.pack <$> readProcess "readlink" ["/proc/" <> show pid <> "/cwd"] []
 
-getPuppetCwd :: PuppetState -> ProgramCont st In Out IO (Maybe Text)
+getPuppetCwd :: PuppetState -> ProgramCont st In Out IO (Maybe Text) r
 getPuppetCwd st cont =
   case st ^. ps_cfg . pc_getCwdCmd of
     GetCwdCommand cmd ->
@@ -55,7 +55,7 @@ getPuppetCwd st cont =
     GetCwdNoSupport ->
       (cont Nothing)
 
-tryGetCurrCwdFromProc :: PuppetState -> ProgramCont st i o IO (Maybe Text)
+tryGetCurrCwdFromProc :: PuppetState -> ProgramCont st i o IO (Maybe Text) r
 tryGetCurrCwdFromProc pupSt cont =
   case pupSt ^. ps_cfg . pc_getCwdCmd of
     GetCwdNoSupport -> cont Nothing
@@ -63,7 +63,7 @@ tryGetCurrCwdFromProc pupSt cont =
     GetCwdFromProcess ->
       Lift (getProcessCwd (pupSt ^. ps_process . pp_pid)) (cont . Just)
 
-puppetCdC :: PuppetState -> Maybe Text -> ProgramCont_ () In Out IO
+puppetCdC :: PuppetState -> Maybe Text -> ProgramCont_ () In Out IO r
 puppetCdC pupSt mCwd cont0 =
   case mCwd of
     Nothing -> cont0
@@ -79,9 +79,9 @@ puppetCdC pupSt mCwd cont0 =
         CdNoSupport -> cont
         CdSimpleCommand mkCmd -> runCmd (pupSt ^. ps_idx) (mkCmd cwd) (const cont)
         CdProgram act ->
-          adaptPuppetAct pupSt (act cwd (_ps_process pupSt)) `AndThen` cont
+          adaptPuppetAct pupSt (act cwd (_ps_process pupSt)) `andThenP_` cont
 
-syncCwdC :: PuppetState -> PuppetState -> ProgramCont_ () In Out IO
+syncCwdC :: PuppetState -> PuppetState -> ProgramCont_ () In Out IO r
 syncCwdC toSt fromSt cont0 =
   liftP_ (hPutStrLn stderr ("~ SyncCwd program started" :: Text)) $
     getPuppetCwd fromSt $ \mCwd ->

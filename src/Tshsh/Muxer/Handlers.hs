@@ -57,14 +57,14 @@ runMuxPrograms_ ::
   PuppetIdx ->
   BufferSlice ->
   ( StrippedCmdResult,
-    ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
-    Maybe (ProgramEv 'Ev MuxState (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)
+    ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO (),
+    Maybe (ProgramEv 'Ev MuxState (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO ())
   ) ->
   IO
     ( MuxState,
       StrippedCmdResult,
-      ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO,
-      Maybe (ProgramEv 'Ev MuxState (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO)
+      ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO (),
+      Maybe (ProgramEv 'Ev MuxState (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO ())
     )
 runMuxPrograms_ st0 puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
   loop st0 prevCmdOut0 mConsumer0 =<< stepInput i producer0
@@ -129,7 +129,7 @@ switchPuppetsTo env st0 toIdx prevMode
               ModifyState (mst_puppets . at toIdx ?~ newPupSt) $
               cont (True, newPupSt)
 
-    let clearPromptHookC pupSt = AndThen (adaptPuppetAct pupSt $ (pupSt ^. ps_cfg . pc_cleanPromptP) (_ps_process pupSt))
+    let clearPromptHookC pupSt = andThenP_ (adaptPuppetAct pupSt $ (pupSt ^. ps_cfg . pc_cleanPromptP) (_ps_process pupSt))
 
     let mGetCwd cont =
           case mFromSt of
@@ -190,7 +190,7 @@ switchPuppetsTo env st0 toIdx prevMode
             unlessC startedNewProc
               (puppetCdC toSt mCwd) $
             liftP_ (hPutStrLn stderr ("~ Switch puppets program finished" :: Text))
-            finishP
+            finishP_
           )
     {- ORMOLU_ENABLE -}
 

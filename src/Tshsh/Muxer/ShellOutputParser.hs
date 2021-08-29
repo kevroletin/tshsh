@@ -73,7 +73,7 @@ instance RaceMatchersStateCfg OutputParserSt ShellModeAndOutput where
 {- ORMOLU_DISABLE -}
 raceMatchersP :: forall st out m .
   (RaceMatchersStateCfg st out, RaceMatchersDataCfg out) =>
-  Program st BufferSlice out m
+  Program st BufferSlice out m ()
 raceMatchersP =
   let feedM m0 putSt onOut bs cont =
         let str = BufferSlice.sliceToByteString bs
@@ -136,11 +136,11 @@ raceMatchersP =
                           Output (onSndEv resSnd) $
                           go (BufferSlice.sliceDrop (BS.length prevSnd) bs0)
    in WaitInput go
-{-# SPECIALIZE raceMatchersP :: Program OutputParserSt BufferSlice ShellModeAndOutput IO #-}
+{-# SPECIALIZE raceMatchersP :: Program OutputParserSt BufferSlice ShellModeAndOutput IO () #-}
 {- ORMOLU_ENABLE -}
 
 {- ORMOLU_DISABLE -}
-accumCmdOutP :: Program OutputParserSt ShellModeAndOutput RawCmdResult IO
+accumCmdOutP :: Program OutputParserSt ShellModeAndOutput RawCmdResult IO ()
 accumCmdOutP =
   WaitInput $ \i ->
   GetState $ \st@OutputParserSt{..} ->
@@ -184,7 +184,7 @@ stripCmdOut (RawCmdResult sl) =
       bs' = BS.drop 1 . Protolude.snd . BS.break (== 10) . bsDropEnd 1 . Protolude.fst . BS.breakEnd (== 10) $ bs
    in StrippedCmdResult . T.strip . stripAnsiEscapeCodes $ cs bs'
 
-stripCmdOutP :: Program OutputParserSt RawCmdResult StrippedCmdResult IO
+stripCmdOutP :: Program OutputParserSt RawCmdResult StrippedCmdResult IO ()
 stripCmdOutP =
   WaitInput $ \i ->
     Output (stripCmdOut i) stripCmdOutP

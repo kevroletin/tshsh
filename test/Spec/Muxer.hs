@@ -39,7 +39,7 @@ mappendData [] = []
 mappendData (TestData x : TestData y : rest) = mappendData (TestData (x <> y) : rest)
 mappendData (x : xs) = x : mappendData xs
 
-runProgram :: [inp] -> Pair st (Program st inp out Identity) -> [out]
+runProgram :: [inp] -> Pair st (Program st inp out Identity r) -> [out]
 runProgram inp = loop inp []
   where
     loop [] res _ = res

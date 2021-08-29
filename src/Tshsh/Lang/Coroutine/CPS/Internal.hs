@@ -67,55 +67,52 @@ import Prelude (Show (..))
 
 type Error = Text
 
-data PipeList st i o m where
-  PipeCons :: Program st i o' m -> PipeList st o' o m -> PipeList st i o m
-  PipeNil :: PipeList st o o m
+data PipeList st i o m r where
+  PipeCons :: Program st i o' m r -> PipeList st o' o m r -> PipeList st i o m r
+  PipeNil :: PipeList st o o m r
 
-data PipeRevList st i o m where
-  PipeRevSnoc :: PipeRevList st i o' m -> Program st o' o m -> PipeRevList st i o m
-  PipeRevNil :: PipeRevList st i i m
+data PipeRevList st i o m r where
+  PipeRevSnoc :: PipeRevList st i o' m r -> Program st o' o m r -> PipeRevList st i o m r
+  PipeRevNil :: PipeRevList st i i m r
 
 -- st - state (for GetState, Put state)
 -- i, o - input/output types for yield
 -- t - returned value (when program is successfully finished)
 -- m - base Monad for Lift (and for the interpreter 'step')
-data Program st i o m where
-  Lift :: m a -> (a -> Program st i o m) -> Program st i o m
-  GetState :: (st -> Program st i o m) -> Program st i o m
-  PutState :: st -> Program st i o m -> Program st i o m
-  ModifyState :: (st -> st) -> Program st i o m -> Program st i o m
-  WaitInput :: (i -> Program st i o m) -> Program st i o m
-  Output :: o -> Program st i o m -> Program st i o m
-  Finish :: Either Error () -> Program st i o m
+data Program st i o m r where
+  Lift :: m a -> (a -> Program st i o m r) -> Program st i o m r
+  GetState :: (st -> Program st i o m r) -> Program st i o m r
+  PutState :: st -> ~(Program st i o m r) -> Program st i o m r
+  ModifyState :: (st -> st) -> ~(Program st i o m r) -> Program st i o m r
+  WaitInput :: (i -> Program st i o m r) -> Program st i o m r
+  Output :: o -> ~(Program st i o m r) -> Program st i o m r
+  Finish :: Either Error r -> Program st i o m r
   -- (Pipe prev mo next) is a zipper where
   -- prev - list of Programs in 'NotEv state (they potentially can output from stepOut)
   -- mo - pending input to the first program in next list
   -- next - list of Programs in 'Ev state (they are ready to consume input by stepIn)
-  Pipe :: PipeRevList st i o' m -> Maybe o' -> PipeList st o' o m -> Program st i o m
-  AdapterAll :: Lens' st st' -> (i -> Maybe i') -> (o' -> o) -> Program st' i' o' m -> Program st i o m
-  AdapterSt :: Lens' st st' -> Program st' i o m -> Program st i o m
-  Adapter :: (i -> Maybe i') -> (o' -> o) -> Program st i' o' m -> Program st i o m
-  AndThen :: Program st i o m -> Program st i o m -> Program st i o m
-  BuffInput :: Maybe i -> Program st i o m -> Program st i o m
+  Pipe :: PipeRevList st i o' m r -> Maybe o' -> PipeList st o' o m r -> Program st i o m r
+  AdapterAll :: Lens' st st' -> (i -> Maybe i') -> (o' -> o) -> Program st' i' o' m r -> Program st i o m r
+  AdapterSt :: Lens' st st' -> Program st' i o m r -> Program st i o m r
+  Adapter :: (i -> Maybe i') -> (o' -> o) -> Program st i' o' m r -> Program st i o m r
+  AndThen :: Program st i o m s -> (s -> Program st i o m t) -> Program st i o m t
+  BuffInput :: Maybe i -> Program st i o m r -> Program st i o m r
 
-pipeListAppend :: PipeList st i o' m -> PipeList st o' o m -> PipeList st i o m
+pipeListAppend :: PipeList st i o' m r -> PipeList st o' o m r -> PipeList st i o m r
 pipeListAppend PipeNil next = next
 pipeListAppend (PipeCons p prev) next = PipeCons p (pipeListAppend prev next)
 
-pipe :: Program st i o' m -> Program st o' o m -> Program st i o m
+pipe :: Program st i o' m r -> Program st o' o m r -> Program st i o m r
 pipe (Pipe PipeRevNil Nothing prev) (Pipe PipeRevNil Nothing next) =
   Pipe PipeRevNil Nothing (pipeListAppend prev next)
 pipe p (Pipe PipeRevNil Nothing ps) = Pipe PipeRevNil Nothing (PipeCons p ps)
 pipe (Pipe PipeRevNil Nothing prev) p =
   Pipe PipeRevNil Nothing (pipeListAppend prev (PipeCons p PipeNil))
-pipe p1 p2 = pipe_ (PipeCons p1 (PipeCons p2 PipeNil))
+pipe p1 p2 = Pipe (PipeRevSnoc (PipeRevSnoc PipeRevNil p1) p2) Nothing PipeNil
 
 infixr 9 `pipe`
 
-pipe_ :: PipeList st o' o m -> Program st o' o m
-pipe_ = Pipe PipeRevNil Nothing
-
-instance (Show o) => Show (Program st i o m) where
+instance (Show o) => Show (Program st i o m r) where
   show (Lift _ _) = "Lift"
   show (GetState _) = "GetState"
   show (PutState _ _) = "PutState"
@@ -134,28 +131,28 @@ instance (Show o) => Show (Program st i o m) where
 -- 'NotEv - program can be reduced without providing input
 data Ev = Ev | NotEv
 
-newtype ProgramEv (ev :: Ev) st i o m = PEv (Program st i o m)
+newtype ProgramEv (ev :: Ev) st i o m r = PEv (Program st i o m r)
   deriving (Show)
 
-unProgramEv :: ProgramEv ev st i o m -> Program st i o m
+unProgramEv :: ProgramEv ev st i o m r -> Program st i o m r
 unProgramEv = coerce
 {-# INLINE unProgramEv #-}
 
-data ContResOut st i o m where
-  ContOut :: o -> Pair st (ProgramEv 'NotEv st i o m) -> ContResOut st i o m
-  ContNoOut :: Pair st (ProgramEv 'Ev st i o m) -> ContResOut st i o m
-  ResOut :: Pair st (Either Error ()) -> ContResOut st i o m
+data ContResOut st i o m r where
+  ContOut :: o -> Pair st (ProgramEv 'NotEv st i o m r) -> ContResOut st i o m r
+  ContNoOut :: Pair st (ProgramEv 'Ev st i o m r) -> ContResOut st i o m r
+  ResOut :: Pair st (Either Error r) -> ContResOut st i o m r
 
 $(makePrisms 'ResOut)
 
-deriving instance (Show st, Show i, Show o) => Show (ContResOut st i o m)
+deriving instance (Show st, Show i, Show o, Show r) => Show (ContResOut st i o m r)
 
 stepUnsafe ::
-  forall st i o m.
+  forall st i o m r.
   Monad m =>
   Maybe i ->
-  Pair st (Program st i o m) ->
-  m (ContResOut st i o m)
+  Pair st (Program st i o m r) ->
+  m (ContResOut st i o m r)
 stepUnsafe i (st :!: Lift ma cont) = do
   a <- ma
   stepUnsafe i (st :!: cont a)
@@ -213,17 +210,22 @@ stepUnsafe mi (st :!: AdapterAll stLens proj inj p) =
       pure $ ContNoOut ((st & stLens .~ newSt) :!: coerce (AdapterAll stLens proj inj newP))
     ResOut (newSt :!: res) ->
       pure $ ResOut ((st & stLens .~ newSt) :!: res)
-stepUnsafe i (st :!: AndThen (AndThen a b) c) = stepUnsafe i (st :!: AndThen a (AndThen b c))
+stepUnsafe i (st :!: AndThen (AndThen a b) c) =
+  stepUnsafe i (st :!: AndThen a (\r -> AndThen (b r) c))
 stepUnsafe i (st :!: AndThen p1 p2) =
   stepUnsafe i (st :!: p1) >>= \case
     ContOut o (newSt :!: PEv newP1) -> pure $ ContOut o (newSt :!: coerce (AndThen newP1 p2))
     ContNoOut (newSt :!: PEv newP1) -> pure $ ContNoOut (newSt :!: coerce (AndThen newP1 p2))
     ResOut (newSt :!: Left err) -> pure $ ResOut (newSt :!: Left err)
-    ResOut (newSt :!: Right ()) ->
+    ResOut (newSt :!: Right r) ->
       if isJust i && not (isEv p1)
         then panic "Consume all the outputs before evaluating AndThen"
-        else stepUnsafe Nothing (newSt :!: p2)
-stepUnsafe i (st :!: BuffInput Nothing p) = stepUnsafe i (st :!: p)
+        else stepUnsafe Nothing (newSt :!: (p2 r))
+stepUnsafe i (st :!: BuffInput Nothing p) =
+  stepUnsafe Nothing (st :!: p) >>= \case
+    ContOut o (newSt :!: PEv newP) -> pure $ ContOut o (newSt :!: coerce (BuffInput Nothing newP))
+    ContNoOut (newSt :!: PEv newP) -> stepUnsafe i (newSt :!: newP)
+    ResOut res -> pure $ ResOut res
 stepUnsafe Nothing (st :!: BuffInput (Just i) p) = stepUnsafe (Just i) (st :!: p)
 stepUnsafe (Just newInp) (st :!: BuffInput (Just oldInp) p) =
   stepUnsafe (Just oldInp) (st :!: p) >>= \case
@@ -235,11 +237,11 @@ stepUnsafe (Just newInp) (st :!: BuffInput (Just oldInp) p) =
       pure $ ResOut (coerce res)
 {-# INLINEABLE stepUnsafe #-}
 
-data EvWitness st i o m where
-  EvWitness :: ProgramEv 'Ev st i o m -> EvWitness st i o m
-  NotEvWitness :: ProgramEv 'NotEv st i o m -> EvWitness st i o m
+data EvWitness st i o m r where
+  EvWitness :: ProgramEv 'Ev st i o m r -> EvWitness st i o m r
+  NotEvWitness :: ProgramEv 'NotEv st i o m r -> EvWitness st i o m r
 
-isEv :: Program st i o m -> Bool
+isEv :: Program st i o m r -> Bool
 isEv Lift {} = False
 isEv GetState {} = False
 isEv PutState {} = False
@@ -249,7 +251,7 @@ isEv Output {} = False
 isEv Finish {} = False
 isEv (Pipe PipeRevNil _ _) = True
 isEv (Pipe _ _ xs0) =
-  let go :: PipeList st i o m -> Bool
+  let go :: PipeList st i o m r -> Bool
       go PipeNil = True
       go (PipeCons x xs) = isEv x && go xs
    in go xs0
@@ -260,49 +262,49 @@ isEv (BuffInput Nothing p) = isEv p
 isEv _ = False
 {-# INLINE isEv #-}
 
-matchEv :: Program st i o m -> EvWitness st i o m
+matchEv :: Program st i o m r -> EvWitness st i o m r
 matchEv p
   | isEv p = EvWitness (PEv p)
   | otherwise = NotEvWitness (PEv p)
 {-# INLINE matchEv #-}
 
-toEv :: Program st i o m -> ProgramEv 'Ev st i o m
+toEv :: Program st i o m r -> ProgramEv 'Ev st i o m r
 toEv p = coerce (BuffInput Nothing p)
 {-# INLINE toEv #-}
 
 -- Both tagged and untagged programs can be evaluated to 'Ev form without
 -- providing any input. This class makes it possible to write one polymorphic
 -- implementation for tagged and untagged Program.
-class ProgramLike p st i o m where
-  stepOut :: Monad m => Pair st (p st i o m) -> m (ContResOut st i o m)
+class ProgramLike p st i o m r where
+  stepOut :: Monad m => Pair st (p st i o m r) -> m (ContResOut st i o m r)
 
-instance ProgramLike Program st i o m where
+instance ProgramLike Program st i o m r where
   stepOut = stepOutP
 
-instance ProgramLike (ProgramEv ev) st i o m where
+instance ProgramLike (ProgramEv ev) st i o m r where
   stepOut = stepOutEv
 
 stepInput ::
-  forall st i o m.
+  forall st i o m r.
   Monad m =>
   i ->
-  Pair st (ProgramEv 'Ev st i o m) ->
-  m (ContResOut st i o m)
+  Pair st (ProgramEv 'Ev st i o m r) ->
+  m (ContResOut st i o m r)
 stepInput i p = stepUnsafe (Just i) (coerce p)
 {-# INLINE stepInput #-}
 
 stepOutEv ::
-  forall ev st i o m.
+  forall ev st i o m r.
   Monad m =>
-  Pair st (ProgramEv ev st i o m) ->
-  m (ContResOut st i o m)
+  Pair st (ProgramEv ev st i o m r) ->
+  m (ContResOut st i o m r)
 stepOutEv p = stepUnsafe Nothing (coerce p)
 {-# INLINE stepOutEv #-}
 
 stepOutP ::
-  forall st i o m.
+  forall st i o m r.
   Monad m =>
-  Pair st (Program st i o m) ->
-  m (ContResOut st i o m)
+  Pair st (Program st i o m r) ->
+  m (ContResOut st i o m r)
 stepOutP = stepUnsafe Nothing
 {-# INLINE stepOutP #-}

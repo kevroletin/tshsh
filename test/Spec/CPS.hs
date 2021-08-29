@@ -68,7 +68,7 @@ spec = do
 
   it "program can have recursion" $ do
     let loop = WaitInput $ \i -> Output i loop
-        (out, cont) = rid $ accumProgram @() @Int @Int [1, 2, 3 :: Int] (() :!: loop)
+        (out, cont) = rid $ accumProgram @() @Int @Int @_ @() [1, 2, 3 :: Int] (() :!: loop)
     out `shouldBe` [1, 2, 3]
     cont `shouldHave` _Cont
 
@@ -76,7 +76,7 @@ spec = do
     let loop 0 = Finish (Right ())
         loop n = WaitInput $ \i -> Output i (loop (n -1))
 
-        (out, res) = rid $ accumProgram @() @Int @Int [1 ..] (() :!: loop (10 :: Int))
+        (out, res) = rid $ accumProgram @() @Int @Int @_ @() [1 ..] (() :!: loop (10 :: Int))
     out `shouldBe` [1 .. 10]
     res `shouldHave` _Res
 
@@ -86,7 +86,7 @@ spec = do
             PutState (i + st) $
               sumLoop
 
-        (out, res) = rid $ accumProgram @Int @Int @Int [1 .. 10] (0 :!: sumLoop)
+        (out, res) = rid $ accumProgram @Int @Int @Int @_ @() [1 .. 10] (0 :!: sumLoop)
     out `shouldBe` []
     res `shouldHave` _Cont . _1 . only (55 :: Int)
 
@@ -108,7 +108,7 @@ spec = do
               i
               sumLoop
 
-    let ((out, res), st) = flip runState 0 $ accumProgram @Int @Int @Int [1 .. 10] (0 :!: sumLoop)
+    let ((out, res), st) = flip runState 0 $ accumProgram @Int @Int @Int @_ @() [1 .. 10] (0 :!: sumLoop)
 
     st `shouldBe` 55
     out `shouldBe` [1 .. 10]
@@ -144,7 +144,7 @@ spec = do
     out `shouldBe` [6, 15, 24, 33, 42, 51, 60, 69, 78, 87]
 
   it "Long pipe" $ do
-    let addPrefix :: Text -> Program () Text Text Identity
+    let addPrefix :: Text -> Program () Text Text Identity ()
         addPrefix msg =
           WaitInput $ \i ->
             Output (msg <> i) (addPrefix msg)
@@ -171,22 +171,61 @@ spec = do
                    "<>2"
                  ]
 
-  let echo = WaitInput $ \i -> Output i finishP
+  let echo = WaitInput $ \i -> Output i finishP_
 
   it "(andThen a b) terminates" $ do
-    let p = AndThen echo echo
+    let p = andThenP_ echo echo
 
     let (out, _) = rid (accumProgram @() @Int @Int [1, 2, 3 :: Int] (() :!: p))
     out `shouldBe` [1, 2]
 
   it "andThen (andThen a b) c terminates" $ do
-    let p = AndThen (AndThen echo echo) echo
+    let p = andThenP_ (andThenP_ echo echo) echo
 
     let (out, _) = rid (accumProgram @() @Int @Int [1, 2, 3 :: Int] (() :!: p))
     out `shouldBe` [1, 2, 3]
 
   it "andThen a (andThen a c) terminates" $ do
-    let p = AndThen echo (AndThen echo echo)
+    let p = andThenP_ echo (andThenP_ echo echo)
 
-    let (out, _) = rid (accumProgram @() @Int @Int [1, 2, 3 :: Int] (() :!: p))
+    let (out, _) = rid (accumProgram @() @Int @Int [1, 2, 3] (() :!: p))
     out `shouldBe` [1, 2, 3]
+
+  it "andThen passes result" $ do
+    let p =
+          (Output 1 $ finishP "a") `AndThen` \a ->
+            (Output 2 $ finishP (a <> "b")) `AndThen` \b ->
+              (Output 3 $ finishP (b <> "c"))
+
+    let (out, res) = rid (accumProgram @() @Int @Int @_ @Text [] (() :!: p))
+    out `shouldBe` [1, 2, 3]
+    res `shouldHave` _Res . only (() :!: Right "abc")
+
+  it "Lift passes result" $ do
+    let p = Lift (pure 123) finishP
+
+    let (out, res) = rid (accumProgram @() @() @() @_ @Int [] (() :!: p))
+    out `shouldBe` []
+    res `shouldHave` _Res . only (() :!: Right 123)
+
+  it "Pipe passes result (no input)" $ do
+    let producer n = Output n (producer (n + 1))
+        consumer = WaitInput finishP
+        p = producer 0 `pipe` consumer
+
+    let (out, res) = rid (accumProgram @() @() @() @_ @Int [] (() :!: p))
+    out `shouldBe` []
+    res `shouldHave` _Res . only (() :!: Right 0)
+
+  it "Pipe passes result (with input)" $ do
+    let consumer n =
+          WaitInput $ \i ->
+            if i < n
+              then Output i (consumer n)
+              else finishP n
+        echoLoop = WaitInput $ \i -> Output i echoLoop
+        p = echoLoop `pipe` consumer 5
+
+    let (out, res) = rid (accumProgram @() @Int @Int @_ @Int [1 .. 100] (() :!: p))
+    out `shouldBe` [1, 2, 3, 4]
+    res `shouldHave` _Res . only (() :!: Right 5)
