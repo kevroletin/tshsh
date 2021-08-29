@@ -80,6 +80,7 @@ data CdCfg
 
 data GetEnvCfg
   = GetEnvNoSupport
+  | GetEnvFromProcess
   | GetEnvProgram (PuppetAction [(Text, Text)])
 
 data RefreshTuiCfg

@@ -142,6 +142,12 @@ switchPuppetsTo env st0 toIdx prevMode
             Just fromSt ->
               case fromSt ^. ps_cfg . pc_getEnvCmd of
                 GetEnvNoSupport -> cont Nothing
+                GetEnvFromProcess ->
+                  Lift
+                    ( do str <- readFile ("/proc/" <> show (fromSt ^. ps_process . pp_pid) <> "/environ")
+                         pure . fmap (bimap (\x -> x) (T.strip . T.drop 1) . T.breakOn "=") . T.split (=='\x0') $ str
+                     )
+                  (cont . Just)
                 GetEnvProgram p ->
                   AndThen (adaptPuppetAct fromSt (p (fromSt ^. ps_process))) (cont . Just)
         runSwitchHooks =

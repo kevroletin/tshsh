@@ -33,7 +33,7 @@ defShellCfg =
       _pc_promptMatcher = mkBracketMatcher "sh-" "$ ",
       _pc_getCwdCmd = GetCwdFromProcess,
       _pc_cdCmd = CdSimpleCommand (\dir -> " cd '" <> dir <> "'"),
-      _pc_getEnvCmd = GetEnvNoSupport,
+      _pc_getEnvCmd = GetEnvFromProcess,
       _pc_switchEnterHook = pure (),
       _pc_switchExitHook = pure (),
       _pc_cleanPromptP =
@@ -120,7 +120,7 @@ rangerCfg =
                           slowOutC "\r" $
                             finishP_
           ),
-      _pc_getEnvCmd = GetEnvNoSupport,
+      _pc_getEnvCmd = GetEnvFromProcess,
       _pc_cleanPromptP = \_ -> Output "\ESC" finishP_,
       _pc_switchEnterHook = pure (),
       _pc_switchExitHook = pure (),
