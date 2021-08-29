@@ -14,11 +14,11 @@ type In = (PuppetIdx, StrippedCmdResult)
 
 type Out = (PuppetIdx, BS.ByteString)
 
-adaptPuppetAct :: PuppetState -> Program st i t m r -> Program st (PuppetIdx, i) (PuppetIdx, t) m r
+adaptPuppetAct :: PuppetState -> Program () i t m r -> Program st (PuppetIdx, i) (PuppetIdx, t) m r
 adaptPuppetAct pupSt = adapt (_ps_idx pupSt)
   where
     selectInp idx (inpIdx, x) = if idx == inpIdx then Just x else Nothing
-    adapt idx p = Adapter (selectInp idx) (idx,) p
+    adapt idx p = AdapterAll united (selectInp idx) (idx,) p
 
 unquote_ :: Char -> Text -> Maybe Text
 unquote_ c0 str0 = do

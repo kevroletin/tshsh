@@ -117,25 +117,33 @@ switchPuppetsTo env st0 toIdx prevMode
     let toPup = (env ^? menv_puppets . ix toIdx) & fromMaybe (panic "toIdx is out of bounds")
 
     {- ORMOLU_DISABLE -}
-    let startPupC mCwd cont =
+    let startPupC mCwd mEnv cont =
           case st ^. mst_puppets . at toIdx of
             Just x ->
               cont (False, x)
             Nothing ->
               Lift ( do
                 Protolude.putStrLn ("\r\nStarting " <> show (_pc_cmd toPup) <> " ..\r\n" :: Text)
-                startPuppetProcess mCwd (_menv_outputAvailable env) toIdx toPup
+                startPuppetProcess mCwd mEnv (_menv_outputAvailable env) toIdx toPup
               ) $ \newPupSt ->
               ModifyState (mst_puppets . at toIdx ?~ newPupSt) $
               cont (True, newPupSt)
 
     let clearPromptHookC pupSt = andThenP_ (adaptPuppetAct pupSt $ (pupSt ^. ps_cfg . pc_cleanPromptP) (_ps_process pupSt))
 
-    let mGetCwd cont =
+    let mGetCwdC cont =
           case mFromSt of
             Nothing -> cont Nothing
             Just fromSt ->
               getPuppetCwd fromSt cont
+        mGetEnvC cont =
+          case mFromSt of
+            Nothing -> cont Nothing
+            Just fromSt ->
+              case fromSt ^. ps_cfg . pc_getEnvCmd of
+                GetEnvNoSupport -> cont Nothing
+                GetEnvProgram p ->
+                  AndThen (adaptPuppetAct fromSt (p (fromSt ^. ps_process))) (cont . Just)
         runSwitchHooks =
           liftP_
             ( do (fromPup ^. pc_switchExitHook)
@@ -181,8 +189,9 @@ switchPuppetsTo env st0 toIdx prevMode
                 else clearPromptHookC toSt cont
         program =
           liftP_ (hPutStrLn stderr ("~ Switch puppets program started" :: Text)) $
-          mGetCwd $ \mCwd ->
-          startPupC mCwd $ \p@(startedNewProc, toSt) ->
+          mGetEnvC $ \mEnv ->
+          mGetCwdC $ \mCwd ->
+          startPupC mCwd mEnv $ \p@(startedNewProc, toSt) ->
           adaptUnitStP (
             runSwitchHooks $
             restoreTermStateC p $

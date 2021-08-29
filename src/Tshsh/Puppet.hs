@@ -2,9 +2,8 @@
 
 module Tshsh.Puppet
   ( GetCwdCfg (..),
-    isGetCwdNoSupport,
     CdCfg (..),
-    isCdNoSupport,
+    GetEnvCfg (..),
     RefreshTuiCfg (..),
     PuppetCfg (..),
     pc_cmd,
@@ -12,6 +11,7 @@ module Tshsh.Puppet
     pc_promptMatcher,
     pc_getCwdCmd,
     pc_cdCmd,
+    pc_getEnvCmd,
     pc_switchEnterHook,
     pc_switchExitHook,
     pc_cleanPromptP,
@@ -66,25 +66,21 @@ newtype RawCmdResult = RawCmdResult {unRawCmdResult :: SliceList}
 data StrippedCmdResult = StrippedCmdResult {unStrippedCmdResult :: ~Text}
   deriving (Show)
 
-type PuppetAction = PuppetProcess -> Program () StrippedCmdResult ByteString IO ()
+type PuppetAction r = PuppetProcess -> Program () StrippedCmdResult ByteString IO r
 
 data GetCwdCfg
   = GetCwdNoSupport
   | GetCwdCommand Text
   | GetCwdFromProcess
 
-isGetCwdNoSupport :: GetCwdCfg -> Bool
-isGetCwdNoSupport GetCwdNoSupport = True
-isGetCwdNoSupport _ = False
-
 data CdCfg
   = CdNoSupport
   | CdSimpleCommand (Text -> Text)
-  | CdProgram (Text -> PuppetAction)
+  | CdProgram (Text -> PuppetAction ())
 
-isCdNoSupport :: CdCfg -> Bool
-isCdNoSupport CdNoSupport = True
-isCdNoSupport _ = False
+data GetEnvCfg
+  = GetEnvNoSupport
+  | GetEnvProgram (PuppetAction [(Text, Text)])
 
 data RefreshTuiCfg
   = RefreshTuiJiggleTty
@@ -110,10 +106,11 @@ data PuppetCfg = PuppetCfg
     _pc_cmdArgs :: [Text],
     _pc_promptMatcher :: StreamConsumer ByteString Int,
     _pc_getCwdCmd :: GetCwdCfg,
+    _pc_getEnvCmd :: GetEnvCfg,
     _pc_cdCmd :: CdCfg,
     _pc_switchEnterHook :: IO (),
     _pc_switchExitHook :: IO (),
-    _pc_cleanPromptP :: PuppetAction,
+    _pc_cleanPromptP :: PuppetAction (),
     _pc_initMode :: PuppetMode,
     _pc_refreshTui :: RefreshTuiCfg
   }

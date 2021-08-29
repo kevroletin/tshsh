@@ -22,11 +22,12 @@ import Tshsh.Tty
 
 startPuppetProcess ::
   Maybe (Text) ->
+  Maybe ([(Text, Text)]) ->
   TVar (Set PuppetIdx) ->
   PuppetIdx ->
   PuppetCfg ->
   IO PuppetState
-startPuppetProcess mCwd dataAvail idx cfg@PuppetCfg {..} = do
+startPuppetProcess mCwd mEnv dataAvail idx cfg@PuppetCfg {..} = do
   let outParser = toEv (raceMatchersP `pipe` accumCmdOutP `pipe` stripCmdOutP)
 
   let outParserSt =
@@ -52,6 +53,7 @@ startPuppetProcess mCwd dataAvail idx cfg@PuppetCfg {..} = do
       -- 2. to acquire a controlling terminal so that it's children inherit the same terminal
       (proc "acquire_tty_wrapper" (fmap cs (_pc_cmd : _pc_cmdArgs)))
         { cwd = T.unpack <$> mCwd,
+          env = (\env -> [(T.unpack k, T.unpack v) | (k, v) <- env]) <$> mEnv,
           std_in = UseHandle slaveH,
           std_out = UseHandle slaveH,
           std_err = UseHandle slaveH

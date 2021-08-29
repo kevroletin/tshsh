@@ -13,10 +13,17 @@ where
 
 import qualified Data.ByteString as BS
 import Data.Map as Map
+import qualified Data.Text as T
 import Protolude
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Matcher
 import Tshsh.Puppet
+
+shGetEnvP :: PuppetProcess -> Program () StrippedCmdResult ByteString IO [(Text, Text)]
+shGetEnvP _ =
+  Output "env\n" $
+    WaitInput $ \(StrippedCmdResult str) ->
+      finishP (fmap (bimap (\x -> x) (T.strip . T.drop 1) . T.breakOn "=") . T.lines $ str)
 
 defShellCfg :: PuppetCfg
 defShellCfg =
@@ -26,6 +33,7 @@ defShellCfg =
       _pc_promptMatcher = mkBracketMatcher "sh-" "$ ",
       _pc_getCwdCmd = GetCwdFromProcess,
       _pc_cdCmd = CdSimpleCommand (\dir -> " cd '" <> dir <> "'"),
+      _pc_getEnvCmd = GetEnvNoSupport,
       _pc_switchEnterHook = pure (),
       _pc_switchExitHook = pure (),
       _pc_cleanPromptP =
@@ -51,7 +59,8 @@ shCfg =
               )
               $ waitInputC_
                 finishP_
-        )
+        ),
+      _pc_getEnvCmd = GetEnvProgram shGetEnvP
     }
 
 pythonCfg :: PuppetCfg
@@ -86,7 +95,8 @@ zshCfg :: PuppetCfg
 zshCfg =
   defShellCfg
     { _pc_cmd = "zsh",
-      _pc_promptMatcher = mkSeqMatcher "\ESC[K\ESC[?2004h"
+      _pc_promptMatcher = mkSeqMatcher "\ESC[K\ESC[?2004h",
+      _pc_getEnvCmd = GetEnvProgram shGetEnvP
     }
 
 rangerCfg :: PuppetCfg
@@ -110,6 +120,7 @@ rangerCfg =
                           slowOutC "\r" $
                             finishP_
           ),
+      _pc_getEnvCmd = GetEnvNoSupport,
       _pc_cleanPromptP = \_ -> Output "\ESC" finishP_,
       _pc_switchEnterHook = pure (),
       _pc_switchExitHook = pure (),
