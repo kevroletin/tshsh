@@ -117,17 +117,19 @@ switchPuppetsTo env st0 toIdx prevMode
     let toPup = (env ^? menv_puppets . ix toIdx) & fromMaybe (panic "toIdx is out of bounds")
 
     {- ORMOLU_DISABLE -}
-    let startPupC mCwd mEnv cont =
+    let startNewProc = isNothing (st ^. mst_puppets . at toIdx)
+
+        startPupC mCwd mEnv cont =
           case st ^. mst_puppets . at toIdx of
             Just x ->
-              cont (False, x)
+              cont x
             Nothing ->
               Lift ( do
                 Protolude.putStrLn ("\r\nStarting " <> show (_pc_cmd toPup) <> " ..\r\n" :: Text)
                 startPuppetProcess mCwd mEnv (_menv_outputAvailable env) toIdx toPup
               ) $ \newPupSt ->
               ModifyState (mst_puppets . at toIdx ?~ newPupSt) $
-              cont (True, newPupSt)
+              cont newPupSt
 
     let clearPromptHookC pupSt = andThenP_ (adaptPuppetAct pupSt $ (pupSt ^. ps_cfg . pc_cleanPromptP) (_ps_process pupSt))
 
@@ -155,12 +157,12 @@ switchPuppetsTo env st0 toIdx prevMode
             ( do (fromPup ^. pc_switchExitHook)
                  (toPup ^.  pc_switchEnterHook)
             )
-        restoreTermStateC (startedNewProc, toSt) cont =
+        restoreTermStateC toSt cont =
           case toSt ^. ps_mode of
             PuppetModeTUI ->
               -- enable alternative screen buffer ("TUI" mode)
               liftP_ (when (fromMode == PuppetModeRepl) (BS.hPut stdout "\ESC[?1049h")) $
-              unlessC startedNewProc
+              unlessC startNewProc
                 ( case toSt ^. ps_cfg . pc_refreshTui of
                     RefreshTuiJiggleTty ->
                       liftP_ (jiggleTtySize (toSt ^. ps_process . pp_pts))
@@ -178,7 +180,7 @@ switchPuppetsTo env st0 toIdx prevMode
               -- clear the current line and until the end of screen, go to up
               liftP_ (BS.hPut stdout "\ESC[J\ESC[2K\ESC[A") $
               cont
-        clearPromptToC (startedNewProc, toSt) cont =
+        clearPromptToC toSt cont =
           case toSt ^. ps_mode of
             PuppetModeTUI ->
               -- the problem here is that we ignore output of TUI apps and hence
@@ -186,23 +188,23 @@ switchPuppetsTo env st0 toIdx prevMode
               -- has started and became ready to receive interactive commands; so
               -- trying to run interactive commands in a TUI app after start will
               -- require adding a magic delay here
-              if startedNewProc
+              if startNewProc
                 then cont
                 else clearPromptHookC toSt cont
             PuppetModeRepl ->
-              if startedNewProc
+              if startNewProc
                 then WaitInput (const cont)
                 else clearPromptHookC toSt cont
         program =
           liftP_ (hPutStrLn stderr ("~ Switch puppets program started" :: Text)) $
-          mGetEnvC $ \mEnv ->
+          (ifC startNewProc mGetEnvC ($ Nothing)) $ \mEnv ->
           mGetCwdC $ \mCwd ->
-          startPupC mCwd mEnv $ \p@(startedNewProc, toSt) ->
+          startPupC mCwd mEnv $ \toSt ->
           adaptUnitStP (
             runSwitchHooks $
-            restoreTermStateC p $
-            clearPromptToC p $
-            unlessC startedNewProc
+            restoreTermStateC toSt $
+            clearPromptToC toSt $
+            unlessC startNewProc
               (puppetCdC toSt mCwd) $
             liftP_ (hPutStrLn stderr ("~ Switch puppets program finished" :: Text))
             finishP_

@@ -18,6 +18,7 @@ module Tshsh.Lang.Coroutine.CPS
     ProgramEvSt,
     ProgramCont,
     ProgramCont_,
+    ifC,
     whenC,
     unlessC,
     liftP_,
@@ -42,6 +43,10 @@ type ProgramEvSt st i o m r = Pair st (ProgramEv 'Ev st i o m r)
 type ProgramCont st i o m s r = (s -> Program st i o m r) -> Program st i o m r
 
 type ProgramCont_ st i o m r = Program st i o m r -> Program st i o m r
+
+ifC :: Bool -> (a -> b) -> (a -> b) -> (a -> b)
+ifC True cont _ = cont
+ifC False _ cont = cont
 
 whenC :: Bool -> (a -> a) -> a -> a
 whenC False _ cont = cont
