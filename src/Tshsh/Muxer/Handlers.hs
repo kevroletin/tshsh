@@ -223,7 +223,7 @@ switchPuppetsTo env st0 toIdx prevMode
 
 onTermInput :: MuxState -> ByteString -> IO (Maybe MuxState)
 onTermInput st str = do
-  muxLog (st ^. mst_currentPuppetIdx, str)
+  muxLog ("onTermInput" :: Text, str)
   case st ^? mst_currentPuppet . _Just . ps_process of
     Nothing -> pure ()
     Just p -> BS.hPut (_pp_inputH p) str
@@ -231,6 +231,7 @@ onTermInput st str = do
 
 onKeyBinding :: MuxEnv -> MuxState -> MuxKeyCommands -> IO (Maybe MuxState)
 onKeyBinding env st key = do
+  muxLog ("onKeyBinding" :: Text, key)
   hPutStrLn stderr ("Key< " <> show key :: Text)
   case key of
     MuxKeySwitch -> do
@@ -252,6 +253,7 @@ onKeyBinding env st key = do
 
 onPuppetOutput :: MuxEnv -> MuxState -> PuppetIdx -> BufferSlice -> IO (Maybe MuxState)
 onPuppetOutput _env st puppetIdx inp@(BufferSlice _ buf size) = do
+  muxLog ("onPuppetOutput" :: Text, puppetIdx, inp)
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     withForeignPtr buf $ \ptr -> do
       hPutBuf stdout ptr size
@@ -259,14 +261,17 @@ onPuppetOutput _env st puppetIdx inp@(BufferSlice _ buf size) = do
 
 onSwitchPuppets :: MuxEnv -> MuxState -> IO (Maybe MuxState)
 onSwitchPuppets env st0 = do
+  muxLog ("onSwitchPuppets" :: Text)
   switchPuppetsTo env st0 (st0 ^. mst_prevPuppetIdx) Nothing
 
 onSignal :: MuxEnv -> MuxState -> MuxSignal -> IO (Maybe MuxState)
 onSignal _env st WindowResize = do
+  muxLog ("onSignal" :: Text, WindowResize)
   traverse_ syncTtySize (st ^? mst_currentPuppet . _Just . ps_process . pp_pts)
   traverse_ syncTtySize (st ^? mst_prevPuppet . _Just . ps_process . pp_pts)
   pure (Just st)
 onSignal env st0 (ChildExited exitedPid) = do
+  muxLog ("onSignal" :: Text, (ChildExited exitedPid))
   case st0 ^. mst_currentPuppet of
     Nothing -> pure Nothing
     Just currSt ->
