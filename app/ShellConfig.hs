@@ -11,10 +11,12 @@ module ShellConfig
   )
 where
 
+import Control.Lens
 import qualified Data.ByteString as BS
 import Data.Map as Map
 import qualified Data.Text as T
 import Protolude
+import System.Posix.Signals
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Matcher
 import Tshsh.Puppet
@@ -38,7 +40,7 @@ defShellCfg =
       _pc_switchExitHook = pure (),
       _pc_cleanPromptP =
         ( \pp ->
-            liftP_ (BS.hPut (_pp_inputH pp) "\ETX") $ -- Ctrl-C
+            liftP_ (signalProcess keyboardSignal (pp ^. pp_pid)) $
               waitInputC_
                 finishP_
         ),
@@ -50,16 +52,6 @@ shCfg :: PuppetCfg
 shCfg =
   defShellCfg
     { _pc_cmd = "sh",
-      _pc_cleanPromptP =
-        ( \pp ->
-            liftP_
-              ( do
-                  BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
-                  BS.hPut (_pp_inputH pp) "\n"
-              )
-              $ waitInputC_
-                finishP_
-        ),
       _pc_getEnvCmd = GetEnvProgram shGetEnvP
     }
 
