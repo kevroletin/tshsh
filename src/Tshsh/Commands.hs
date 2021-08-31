@@ -12,6 +12,7 @@ data MuxSignal
 
 data MuxKeyCommands
   = MuxKeyCopyLastOut
+  | MuxKeyPasteLastOut
   | MuxKeyEditLastOut
   | MuxKeySwitch
   | MuxKeySwitchPuppet PuppetIdx

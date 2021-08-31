@@ -45,7 +45,7 @@ prefixesDesc str = [(x, take x str) | x <- downTo1 (length str)]
 suffixesDesc :: [c] -> [(Int, [c])]
 suffixesDesc str = [(x, takeEnd x str) | x <- downTo1 (length str)]
 
--- TODO: optimize by getting rid of ByteString operations
+-- TODO: optimize by getting rid of list operations
 preprocess :: forall c. Eq c => [c] -> [Int]
 preprocess str = reverse $ go (prefixesDesc str)
   where

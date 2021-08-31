@@ -239,6 +239,9 @@ onKeyBinding env st key = do
     MuxKeyCopyLastOut -> do
       copyToXClipboard . unStrippedCmdResult $ _mst_prevCmdOut st
       pure (Just st)
+    MuxKeyPasteLastOut -> do
+      let str = unStrippedCmdResult $ _mst_prevCmdOut st
+      onTermInput st (encodeUtf8 str)
     MuxKeyEditLastOut -> do
       let prevOut = unStrippedCmdResult (_mst_prevCmdOut st)
       unless (T.all isSpace prevOut) $ do

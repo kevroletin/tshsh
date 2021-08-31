@@ -63,7 +63,8 @@ keyBindings =
     KeyPrefix
       "\CAN"
       "leader key"
-      [ KeyAct "c" "copy previous output" MuxKeyCopyLastOut,
+      [ KeyAct "y" "copy previous output" MuxKeyCopyLastOut,
+        KeyAct "p" "paste previous output" MuxKeyPasteLastOut,
         KeyAct "e" "edit previous output" MuxKeyEditLastOut,
         KeyPrefix
           "s"
