@@ -1,7 +1,18 @@
 # tshsh
 
-tshsh (**T**erminal, **SH**ell, **SH**ell) lets you switch between two interactive shells
+tshsh (**T**erminal, **SH**ell, **SH**ell) lets you switch between several interactive shells
 while working in a single terminal.
+
+It is a combination of:
+* a simple terminal multiplexer that lets you switch between multiple shells
+  without clearing terminal;
+* a shell automation tool that can execute commands in interactive shells and
+  separates command output from shell's prompt.
+
+## Status
+
+tshsh is not ready for public release; refer to alpha1 section of
+[roadmap](./doc/roadmap.md) to see what is missing.
 
 ## Problem statement
 
@@ -13,7 +24,10 @@ High-level languages
 `tshsh` helps the user:
 
 * to simultaneously work with two interactive shells (and get the best of the two worlds);
-* automates synchronizing *(copy-pasting)* values from one shell to the other.
+* automates synchronizing *(copy-pasting)* values from one shell to the other:
+  * it synchronizes the current working directory;
+  * it adds keyboard shortcuts to copy and paste the output of a previously executed command;
+  * when it starts a new shell it takes the environment from a current shell.
 
 An example. I like Haskell, and I often use it for small automation tasks.
 However, a Haskell interactive repl `ghci` lacks many features which my `zsh`
@@ -25,7 +39,7 @@ copy-paste between two shells `¯\_(ツ)_/¯`.
 
 ## Features
 
-Here is one of the demos to demonstrate: 
+Here is a demo to demonstrate: 
 * switching between `python` and `sh` by pressing Ctrl-z;
 * automatic synchronization of a working directory
 * copying of a previous command output to clipboard;
@@ -56,15 +70,10 @@ For more details see [Features](./doc/features.md) and [Roadmap](./doc/features.
 '-----------'
 ```
 
-Under the hood, tshsh spawns two shell processes and attaches them to two
-virtual tty devices. Then it marshals input/output, signals back and forth and
-synchronizes tty state, terminal state, and optionally chosen shells state (pwd,
-environment variables, etc). It's very similar to how
-[script](https://man7.org/linux/man-pages/man1/script.1.html) works; except that
-script spawns only one puppet shell but tshsh spawns two. One also can think of
-tshsh as a very primitive terminal multiplexer (i.e.
-[screen](https://man7.org/linux/man-pages/man1/screen.1.html)); except that
-tshsh doesn't draw any tui.
+Under the hood, tshsh spawns shell processes and attaches them to virtual tty
+devices. Then it marshals input/output, signals back and forth and synchronizes
+tty state, ~~terminal state(not implemented)~~, and optionally chosen shells
+state (pwd, ~~environment variables(not implemented)~~, etc).
 
 For more details see [Design](./doc/design.md).
 

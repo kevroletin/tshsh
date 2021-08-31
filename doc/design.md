@@ -23,22 +23,16 @@ xterm -> tty -> tshsh -> pup_tty -> sh
 A user enters commands into xterm, a puppet is supposed to receive text input and
 signals.
 
-We set tty(1) into raw-mode without echo and flow control, but ask it to
-generate some of the interrupts which we care about. So that tty doesn't do any
-unwanted modifications to the input from a user. Hence we can just pass raw user
-input to a puppet's pup_tty(2). The only expected modifications that we asked for from
-tty(1) are generating certain signals when a user presses ^C, ^Z, etc. (see how we
-handle signals). Puppet's virtual tty is configured by a puppet itself; puppet
-will get expected behavior because tty(1) is in raw mode, so all the
-modifications of input happen in pup_tty(2) according to the puppet's requested
-configuration. The same happens with the output: we disable output postprocessing in
-tty(1) and let all the modifications to happen in (2)pup_tty. (2)pup_tty is configured
-by a puppet so it will get the expected behavior (given that xterm config is in sync with
-the puppet's expectations, see [](Puppet output) section for details).
-
-In theory, we can handle signals in two ways: parse raw input from a user or ask
-tty to parse it and generate signals for us. For now, we ask tty to generate
-signals for simplicity.
+We set tty(1) into raw-mode without echo and flow control. So that tty doesn't
+do any modifications to the input from a user. Hence we can just pass raw user
+input to a puppet's pup_tty(2). Puppet's virtual tty is configured by a puppet
+itself; puppet will get expected behavior because tty(1) is in raw mode, so all
+the modifications of input happen in pup_tty(2) according to the puppet's
+requested configuration. The same happens with the output: we disable output
+postprocessing in tty(1) and let all the modifications to happen in (2)pup_tty.
+(2)pup_tty is configured by a puppet so it will get the expected behavior (given
+that xterm config is in sync with the puppet's expectations, see [](Puppet
+output) section for details).
 
 Except for typing commands, users also can paste data from an X clipboard. This is
 a special case because of bracketed paste mode. bracketed paste mode is an
@@ -82,12 +76,12 @@ There are several dark corners in handling output from a puppet:
   
   Ideally, we should track xterm state changes from each puppet and restore them
   after switching. For example, one puppet might change foreground text style,
-  we might cancel this style on a switch and then set it once more why switching
-  back again. For now, we don't have these features
+  we might cancel this style on a switch and then set it once more when switching
+  back. For now, we don't have these features
 
 ### Background puppet output
 
-For now, we just ignore the output from a background puppet. And alternative
+For now, we just ignore the output from a background puppet. An alternative
 would be to accumulate it in a temporal file and make it available by user
 request.
 
