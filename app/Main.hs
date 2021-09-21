@@ -92,7 +92,7 @@ main = do
   -- cause a program startup failure. We need to test this scenario
   traverse_
     ensureCmdExits
-    [ "acquire_tty_wrapper",
+    [ "setsid",
       "stty",
       "xclip",
       (_pc_cmd cfg1),

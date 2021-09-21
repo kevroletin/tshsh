@@ -51,7 +51,7 @@ startPuppetProcess mCwd mEnv dataAvail idx cfg@PuppetCfg {..} = do
       -- To implement jobs control a process needs
       -- 1. to become a session leader
       -- 2. to acquire a controlling terminal so that it's children inherit the same terminal
-      (proc "acquire_tty_wrapper" (fmap cs (_pc_cmd : _pc_cmdArgs)))
+      (proc "setsid" ("-c" : fmap cs (_pc_cmd : _pc_cmdArgs)))
         { cwd = T.unpack <$> mCwd,
           env = (\env -> [(T.unpack k, T.unpack v) | (k, v) <- env]) <$> mEnv,
           std_in = UseHandle slaveH,
