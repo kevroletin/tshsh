@@ -77,9 +77,13 @@ runMuxPrograms_ st0 puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
         pure (st, prevCmdOut, prodCont, mConsumer)
       ContOut newCmdOut prodCont -> do
         case mConsumer of
-          Nothing ->
-            -- remember newCmdOut only if SyncCwd is not running
-            loop st newCmdOut Nothing =<< stepOut prodCont
+          Nothing -> do
+            -- remember newCmdOut only if SyncCwd is not running and if output is not empty
+            let newCmdOut1 =
+                  if C8.all isSpace (unStrippedCmdResult newCmdOut)
+                    then prevCmdOut0
+                    else newCmdOut
+            loop st newCmdOut1 Nothing =<< stepOut prodCont
           Just consumer ->
             feedInputM (onSyncCwdOut st) (puppetIdx, newCmdOut) (st :!: consumer) >>= \case
               Cont (newSt :!: consCont) -> do
