@@ -63,7 +63,7 @@ data ShellModeAndOutput
 newtype RawCmdResult = RawCmdResult {unRawCmdResult :: SliceList}
   deriving (Show)
 
-data StrippedCmdResult = StrippedCmdResult {unStrippedCmdResult :: ~Text}
+data StrippedCmdResult = StrippedCmdResult {unStrippedCmdResult :: ~ByteString}
   deriving (Show)
 
 type PuppetAction r = PuppetProcess -> Program () StrippedCmdResult ByteString IO r

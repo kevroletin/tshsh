@@ -32,7 +32,7 @@ stripUnquote :: Text -> Text
 stripUnquote (T.strip -> str) =
   fromMaybe str (unquote_ '"' str <|> unquote_ '\'' str)
 
-runCmd :: PuppetIdx -> Text -> ProgramCont st In Out IO Text r
+runCmd :: PuppetIdx -> Text -> ProgramCont st In Out IO ByteString r
 runCmd idx cmd cont =
   Output (idx, encodeUtf8 (cmd <> "\n")) $
     let loop = WaitInput $ \(inIdx, str) ->
@@ -49,7 +49,7 @@ getPuppetCwd :: PuppetState -> ProgramCont st In Out IO (Maybe Text) r
 getPuppetCwd st cont =
   case st ^. ps_cfg . pc_getCwdCmd of
     GetCwdCommand cmd ->
-      runCmd (st ^. ps_idx) cmd (cont . Just . stripUnquote)
+      runCmd (st ^. ps_idx) cmd (cont . Just . stripUnquote . decodeUtf8)
     GetCwdFromProcess ->
       Lift (getProcessCwd (st ^. ps_process . pp_pid)) (cont . Just)
     GetCwdNoSupport ->

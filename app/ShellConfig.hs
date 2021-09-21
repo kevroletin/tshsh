@@ -25,7 +25,7 @@ shGetEnvP :: PuppetProcess -> Program () StrippedCmdResult ByteString IO [(Text,
 shGetEnvP _ =
   Output "env\n" $
     WaitInput $ \(StrippedCmdResult str) ->
-      finishP (fmap (bimap (\x -> x) (T.strip . T.drop 1) . T.breakOn "=") . T.lines $ str)
+      finishP (fmap (bimap (\x -> x) (T.strip . T.drop 1) . T.breakOn "=") . T.lines . decodeUtf8 $ str)
 
 defShellCfg :: PuppetCfg
 defShellCfg =

@@ -16,6 +16,7 @@ import Control.Exception.Safe (tryIO)
 import Control.Lens
 import Control.Monad
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as C8
 import qualified Data.Map.Strict as Map
 import Data.Strict.Tuple.Extended
 import Data.String.Conversions
@@ -237,18 +238,18 @@ onKeyBinding env st key = do
     MuxKeySwitch -> do
       switchPuppetsTo env st (st ^. mst_prevPuppetIdx) Nothing
     MuxKeyCopyLastOut -> do
-      copyToXClipboard . unStrippedCmdResult $ _mst_prevCmdOut st
+      copyToXClipboard . decodeUtf8 . unStrippedCmdResult $ _mst_prevCmdOut st
       pure (Just st)
     MuxKeyPasteLastOut -> do
       let str = unStrippedCmdResult $ _mst_prevCmdOut st
-      onTermInput st (encodeUtf8 str)
+      onTermInput st str
     MuxKeyEditLastOut -> do
       let prevOut = unStrippedCmdResult (_mst_prevCmdOut st)
-      unless (T.all isSpace prevOut) $ do
+      unless (C8.all isSpace prevOut) $ do
         hPutStrLn stderr ("Os < emacsclient" :: Text)
         void . tryIO $ do
           fname <- emptySystemTempFile "tshsh_cmdout"
-          T.writeFile fname prevOut
+          BS.writeFile fname prevOut
           void $ spawnProcess "emacsclient" ["-n", "-c", fname]
       pure (Just st)
     MuxKeySwitchPuppet newIdx ->

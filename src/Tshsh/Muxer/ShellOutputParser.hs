@@ -5,10 +5,9 @@ module Tshsh.Muxer.ShellOutputParser where
 
 import Control.Lens
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as C8
 import Data.Coerce
-import Data.String.AnsiEscapeCodes.Strip.Text
-import Data.String.Conversions
-import qualified Data.Text as T
+import Data.String.AnsiEscapeCodes.Strip.ByteString
 import Protolude
 import Tshsh.Data.BufferSlice (BufferSlice (..), SliceList (..))
 import qualified Tshsh.Data.BufferSlice as BufferSlice
@@ -182,7 +181,7 @@ stripCmdOut :: RawCmdResult -> StrippedCmdResult
 stripCmdOut (RawCmdResult sl) =
   let bs = BufferSlice.listConcat sl
       bs' = BS.drop 1 . Protolude.snd . BS.break (== 10) . bsDropEnd 1 . Protolude.fst . BS.breakEnd (== 10) $ bs
-   in StrippedCmdResult . T.strip . stripAnsiEscapeCodes $ cs bs'
+   in StrippedCmdResult . C8.strip . stripAnsiEscapeCodes $ bs'
 
 stripCmdOutP :: Program OutputParserSt RawCmdResult StrippedCmdResult IO ()
 stripCmdOutP =
