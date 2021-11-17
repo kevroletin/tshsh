@@ -22,6 +22,7 @@ import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import Data.Time.Clock (getCurrentTime)
 import Foreign hiding (void)
 import Protolude hiding (log, tryIO)
 import System.Console.ANSI
@@ -67,10 +68,11 @@ runMuxPrograms_ ::
       ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO (),
       Maybe (ProgramEv 'Ev MuxState (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO ())
     )
-runMuxPrograms_ st0 puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
-  loop st0 prevCmdOut0 mConsumer0 =<< stepInput i producer0
+runMuxPrograms_ st0 puppetIdx i (prevCmdOut0, producer0, mConsumer0) = do
+  env <- StepEnv <$> getCurrentTime
+  loop env st0 prevCmdOut0 mConsumer0 =<< stepInput env i producer0
   where
-    loop !st prevCmdOut mConsumer = \case
+    loop env !st prevCmdOut mConsumer = \case
       ResOut (_ :!: r) -> do
         throwIO . FatalError $ "Input parser " <> show puppetIdx <> " terminated with: " <> show r
       ContNoOut prodCont ->
@@ -83,14 +85,14 @@ runMuxPrograms_ st0 puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
                   if C8.all isSpace (unStrippedCmdResult newCmdOut)
                     then prevCmdOut0
                     else newCmdOut
-            loop st newCmdOut1 Nothing =<< stepOut prodCont
+            loop env st newCmdOut1 Nothing =<< stepOut env prodCont
           Just consumer ->
-            feedInputM (onSyncCwdOut st) (puppetIdx, newCmdOut) (st :!: consumer) >>= \case
+            feedInputM env (onSyncCwdOut st) (puppetIdx, newCmdOut) (st :!: consumer) >>= \case
               Cont (newSt :!: consCont) -> do
-                loop newSt prevCmdOut0 (Just consCont) =<< stepOut prodCont
+                loop env newSt prevCmdOut0 (Just consCont) =<< stepOut env prodCont
               Res (newSt :!: res) -> do
                 hPutStrLn stderr $ ("Sync cwd terminated with: " <> show res :: Text)
-                loop newSt prevCmdOut0 Nothing =<< stepOut prodCont
+                loop env newSt prevCmdOut0 Nothing =<< stepOut env prodCont
 
 runMuxPrograms :: MuxState -> PuppetIdx -> BufferSlice -> IO MuxState
 runMuxPrograms st puppetIdx inp = do
@@ -216,8 +218,9 @@ switchPuppetsTo env st0 toIdx prevMode
           )
     {- ORMOLU_ENABLE -}
 
+    stepEnv <- StepEnv <$> getCurrentTime
     (newSt, mProgram) <-
-      eatOutputsM (onSyncCwdOut st) (st :!: program) >>= \case
+      eatOutputsM stepEnv (onSyncCwdOut st) (st :!: program) >>= \case
         Cont (newSt :!: cont) ->
           pure (newSt, Just cont)
         Res (newSt :!: r) -> do
