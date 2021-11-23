@@ -16,6 +16,7 @@ module Tshsh.Muxer.Types
     menv_sigQueue,
     menv_outputAvailable,
     menv_inputAvailable,
+    menv_progTimeout,
     MuxKeyCommands (..),
     MuxState (..),
     mst_puppets,
@@ -56,7 +57,8 @@ data MuxEnv = MuxEnv
     _menv_defaultPuppet :: PuppetIdx,
     _menv_outputAvailable :: TVar (Set PuppetIdx),
     _menv_inputAvailable :: TVar Bool,
-    _menv_sigQueue :: TQueue MuxSignal
+    _menv_sigQueue :: TQueue MuxSignal,
+    _menv_progTimeout :: TVar Bool
   }
 
 data MuxState = MuxState

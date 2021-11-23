@@ -15,6 +15,7 @@ import Control.Lens
 import qualified Data.ByteString as BS
 import Data.Map as Map
 import qualified Data.Text as T
+import Data.Time.Clock
 import Protolude
 import System.Posix.Signals
 import Tshsh.Lang.Coroutine.CPS
@@ -102,9 +103,9 @@ rangerCfg =
       _pc_cdCmd =
         CdProgram
           ( \cwd _pp ->
-              -- TODO: oh oh, that sleep will block a main loop, we need Sleep construction
-              -- in Tshsh.Lang.Coroutine.CPS
-              let slowOutC msg cont = liftP_ (threadDelay 10000) $ Output msg cont
+              let slowOutC msg cont =
+                    WaitTime (TimeoutRelative (0.010 :: NominalDiffTime)) $
+                      Output msg cont
                in slowOutC "\ESC\ACK" $
                     slowOutC ":" $
                       slowOutC "cd " $

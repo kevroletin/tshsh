@@ -54,6 +54,7 @@ module Tshsh.Lang.Coroutine.CPS.Internal
     _ContOut,
     _ResOut,
     getNextTimeout,
+    getNextTimeoutEv,
     stepUnsafe,
     stepInput,
     EvWitness (..),
@@ -124,20 +125,20 @@ pipe p1 p2 = Pipe (PipeRevSnoc (PipeRevSnoc PipeRevNil p1) p2) Nothing PipeNil
 
 infixr 9 `pipe`
 
-instance (Show o) => Show (Program st i o m r) where
+instance Show (Program st i o m r) where
   show (Lift _ _) = "Lift"
   show (GetState _) = "GetState"
   show (PutState _ _) = "PutState"
   show (ModifyState _ _) = "ModifyState"
   show (WaitInput _) = "WaitInput"
   show (WaitTime time _) = "WaitTime " <> (Prelude.show time)
-  show (Output o _) = "Output " <> Protolude.show o
+  show (Output _ _) = "Output"
   show (Finish _) = "Finish"
   show Pipe {} = "Pipe"
-  show Adapter {} = "Adapter"
-  show AdapterAll {} = "AdapterAll"
-  show AdapterSt {} = "AdapterSt"
-  show AndThen {} = "AndThen"
+  show (Adapter _ _ p) = "Adapter " <> (Prelude.show p)
+  show (AdapterAll _ _ _ p) = "AdapterAll " <> (Prelude.show p)
+  show (AdapterSt _ p) = "AdapterSt " <> (Prelude.show p)
+  show (AndThen p1 _) = "AndThen " <> (Prelude.show p1)
   show BuffInput {} = "BuffInp"
 
 -- 'Ev - program has been evaluated until WaitInput and cannot be further reduced without providing input
@@ -162,6 +163,11 @@ deriving instance (Show st, Show i, Show o, Show r) => Show (ContResOut st i o m
 
 newtype StepEnv = StepEnv UTCTime deriving (Eq, Ord, Show)
 
+-- Note: there is an option to make interpreter extensible in OOP-like style
+-- with open recursion. That will be helpful for debugging configurable in
+-- runtime. Making interpreter modular (not necessary runtime configuration,
+-- might be compile time composition) might also help to reason about it's
+-- behavior.
 stepUnsafe ::
   forall st i o m r.
   Monad m =>
@@ -255,20 +261,40 @@ stepUnsafe env@(StepEnv currTime) mi (st :!: WaitTime timeout next) =
   case timeout of
     TimeoutRelative diffTime ->
       stepUnsafe env mi (st :!: WaitTime (TimeoutAbsolute (addUTCTime diffTime currTime)) next)
-    TimeoutAbsolute utc ->
-      if currTime <= utc
+    TimeoutAbsolute timeoutTime ->
+      if currTime <= timeoutTime
         then pure $ ContNoOut (st :!: coerce (WaitTime timeout next))
         else stepUnsafe env Nothing (st :!: BuffInput mi (next))
-    TimeoutInfinite -> stepUnsafe env mi (st :!: next)
+    TimeoutInfinite -> panic "TODO: TimeoutInfinite will never evaluate, why do we need it?"
 {-# INLINEABLE stepUnsafe #-}
 
 data EvWitness st i o m r where
   EvWitness :: ProgramEv 'Ev st i o m r -> EvWitness st i o m r
   NotEvWitness :: ProgramEv 'NotEv st i o m r -> EvWitness st i o m r
 
+-- TODO: logic of getNextTimeout and isEv seem to be similar, try to unify
 getNextTimeout :: Program st i o m r -> Maybe UTCTime
+getNextTimeout Lift {} = Nothing
+getNextTimeout GetState {} = Nothing
+getNextTimeout PutState {} = Nothing
+getNextTimeout ModifyState {} = Nothing
+getNextTimeout WaitInput {} = Nothing
 getNextTimeout (WaitTime (TimeoutAbsolute utc) _) = Just utc
+getNextTimeout (WaitTime _ _) = Nothing
+getNextTimeout Output {} = Nothing
+getNextTimeout Finish {} = Nothing
+getNextTimeout (Pipe PipeRevNil Nothing (PipeCons p PipeNil)) = getNextTimeout p
+getNextTimeout (AdapterAll _ _ _ p) = getNextTimeout p
+getNextTimeout (AdapterSt _ p) = getNextTimeout p
+getNextTimeout (Adapter _ _ p) = getNextTimeout p
+getNextTimeout (AndThen p1 _) = getNextTimeout p1
+getNextTimeout (BuffInput Nothing p) = getNextTimeout p
 getNextTimeout _ = Nothing
+{-# INLINE getNextTimeout #-}
+
+getNextTimeoutEv :: ProgramEv ev st i o m r -> Maybe UTCTime
+getNextTimeoutEv (PEv p) = getNextTimeout p
+{-# INLINE getNextTimeoutEv #-}
 
 isEv :: Program st i o m r -> Bool
 isEv Lift {} = False
@@ -276,9 +302,13 @@ isEv GetState {} = False
 isEv PutState {} = False
 isEv ModifyState {} = False
 isEv WaitInput {} = True
+isEv WaitTime {} = True
 isEv Output {} = False
 isEv Finish {} = False
 isEv (Pipe PipeRevNil _ _) = True
+-- TODO: should it be
+-- isEv (Pipe _ _ _) = False
+-- ???
 isEv (Pipe _ _ xs0) =
   let go :: PipeList st i o m r -> Bool
       go PipeNil = True

@@ -12,6 +12,8 @@ module Tshsh.Lang.Coroutine.CPS
     _ResOut,
     stepUnsafe,
     stepInput,
+    getNextTimeout,
+    getNextTimeoutEv,
     EvWitness (..),
     matchEv,
     toEv,

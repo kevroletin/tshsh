@@ -5,6 +5,7 @@
 
 module Tshsh.Muxer.Handlers
   ( onTermInput,
+    onProgTimeout,
     onKeyBinding,
     onPuppetOutput,
     onSwitchPuppets,
@@ -68,9 +69,9 @@ runMuxPrograms_ ::
       ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO (),
       Maybe (ProgramEv 'Ev MuxState (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO ())
     )
-runMuxPrograms_ st0 puppetIdx i (prevCmdOut0, producer0, mConsumer0) = do
+runMuxPrograms_ st0 puppetIdx inp (prevCmdOut0, producer0, mConsumer0) = do
   env <- StepEnv <$> getCurrentTime
-  loop env st0 prevCmdOut0 mConsumer0 =<< stepInput env i producer0
+  loop env st0 prevCmdOut0 mConsumer0 =<< stepInput env inp producer0
   where
     loop env !st prevCmdOut mConsumer = \case
       ResOut (_ :!: r) -> do
@@ -237,6 +238,20 @@ onTermInput st str = do
     Just p -> BS.hPut (_pp_inputH p) str
   pure (Just st)
 
+onProgTimeout :: MuxState -> IO (Maybe MuxState)
+onProgTimeout st = do
+  muxLog ("onProgTimeout" :: Text)
+  case _mst_switchPupP st of
+    Nothing -> pure (Just st)
+    Just switchPupP -> do
+      stepEnv <- StepEnv <$> getCurrentTime
+      eatOutputsM stepEnv (onSyncCwdOut st) (st :!: switchPupP) >>= \case
+        Cont (newSt :!: newSwitchPupP) -> do
+          pure (Just newSt {_mst_switchPupP = Just newSwitchPupP})
+        Res (newSt :!: res) -> do
+          hPutStrLn stderr $ ("Sync cwd terminated with: " <> show res :: Text)
+          pure (Just newSt {_mst_switchPupP = Nothing})
+
 onKeyBinding :: MuxEnv -> MuxState -> MuxKeyCommands -> IO (Maybe MuxState)
 onKeyBinding env st key = do
   muxLog ("onKeyBinding" :: Text, key)
@@ -262,8 +277,8 @@ onKeyBinding env st key = do
     MuxKeySwitchPuppet newIdx ->
       switchPuppetsTo env st newIdx Nothing
 
-onPuppetOutput :: MuxEnv -> MuxState -> PuppetIdx -> BufferSlice -> IO (Maybe MuxState)
-onPuppetOutput _env st puppetIdx inp@(BufferSlice _ buf size) = do
+onPuppetOutput :: MuxState -> PuppetIdx -> BufferSlice -> IO (Maybe MuxState)
+onPuppetOutput st puppetIdx inp@(BufferSlice _ buf size) = do
   muxLog ("onPuppetOutput" :: Text, puppetIdx, inp)
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     withForeignPtr buf $ \ptr -> do

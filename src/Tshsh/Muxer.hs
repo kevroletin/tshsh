@@ -15,6 +15,7 @@ import Control.Monad
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.String.Conversions
+import Data.Time.Clock (diffUTCTime, getCurrentTime)
 import Protolude hiding (tryIO)
 import System.Posix
 import System.Posix.Signals.Exts
@@ -22,6 +23,7 @@ import Tshsh.Commands
 import Tshsh.Data.BufferSlice (BufferSlice (..))
 import qualified Tshsh.Data.BufferSlice as BufferSlice
 import Tshsh.KeyParser
+import Tshsh.Lang.Coroutine.CPS (getNextTimeoutEv)
 import qualified Tshsh.Muxer.Handlers as Handlers
 import Tshsh.Muxer.Log
 import Tshsh.Muxer.PuppetProcess
@@ -32,15 +34,20 @@ import Tshsh.Tty
 
 muxLoop :: MuxEnv -> MuxState -> IO ()
 muxLoop !env !st0 = do
-  (sigMsg, termInpAv, readyPup) <- waitInput
-
+  (sigMsg, termInpAv, progTimeout, readyPup) <- waitInput
   let handlAllOut [] st = pure st
       handlAllOut (x : xs) st = do
         handlePuppetOutput x st >>= handlAllOut xs
 
+  -- TODO: this seems fragile. We can update switchPupP from handleTermInput
+  -- and handleProgTimeout, but afterward we must set a watchdog to fire
+  -- progTimeout
+
   handleSigMsg sigMsg (Just st0)
     >>= handlAllOut (Set.toList readyPup)
     >>= whenAv termInpAv handleTermInput
+    >>= whenAv progTimeout handleProgTimeout
+    >>= setProgTimeout
     >>= \case
       Nothing -> pure ()
       Just newSt -> muxLoop env newSt
@@ -48,16 +55,16 @@ muxLoop !env !st0 = do
     whenAv False _ st = pure st
     whenAv True act st = act st
 
-    waitInput :: IO ([MuxSignal], Bool, Set PuppetIdx)
+    waitInput :: IO ([MuxSignal], Bool, Bool, Set PuppetIdx)
     waitInput =
       atomically $ do
         sigMsg <- flushTQueue (_menv_sigQueue env)
         termInp <- swapTVar (_menv_inputAvailable env) False
+        progTimeout <- swapTVar (_menv_progTimeout env) False
         readyPup <- swapTVar (_menv_outputAvailable env) Set.empty
-        -- pure (sigMsg, termInp, readyPup)
-        if null sigMsg && not termInp && Set.null readyPup
+        if null sigMsg && not termInp && not progTimeout && Set.null readyPup
           then retry
-          else pure (sigMsg, termInp, readyPup)
+          else pure (sigMsg, termInp, progTimeout, readyPup)
 
     handleSigMsg [] st = pure st
     handleSigMsg _ Nothing = pure Nothing
@@ -96,6 +103,32 @@ muxLoop !env !st0 = do
             Just (newKeyParser, newSt2) ->
               pure $ Just (newSt2 {_mst_inputParser = newKeyParser})
 
+    handleProgTimeout :: Maybe MuxState -> IO (Maybe MuxState)
+    handleProgTimeout Nothing = pure Nothing
+    handleProgTimeout (Just st) =
+      Handlers.onProgTimeout st
+
+    -- TODO: we spawn thread on each iteration, just check a current wakeup time
+    -- and do nothing if it's the same
+    setProgTimeout :: Maybe MuxState -> IO (Maybe MuxState)
+    setProgTimeout Nothing = pure Nothing
+    setProgTimeout (Just st) =
+      case _mst_switchPupP st of
+        Nothing -> pure (Just st)
+        Just switchPupP -> do
+          case getNextTimeoutEv switchPupP of
+            Nothing -> pure ()
+            Just progTimeoutTime -> do
+              currTime <- getCurrentTime
+              if currTime > progTimeoutTime
+                then atomically $ writeTVar (_menv_progTimeout env) True
+                else do
+                  let diffMicro :: Int = round ((diffUTCTime progTimeoutTime currTime) * 1000 * 1000)
+                  void . forkIO $ do
+                    threadDelay diffMicro
+                    atomically $ writeTVar (_menv_progTimeout env) True
+          pure (Just st)
+
     readPuppetOutput :: MuxState -> PuppetIdx -> IO (Maybe BufferSlice, MuxState)
     readPuppetOutput st idx = do
       case st ^? mst_puppets . ix idx of
@@ -117,9 +150,8 @@ muxLoop !env !st0 = do
       (mSlice, newSt) <- readPuppetOutput st idx
       case mSlice of
         Nothing -> pure (Just newSt)
-        Just slice -> do
-          res <- Handlers.onPuppetOutput env newSt idx slice
-          pure res
+        Just slice ->
+          Handlers.onPuppetOutput newSt idx slice
 
 tshshMain :: TshshCfg -> IO ()
 tshshMain TshshCfg {..} = do
@@ -138,6 +170,7 @@ tshshMain TshshCfg {..} = do
     restoreStdinTty
     $ \_ -> do
       inAvailable <- newTVarIO False
+      progTimeout <- newTVarIO False
       readInputSt <- readLoopInit stdin
       watchFileInput stdin inAvailable (const True)
       outAvailable <- newTVarIO Set.empty
@@ -153,7 +186,8 @@ tshshMain TshshCfg {..} = do
                 _menv_defaultPuppet = idx1,
                 _menv_outputAvailable = outAvailable,
                 _menv_inputAvailable = inAvailable,
-                _menv_sigQueue = sigQueue
+                _menv_sigQueue = sigQueue,
+                _menv_progTimeout = progTimeout
               }
       let st =
             MuxState
