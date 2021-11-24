@@ -104,7 +104,7 @@ rangerCfg =
         CdProgram
           ( \cwd _pp ->
               let slowOutC msg cont =
-                    WaitTime (TimeoutRelative (0.010 :: NominalDiffTime)) $
+                    WaitTime (TimeoutRelative (0.001 :: NominalDiffTime)) $
                       Output msg cont
                in slowOutC "\ESC\ACK" $
                     slowOutC ":" $

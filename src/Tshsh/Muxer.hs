@@ -32,22 +32,21 @@ import Tshsh.Puppet
 import Tshsh.ReadLoop
 import Tshsh.Tty
 
+newtype Microseconds = Microseconds {unMicro :: Int} deriving (Eq, Show)
+
 muxLoop :: MuxEnv -> MuxState -> IO ()
 muxLoop !env !st0 = do
-  (sigMsg, termInpAv, progTimeout, readyPup) <- waitInput
+  timeout <- getProgTimeout st0
+
+  (sigMsg, termInpAv, progTimeout, readyPup) <- waitInput timeout
   let handlAllOut [] st = pure st
       handlAllOut (x : xs) st = do
         handlePuppetOutput x st >>= handlAllOut xs
-
-  -- TODO: this seems fragile. We can update switchPupP from handleTermInput
-  -- and handleProgTimeout, but afterward we must set a watchdog to fire
-  -- progTimeout
 
   handleSigMsg sigMsg (Just st0)
     >>= handlAllOut (Set.toList readyPup)
     >>= whenAv termInpAv handleTermInput
     >>= whenAv progTimeout handleProgTimeout
-    >>= setProgTimeout
     >>= \case
       Nothing -> pure ()
       Just newSt -> muxLoop env newSt
@@ -55,12 +54,14 @@ muxLoop !env !st0 = do
     whenAv False _ st = pure st
     whenAv True act st = act st
 
-    waitInput :: IO ([MuxSignal], Bool, Bool, Set PuppetIdx)
-    waitInput =
+    waitInput :: Maybe Microseconds -> IO ([MuxSignal], Bool, Bool, Set PuppetIdx)
+    waitInput timeout = do
+      -- Note: negative delays aren't documented but seem to work in practice
+      timeoutT <- maybe (pure Nothing) ((Just <$>) . registerDelay . unMicro) timeout
       atomically $ do
         sigMsg <- flushTQueue (_menv_sigQueue env)
         termInp <- swapTVar (_menv_inputAvailable env) False
-        progTimeout <- swapTVar (_menv_progTimeout env) False
+        progTimeout <- maybe (pure False) readTVar timeoutT
         readyPup <- swapTVar (_menv_outputAvailable env) Set.empty
         if null sigMsg && not termInp && not progTimeout && Set.null readyPup
           then retry
@@ -108,26 +109,14 @@ muxLoop !env !st0 = do
     handleProgTimeout (Just st) =
       Handlers.onProgTimeout st
 
-    -- TODO: we spawn thread on each iteration, just check a current wakeup time
-    -- and do nothing if it's the same
-    setProgTimeout :: Maybe MuxState -> IO (Maybe MuxState)
-    setProgTimeout Nothing = pure Nothing
-    setProgTimeout (Just st) =
-      case _mst_switchPupP st of
-        Nothing -> pure (Just st)
-        Just switchPupP -> do
-          case getNextTimeoutEv switchPupP of
-            Nothing -> pure ()
-            Just progTimeoutTime -> do
-              currTime <- getCurrentTime
-              if currTime > progTimeoutTime
-                then atomically $ writeTVar (_menv_progTimeout env) True
-                else do
-                  let diffMicro :: Int = round ((diffUTCTime progTimeoutTime currTime) * 1000 * 1000)
-                  void . forkIO $ do
-                    threadDelay diffMicro
-                    atomically $ writeTVar (_menv_progTimeout env) True
-          pure (Just st)
+    getProgTimeout :: MuxState -> IO (Maybe Microseconds)
+    getProgTimeout st =
+      case (_mst_switchPupP >=> getNextTimeoutEv) st of
+        Nothing -> pure Nothing
+        Just progTimeoutTime -> do
+          currTime <- getCurrentTime
+          let diffMicro :: Int = round ((diffUTCTime progTimeoutTime currTime) * 1000 * 1000)
+          pure . Just . Microseconds $ diffMicro
 
     readPuppetOutput :: MuxState -> PuppetIdx -> IO (Maybe BufferSlice, MuxState)
     readPuppetOutput st idx = do
