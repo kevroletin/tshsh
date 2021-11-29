@@ -83,7 +83,6 @@ data PipeRevList st i o m r where
 data ProgramTimeout
   = TimeoutRelative NominalDiffTime
   | TimeoutAbsolute UTCTime
-  | TimeoutInfinite
   deriving (Eq, Ord, Show)
 
 -- st - state (for GetState, Put state)
@@ -265,7 +264,6 @@ stepUnsafe env@(StepEnv currTime) mi (st :!: WaitTime timeout next) =
       if currTime <= timeoutTime
         then pure $ ContNoOut (st :!: coerce (WaitTime timeout next))
         else stepUnsafe env Nothing (st :!: BuffInput mi (next))
-    TimeoutInfinite -> panic "TODO: TimeoutInfinite will never evaluate, why do we need it?"
 {-# INLINEABLE stepUnsafe #-}
 
 data EvWitness st i o m r where
