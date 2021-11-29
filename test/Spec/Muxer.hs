@@ -5,7 +5,7 @@
 
 module Spec.Muxer where
 
-import Control.Lens hiding (_1', _2')
+import Control.Lens
 import Data.Strict.Tuple
 import Protolude
 import Spec.CPS.Folds
@@ -16,6 +16,7 @@ import qualified Tshsh.Data.BufferSlice as BufferSlice
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Matcher
 import Tshsh.Muxer.ShellOutputParser
+import qualified Prelude as P
 
 data TestSeq a
   = LeftBracket Int
@@ -39,17 +40,21 @@ mappendData [] = []
 mappendData (TestData x : TestData y : rest) = mappendData (TestData (x <> y) : rest)
 mappendData (x : xs) = x : mappendData xs
 
-runProgram :: [inp] -> Pair st (Program st inp out Identity r) -> [out]
-runProgram inp = loop inp []
+runProgram :: StepEnv -> [inp] -> Pair st (Program st inp out Identity r) -> [out]
+runProgram env inp = loop inp []
   where
     loop [] res _ = res
     loop (x : xs) res p =
       let (out, Cont (st :!: p')) =
             runIdentity $
               feedInputAccumOutputs
+                env
                 x
                 p
        in loop xs (res ++ out) (st :!: unProgramEv p')
+
+defEnv :: StepEnv
+defEnv = StepEnv (P.read "2021 - 11 - 17 04 : 39 : 47.169815158 UTC")
 
 spec :: SpecM () ()
 spec = do
@@ -57,35 +62,35 @@ spec = do
       st = mkSeqMatcher "<<" :!: mkSeqMatcher ">>"
   let beautify xs = mappendData $ (BufferSlice.sliceToByteString <$>) <$> xs
   it "no match" $ do
-    let res = runProgram ["abc" :: BufferSlice] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
+    let res = runProgram defEnv ["abc" :: BufferSlice] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "abc"]
 
   it "fst match" $ do
-    let res = runProgram ["a>>b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
+    let res = runProgram defEnv ["a>>b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a>>", RightBracket 2, TestData "b"]
 
   it "snd match" $ do
-    let res = runProgram ["a<<b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
+    let res = runProgram defEnv ["a<<b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a<<", LeftBracket 2, TestData "b"]
 
   it "fst match split" $ do
-    let res = runProgram ["a>", ">b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
+    let res = runProgram defEnv ["a>", ">b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a>>", RightBracket 2, TestData "b"]
 
   it "snd match split" $ do
-    let res = runProgram ["a<", "<b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
+    let res = runProgram defEnv ["a<", "<b"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a<<", LeftBracket 2, TestData "b"]
 
   it "snd after fst" $ do
-    let res = runProgram ["a>", ">b<", "<c"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
+    let res = runProgram defEnv ["a>", ">b<", "<c"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a>>", RightBracket 2, TestData "b<<", LeftBracket 2, TestData "c"]
 
   it "fst after snd" $ do
-    let res = runProgram ["a<", "<b>", ">c"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
+    let res = runProgram defEnv ["a<", "<b>", ">c"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "a<<", LeftBracket 2, TestData "b>>", RightBracket 2, TestData "c"]
 
   it "no spaces in between" $ do
-    let res = runProgram ["<", "<", ">", ">", "<", "<", ">", ">"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
+    let res = runProgram defEnv ["<", "<", ">", ">", "<", "<", ">", ">"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res
       `shouldBe` [ TestData "<<",
                    LeftBracket 2,
@@ -98,5 +103,5 @@ spec = do
                  ]
 
   it "partial matches" $ do
-    let res = runProgram ["<", ">", "<", ">", "<", "<", ">", ">"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
+    let res = runProgram defEnv ["<", ">", "<", ">", "<", "<", ">", ">"] (st :!: raceMatchersP @_ @(TestSeq BufferSlice))
     beautify res `shouldBe` [TestData "<><><<", LeftBracket 2, TestData ">>", RightBracket 2]

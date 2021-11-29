@@ -16,14 +16,18 @@ import Test.Hspec
 import Test.Hspec.Core.Spec
 import Test.Hspec.Expectations.Lens
 import Tshsh.Lang.Coroutine.CPS
+import qualified Prelude as P
 
 rid :: Identity a -> a
 rid = runIdentity
 
+defEnv :: StepEnv
+defEnv = StepEnv (P.read "2021 - 11 - 17 04 : 39 : 47.169815158 UTC")
+
 spec :: SpecM () ()
 spec = do
   it "finish x == x" $ do
-    let (out, res) = rid $ accumOutputs @() @Int @Int (() :!: Finish (Right ()))
+    let (out, res) = rid $ accumOutputs @() @Int @Int defEnv (() :!: Finish (Right ()))
     out `shouldBe` []
     res `shouldHave` _Res . _2 . _Right
 
@@ -31,6 +35,7 @@ spec = do
     let (out, res) =
           rid $
             accumOutputs @() @Int @Int
+              defEnv
               ( ()
                   :!: ( Output 1 $
                           Output 2 $
@@ -45,6 +50,7 @@ spec = do
     let (out, res) =
           rid $
             accumOutputs @() @Int @Int
+              defEnv
               (() :!: (WaitInput $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` []
     res `shouldHave` _Cont
@@ -53,6 +59,7 @@ spec = do
     let (out, res) =
           rid $
             accumOutputs @() @Int @Int
+              defEnv
               (() :!: (Output 1 $ WaitInput $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` [1]
     res `shouldHave` _Cont
@@ -61,6 +68,7 @@ spec = do
     let (out, res) =
           rid $
             feedInputAccumOutputs @() @Int @Int
+              defEnv
               10
               (() :!: (Output 1 $ WaitInput $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` [1, 10]
@@ -68,7 +76,7 @@ spec = do
 
   it "program can have recursion" $ do
     let loop = WaitInput $ \i -> Output i loop
-        (out, cont) = rid $ accumProgram @() @Int @Int @_ @() [1, 2, 3 :: Int] (() :!: loop)
+        (out, cont) = rid $ accumProgram @() @Int @Int @_ @() defEnv [1, 2, 3 :: Int] (() :!: loop)
     out `shouldBe` [1, 2, 3]
     cont `shouldHave` _Cont
 
@@ -76,7 +84,7 @@ spec = do
     let loop 0 = Finish (Right ())
         loop n = WaitInput $ \i -> Output i (loop (n -1))
 
-        (out, res) = rid $ accumProgram @() @Int @Int @_ @() [1 ..] (() :!: loop (10 :: Int))
+        (out, res) = rid $ accumProgram @() @Int @Int @_ @() defEnv [1 ..] (() :!: loop (10 :: Int))
     out `shouldBe` [1 .. 10]
     res `shouldHave` _Res
 
@@ -86,7 +94,7 @@ spec = do
             PutState (i + st) $
               sumLoop
 
-        (out, res) = rid $ accumProgram @Int @Int @Int @_ @() [1 .. 10] (0 :!: sumLoop)
+        (out, res) = rid $ accumProgram @Int @Int @Int @_ @() defEnv [1 .. 10] (0 :!: sumLoop)
     out `shouldBe` []
     res `shouldHave` _Cont . _1 . only (55 :: Int)
 
@@ -98,7 +106,7 @@ spec = do
                 then sumLoop
                 else Output i $ Finish (Right ())
 
-        (out, res) = rid $ accumProgram @Int @Int @Int [1 ..] (0 :!: sumLoop)
+        (out, res) = rid $ accumProgram @Int @Int @Int defEnv [1 ..] (0 :!: sumLoop)
     out `shouldBe` [14]
     res `shouldHave` _Res . only (105 :!: Right ()) -- sum [1..14] == 105
   it "lift" $ do
@@ -108,7 +116,7 @@ spec = do
               i
               sumLoop
 
-    let ((out, res), st) = flip runState 0 $ accumProgram @Int @Int @Int @_ @() [1 .. 10] (0 :!: sumLoop)
+    let ((out, res), st) = flip runState 0 $ accumProgram @Int @Int @Int @_ @() defEnv [1 .. 10] (0 :!: sumLoop)
 
     st `shouldBe` 55
     out `shouldBe` [1 .. 10]
@@ -139,6 +147,7 @@ spec = do
     let (out, _) =
           rid $
             accumProgram @([Int], Int) @Int @Int @_
+              defEnv
               [1 ..]
               (([], 0) :!: p)
     out `shouldBe` [6, 15, 24, 33, 42, 51, 60, 69, 78, 87]
@@ -158,6 +167,7 @@ spec = do
     let (out, _) =
           rid $
             accumProgram @() @Text @Text @_
+              defEnv
               (["1", "2"])
               (() :!: p)
     out
@@ -176,19 +186,19 @@ spec = do
   it "(andThen a b) terminates" $ do
     let p = andThenP_ echo echo
 
-    let (out, _) = rid (accumProgram @() @Int @Int [1, 2, 3 :: Int] (() :!: p))
+    let (out, _) = rid (accumProgram @() @Int @Int defEnv [1, 2, 3 :: Int] (() :!: p))
     out `shouldBe` [1, 2]
 
   it "andThen (andThen a b) c terminates" $ do
     let p = andThenP_ (andThenP_ echo echo) echo
 
-    let (out, _) = rid (accumProgram @() @Int @Int [1, 2, 3 :: Int] (() :!: p))
+    let (out, _) = rid (accumProgram @() @Int @Int defEnv [1, 2, 3 :: Int] (() :!: p))
     out `shouldBe` [1, 2, 3]
 
   it "andThen a (andThen a c) terminates" $ do
     let p = andThenP_ echo (andThenP_ echo echo)
 
-    let (out, _) = rid (accumProgram @() @Int @Int [1, 2, 3] (() :!: p))
+    let (out, _) = rid (accumProgram @() @Int @Int defEnv [1, 2, 3] (() :!: p))
     out `shouldBe` [1, 2, 3]
 
   it "andThen passes result" $ do
@@ -197,14 +207,14 @@ spec = do
             (Output 2 $ finishP (a <> "b")) `AndThen` \b ->
               (Output 3 $ finishP (b <> "c"))
 
-    let (out, res) = rid (accumProgram @() @Int @Int @_ @Text [] (() :!: p))
+    let (out, res) = rid (accumProgram @() @Int @Int @_ @Text defEnv [] (() :!: p))
     out `shouldBe` [1, 2, 3]
     res `shouldHave` _Res . only (() :!: Right "abc")
 
   it "Lift passes result" $ do
     let p = Lift (pure 123) finishP
 
-    let (out, res) = rid (accumProgram @() @() @() @_ @Int [] (() :!: p))
+    let (out, res) = rid (accumProgram @() @() @() @_ @Int defEnv [] (() :!: p))
     out `shouldBe` []
     res `shouldHave` _Res . only (() :!: Right 123)
 
@@ -213,7 +223,7 @@ spec = do
         consumer = WaitInput finishP
         p = producer 0 `pipe` consumer
 
-    let (out, res) = rid (accumProgram @() @() @() @_ @Int [] (() :!: p))
+    let (out, res) = rid (accumProgram @() @() @() @_ @Int defEnv [] (() :!: p))
     out `shouldBe` []
     res `shouldHave` _Res . only (() :!: Right 0)
 
@@ -226,6 +236,6 @@ spec = do
         echoLoop = WaitInput $ \i -> Output i echoLoop
         p = echoLoop `pipe` consumer 5
 
-    let (out, res) = rid (accumProgram @() @Int @Int @_ @Int [1 .. 100] (() :!: p))
+    let (out, res) = rid (accumProgram @() @Int @Int @_ @Int defEnv [1 .. 100] (() :!: p))
     out `shouldBe` [1, 2, 3, 4]
     res `shouldHave` _Res . only (() :!: Right 5)
