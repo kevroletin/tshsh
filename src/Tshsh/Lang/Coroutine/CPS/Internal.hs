@@ -282,12 +282,12 @@ getNextTimeout (WaitTime _ _) = Nothing
 getNextTimeout Output {} = Nothing
 getNextTimeout Finish {} = Nothing
 getNextTimeout (Pipe PipeRevNil Nothing (PipeCons p PipeNil)) = getNextTimeout p
+getNextTimeout (Pipe _ _ _) = Nothing
 getNextTimeout (AdapterAll _ _ _ p) = getNextTimeout p
 getNextTimeout (AdapterSt _ p) = getNextTimeout p
 getNextTimeout (Adapter _ _ p) = getNextTimeout p
 getNextTimeout (AndThen p1 _) = getNextTimeout p1
 getNextTimeout (BuffInput Nothing p) = getNextTimeout p
-getNextTimeout _ = Nothing
 {-# INLINE getNextTimeout #-}
 
 getNextTimeoutEv :: ProgramEv ev st i o m r -> Maybe UTCTime
@@ -304,19 +304,13 @@ isEv WaitTime {} = True
 isEv Output {} = False
 isEv Finish {} = False
 isEv (Pipe PipeRevNil _ _) = True
--- TODO: should it be
--- isEv (Pipe _ _ _) = False
--- ???
-isEv (Pipe _ _ xs0) =
-  let go :: PipeList st i o m r -> Bool
-      go PipeNil = True
-      go (PipeCons x xs) = isEv x && go xs
-   in go xs0
+isEv (Pipe _ _ _) = False
 isEv (AdapterAll _ _ _ p) = isEv p
 isEv (Adapter _ _ p) = isEv p
+isEv (AdapterSt _ p) = isEv p
 isEv (AndThen p1 _) = isEv p1
 isEv (BuffInput Nothing p) = isEv p
-isEv _ = False
+isEv (BuffInput (Just _) _) = False
 {-# INLINE isEv #-}
 
 matchEv :: Program st i o m r -> EvWitness st i o m r
