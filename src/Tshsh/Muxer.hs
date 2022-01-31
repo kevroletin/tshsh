@@ -23,7 +23,7 @@ import Tshsh.Commands
 import Tshsh.Data.BufferSlice (BufferSlice (..))
 import qualified Tshsh.Data.BufferSlice as BufferSlice
 import Tshsh.KeyParser
-import Tshsh.Lang.Coroutine.CPS (isStuckUntillTimeEv)
+import Tshsh.Lang.Coroutine.CPS (canProgressAfterTimeEv)
 import qualified Tshsh.Muxer.Handlers as Handlers
 import Tshsh.Muxer.Log
 import Tshsh.Muxer.PuppetProcess
@@ -111,7 +111,7 @@ muxLoop !env !st0 = do
 
     getProgTimeout :: MuxState -> IO (Maybe Microseconds)
     getProgTimeout st =
-      case (_mst_switchPupP >=> isStuckUntillTimeEv) st of
+      case (_mst_switchPupP >=> canProgressAfterTimeEv) st of
         Nothing -> pure Nothing
         Just progTimeoutTime -> do
           currTime <- getCurrentTime

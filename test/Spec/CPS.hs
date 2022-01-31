@@ -9,20 +9,33 @@
 module Spec.CPS where
 
 import Control.Lens
+import Data.Fixed
 import Data.Strict.Tuple.Extended
+import Data.Time
 import Protolude
 import Spec.CPS.Folds
 import Test.Hspec
 import Test.Hspec.Core.Spec
 import Test.Hspec.Expectations.Lens
 import Tshsh.Lang.Coroutine.CPS
-import qualified Prelude as P
+
+mkUTCTime ::
+  (Integer, Int, Int) ->
+  (Int, Int, Pico) ->
+  UTCTime
+mkUTCTime (year, mon, day) (hour, minu, sec) =
+  UTCTime
+    (fromGregorian year mon day)
+    (timeOfDayToTime (TimeOfDay hour minu sec))
 
 rid :: Identity a -> a
 rid = runIdentity
 
+defTime :: UTCTime
+defTime = mkUTCTime (2019, 9, 1) (15, 13, 0)
+
 defEnv :: StepEnv
-defEnv = StepEnv (P.read "2021 - 11 - 17 04 : 39 : 47.169815158 UTC")
+defEnv = StepEnv defTime
 
 spec :: SpecM () ()
 spec = do
@@ -46,7 +59,7 @@ spec = do
     out `shouldBe` [1, 2, 3]
     res `shouldHave` _Res . _2 . _Right
 
-  it "waitInput doesn't output" $ do
+  it "waitInput evaluates after time" $ do
     let (out, res) =
           rid $
             accumOutputs @() @Int @Int
@@ -54,6 +67,47 @@ spec = do
               (() :!: (WaitInput $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` []
     res `shouldHave` _Cont
+
+  it "waitTime" $ do
+    let tm = TimeoutRelative (1 :: NominalDiffTime)
+        (out1, res1) =
+          rid $
+            accumOutputs @() @Int @Int
+              defEnv
+              (() :!: (WaitTime tm $ Finish (Right ())))
+    out1 `shouldBe` []
+    res1 `shouldHave` _Cont
+    let (Cont (_ :!: cont)) = res1
+    canProgressAfterTime (unProgramEv cont) `shouldBe` (Just (addUTCTime 1 defTime))
+
+    let (out2, res2) =
+          rid $
+            accumOutputs @() @Int @Int
+              (StepEnv (addUTCTime 2 defTime))
+              (() :!: (unProgramEv cont))
+
+    out2 `shouldBe` []
+    res2 `shouldHave` _Res
+
+  it "waitInputTimeout fails" $ do
+    let (out1, res1) =
+          rid $
+            accumOutputs @() @Int @Int
+              (StepEnv (addUTCTime 2 defTime))
+              (() :!: (WaitInputTimeout (TimeoutAbsolute defTime) $ \_ -> Finish (Right ())))
+    out1 `shouldBe` []
+    res1 `shouldHave` _Res
+
+  it "waitInputTimeout waits" $ do
+    let (out1, res1) =
+          rid $
+            accumOutputs @() @Int @Int
+              defEnv
+              (() :!: (WaitInputTimeout (TimeoutAbsolute (addUTCTime 1 defTime)) $ \_ -> Finish (Right ())))
+    out1 `shouldBe` []
+    res1 `shouldHave` _Cont
+    let (Cont (_ :!: cont)) = res1
+    canProgressAfterTime (unProgramEv cont) `shouldBe` (Just (addUTCTime 1 defTime))
 
   it "program executes until the frist waitInput" $ do
     let (out, res) =
