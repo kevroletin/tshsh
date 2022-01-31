@@ -43,6 +43,7 @@ dependencies:
 - temporary
 - terminal-size
 - text
+- time
 - unix
 
 default-extensions:

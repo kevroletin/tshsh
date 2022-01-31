@@ -4,10 +4,12 @@ import Gauge.Main
 import Protolude
 import qualified Spec.Simulator as S
 import qualified Spec.SimulatorM as SM
+import Tshsh.Lang.Coroutine.CPS (StepEnv (..))
 import qualified Tshsh.Matcher as M
 import qualified Tshsh.Matcher.Bracket as BrM
 import qualified Tshsh.Matcher.Seq as SeqM
 import qualified Tshsh.Stream as S
+import qualified Prelude as P
 
 -- BS.breakSubstring uses either robin-karp with a rolling hash, or an
 -- optimization for small patterns with a byte shift and comparison of
@@ -67,6 +69,9 @@ zeros = 0 : zeros
 zeros100k :: ByteString
 zeros100k = BS.pack $ Protolude.take (100 * 1024) zeros
 
+time :: StepEnv
+time = StepEnv (P.read "2021 - 11 - 17 04 : 39 : 47.169815158 UTC")
+
 main :: IO ()
 main = do
   let prompt = "[[prompt]]"
@@ -110,7 +115,7 @@ main = do
         "Coroutines DSL"
         [ bench "CPS" $
             whnf
-              (S.simulate (() :!: S.syncEnv))
+              (S.simulate time (() :!: S.syncEnv))
               [ (S.Shell_1, "env\n", "a=1\nb=2\n"),
                 (S.Shell_1, "pwd\n", "/root\n"),
                 (S.Shell_2, "export a=1\n", ""),

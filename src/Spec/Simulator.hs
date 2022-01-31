@@ -11,6 +11,7 @@ import qualified Data.Text as T
 import Protolude hiding (exp, log, (>>), (>>=))
 import Spec.CPS.Folds (evalProgramM)
 import Tshsh.Lang.Coroutine.CPS
+import qualified Prelude as P
 
 data Shell = Shell_1 | Shell_2
   deriving (Eq, Ord, Show)
@@ -130,6 +131,7 @@ main = either print putStrLn simulateEnvSync
 simulateEnvSync :: Either Text Text
 simulateEnvSync =
   simulate
+    (StepEnv (P.read "2021 - 11 - 17 04 : 39 : 47.169815158 UTC"))
     (() :!: syncEnv)
     [ (Shell_1, "env\n", "a=1\nb=2\n"),
       (Shell_1, "pwd\n", "/root\n"),
@@ -153,10 +155,11 @@ simulateEnvSync =
 -- Input "ls\nmain.cpp main.o\n" can be sent as Input "ls\n" : Input "main.cpp main.o\n"
 -- or in other combinations.
 simulate ::
+  StepEnv ->
   Pair st (Program st (Shell, Input) (Shell, Text) (StateT EvalState (Except Text)) ()) ->
   [(Shell, Text, Text)] ->
   Either Text Text
-simulate p0 resp0 = getLog $ runProgram p0 resp0
+simulate env p0 resp0 = getLog $ runProgram p0 resp0
   where
     getLog :: Either Text (Pair st (Either Text a), EvalState) -> Either Text Text
     getLog (Left err) = Left err
@@ -175,6 +178,7 @@ simulate p0 resp0 = getLog $ runProgram p0 resp0
         runExceptT $
           flip runStateT (EvalState [] (M.fromList (arrange <$> resp)) []) $
             evalProgramM
+              env
               onOut
               getInput
               p

@@ -45,69 +45,72 @@ import Tshsh.Lang.Coroutine.CPS
 foldProgram ::
   forall s st i o r m prog.
   (ProgramLike prog st i o m r, Monad m) =>
+  StepEnv ->
   (s -> o -> s) ->
   s ->
   [i] ->
   Pair st (prog st i o m r) ->
   m (s, ContRes st i o m r)
-foldProgram f res0 xs0 c0 =
+foldProgram env f res0 xs0 c0 =
   let feedInput' !res [] c = pure (res, Cont c)
-      feedInput' !res (x : xs) c = loop res xs =<< stepInput x c
+      feedInput' !res (x : xs) c = loop res xs =<< stepInput env x c
 
       loop !res xs = \case
         ContNoOut cont -> feedInput' res xs cont
-        ContOut o cont -> loop (f res o) xs =<< stepOut cont
+        ContOut o cont -> loop (f res o) xs =<< stepOut env cont
         (ResOut r) -> pure (res, Res r)
-   in loop res0 xs0 =<< stepOut c0
+   in loop res0 xs0 =<< stepOut env c0
 
-accumProgram :: forall st i o m r prog. (ProgramLike prog st i o m r, Monad m) => [i] -> Pair st (prog st i o m r) -> m ([o], ContRes st i o m r)
-accumProgram is c = first reverse <$> foldProgram (\s o -> o : s) [] is c
+accumProgram :: forall st i o m r prog. (ProgramLike prog st i o m r, Monad m) => StepEnv -> [i] -> Pair st (prog st i o m r) -> m ([o], ContRes st i o m r)
+accumProgram env is c = first reverse <$> foldProgram env (\s o -> o : s) [] is c
 
-foldResOutputs :: forall s st i o m r. Monad m => (s -> o -> s) -> s -> ContResOut st i o m r -> m (s, ContRes st i o m r)
-foldResOutputs f res0 r =
+foldResOutputs :: forall s st i o m r. Monad m => StepEnv -> (s -> o -> s) -> s -> ContResOut st i o m r -> m (s, ContRes st i o m r)
+foldResOutputs env f res0 r =
   let loop !res = \case
         ContNoOut cont -> pure (res, Cont cont)
-        ContOut o cont -> loop (f res o) =<< stepOut cont
+        ContOut o cont -> loop (f res o) =<< stepOut env cont
         ResOut o -> pure (res, Res o)
    in loop res0 r
 
 foldOutputs ::
   forall s st i o m r prog.
   (ProgramLike prog st i o m r, Monad m) =>
+  StepEnv ->
   (s -> o -> s) ->
   s ->
   Pair st (prog st i o m r) ->
   m (s, ContRes st i o m r)
-foldOutputs a b c = foldResOutputs a b =<< stepOut c
+foldOutputs env a b c = foldResOutputs env a b =<< stepOut env c
 
-accumOutputs :: forall st i o m r. Monad m => Pair st (Program st i o m r) -> m ([o], ContRes st i o m r)
-accumOutputs c = first reverse <$> foldOutputs (\s o -> o : s) [] c
+accumOutputs :: forall st i o m r. Monad m => StepEnv -> Pair st (Program st i o m r) -> m ([o], ContRes st i o m r)
+accumOutputs env c = first reverse <$> foldOutputs env (\s o -> o : s) [] c
 
-feedInputFoldOutputs :: forall s st i o m r. Monad m => (s -> o -> s) -> s -> i -> Pair st (Program st i o m r) -> m (s, ContRes st i o m r)
-feedInputFoldOutputs f s i c =
-  foldOutputs f s c >>= \case
-    (s', Cont c') -> foldResOutputs f s' =<< stepInput i c'
+feedInputFoldOutputs :: forall s st i o m r. Monad m => StepEnv -> (s -> o -> s) -> s -> i -> Pair st (Program st i o m r) -> m (s, ContRes st i o m r)
+feedInputFoldOutputs env f s i c =
+  foldOutputs env f s c >>= \case
+    (s', Cont c') -> foldResOutputs env f s' =<< stepInput env i c'
     (s', Res o) -> pure (s', Res o)
 
-feedInputAccumOutputs :: forall st i o m r. Monad m => i -> Pair st (Program st i o m r) -> m ([o], ContRes st i o m r)
-feedInputAccumOutputs i c = first reverse <$> feedInputFoldOutputs (\s o -> o : s) [] i c
+feedInputAccumOutputs :: forall st i o m r. Monad m => StepEnv -> i -> Pair st (Program st i o m r) -> m ([o], ContRes st i o m r)
+feedInputAccumOutputs env i c = first reverse <$> feedInputFoldOutputs env (\s o -> o : s) [] i c
 
 evalProgramM ::
   forall st i o m prog r.
   (ProgramLike prog st i o m r, Monad m) =>
+  StepEnv ->
   (o -> m ()) ->
   m i ->
   Pair st (prog st i o m r) ->
   m (Pair st (Either Text r))
-evalProgramM onOut getIn c0 =
+evalProgramM env onOut getIn c0 =
   let feedInputAccumOut c = do
         i <- getIn
-        loop =<< stepInput i c
+        loop =<< stepInput env i c
 
       loop = \case
         ContNoOut stCont -> feedInputAccumOut stCont
         ContOut o stCont -> do
           _ <- onOut o
-          loop =<< stepOut stCont
+          loop =<< stepOut env stCont
         ResOut o -> pure o
-   in loop =<< stepOut c0
+   in loop =<< stepOut env c0

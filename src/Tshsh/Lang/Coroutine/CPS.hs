@@ -1,6 +1,8 @@
 module Tshsh.Lang.Coroutine.CPS
   ( Program (..),
     ProgramEv,
+    ProgramTimeout (..),
+    StepEnv (..),
     pipe,
     unProgramEv,
     ProgramLike (..),
@@ -10,6 +12,8 @@ module Tshsh.Lang.Coroutine.CPS
     _ResOut,
     stepUnsafe,
     stepInput,
+    isStuckUntillTime,
+    isStuckUntillTimeEv,
     EvWitness (..),
     matchEv,
     toEv,

@@ -5,6 +5,7 @@
 
 module Tshsh.Muxer.Handlers
   ( onTermInput,
+    onProgTimeout,
     onKeyBinding,
     onPuppetOutput,
     onSwitchPuppets,
@@ -22,6 +23,7 @@ import Data.Strict.Tuple.Extended
 import Data.String.Conversions
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import Data.Time.Clock (getCurrentTime)
 import Foreign hiding (void)
 import Protolude hiding (log, tryIO)
 import System.Console.ANSI
@@ -67,10 +69,11 @@ runMuxPrograms_ ::
       ProgramEvSt OutputParserSt BufferSlice StrippedCmdResult IO (),
       Maybe (ProgramEv 'Ev MuxState (PuppetIdx, StrippedCmdResult) (PuppetIdx, ByteString) IO ())
     )
-runMuxPrograms_ st0 puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
-  loop st0 prevCmdOut0 mConsumer0 =<< stepInput i producer0
+runMuxPrograms_ st0 puppetIdx inp (prevCmdOut0, producer0, mConsumer0) = do
+  env <- StepEnv <$> getCurrentTime
+  loop env st0 prevCmdOut0 mConsumer0 =<< stepInput env inp producer0
   where
-    loop !st prevCmdOut mConsumer = \case
+    loop env !st prevCmdOut mConsumer = \case
       ResOut (_ :!: r) -> do
         throwIO . FatalError $ "Input parser " <> show puppetIdx <> " terminated with: " <> show r
       ContNoOut prodCont ->
@@ -83,14 +86,14 @@ runMuxPrograms_ st0 puppetIdx i (prevCmdOut0, producer0, mConsumer0) =
                   if C8.all isSpace (unStrippedCmdResult newCmdOut)
                     then prevCmdOut0
                     else newCmdOut
-            loop st newCmdOut1 Nothing =<< stepOut prodCont
+            loop env st newCmdOut1 Nothing =<< stepOut env prodCont
           Just consumer ->
-            feedInputM (onSyncCwdOut st) (puppetIdx, newCmdOut) (st :!: consumer) >>= \case
+            feedInputM env (onSyncCwdOut st) (puppetIdx, newCmdOut) (st :!: consumer) >>= \case
               Cont (newSt :!: consCont) -> do
-                loop newSt prevCmdOut0 (Just consCont) =<< stepOut prodCont
+                loop env newSt prevCmdOut0 (Just consCont) =<< stepOut env prodCont
               Res (newSt :!: res) -> do
                 hPutStrLn stderr $ ("Sync cwd terminated with: " <> show res :: Text)
-                loop newSt prevCmdOut0 Nothing =<< stepOut prodCont
+                loop env newSt prevCmdOut0 Nothing =<< stepOut env prodCont
 
 runMuxPrograms :: MuxState -> PuppetIdx -> BufferSlice -> IO MuxState
 runMuxPrograms st puppetIdx inp = do
@@ -216,8 +219,9 @@ switchPuppetsTo env st0 toIdx prevMode
           )
     {- ORMOLU_ENABLE -}
 
+    stepEnv <- StepEnv <$> getCurrentTime
     (newSt, mProgram) <-
-      eatOutputsM (onSyncCwdOut st) (st :!: program) >>= \case
+      eatOutputsM stepEnv (onSyncCwdOut st) (st :!: program) >>= \case
         Cont (newSt :!: cont) ->
           pure (newSt, Just cont)
         Res (newSt :!: r) -> do
@@ -233,6 +237,20 @@ onTermInput st str = do
     Nothing -> pure ()
     Just p -> BS.hPut (_pp_inputH p) str
   pure (Just st)
+
+onProgTimeout :: MuxState -> IO (Maybe MuxState)
+onProgTimeout st = do
+  muxLog ("onProgTimeout" :: Text)
+  case _mst_switchPupP st of
+    Nothing -> pure (Just st)
+    Just switchPupP -> do
+      stepEnv <- StepEnv <$> getCurrentTime
+      eatOutputsM stepEnv (onSyncCwdOut st) (st :!: switchPupP) >>= \case
+        Cont (newSt :!: newSwitchPupP) -> do
+          pure (Just newSt {_mst_switchPupP = Just newSwitchPupP})
+        Res (newSt :!: res) -> do
+          hPutStrLn stderr $ ("Sync cwd terminated with: " <> show res :: Text)
+          pure (Just newSt {_mst_switchPupP = Nothing})
 
 onKeyBinding :: MuxEnv -> MuxState -> MuxKeyCommands -> IO (Maybe MuxState)
 onKeyBinding env st key = do
@@ -259,8 +277,8 @@ onKeyBinding env st key = do
     MuxKeySwitchPuppet newIdx ->
       switchPuppetsTo env st newIdx Nothing
 
-onPuppetOutput :: MuxEnv -> MuxState -> PuppetIdx -> BufferSlice -> IO (Maybe MuxState)
-onPuppetOutput _env st puppetIdx inp@(BufferSlice _ buf size) = do
+onPuppetOutput :: MuxState -> PuppetIdx -> BufferSlice -> IO (Maybe MuxState)
+onPuppetOutput st puppetIdx inp@(BufferSlice _ buf size) = do
   muxLog ("onPuppetOutput" :: Text, puppetIdx, inp)
   when (puppetIdx == st ^. mst_currentPuppetIdx) $
     withForeignPtr buf $ \ptr -> do
