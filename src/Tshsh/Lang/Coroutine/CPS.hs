@@ -28,7 +28,9 @@ module Tshsh.Lang.Coroutine.CPS
     liftP_,
     finishP,
     finishP_,
-    waitInputC_,
+    waitInputInfC_,
+    waitInputSecC_,
+    waitInputDefC_,
     adaptUnitStP,
     andThenP_,
   )
@@ -37,6 +39,7 @@ where
 import Control.Lens
 import Data.Strict.Tuple
 import Protolude
+import qualified Tshsh.Constants as Const
 import Tshsh.Lang.Coroutine.CPS.Folds
 import Tshsh.Lang.Coroutine.CPS.Internal
 
@@ -74,9 +77,17 @@ finishP_ :: Program st i o m ()
 finishP_ = Finish (Right ())
 {-# INLINE finishP_ #-}
 
-waitInputC_ :: ProgramCont_ st i o m r
-waitInputC_ cont = WaitInput $ \_ -> cont
-{-# INLINE waitInputC_ #-}
+waitInputSecC_ :: Int -> ProgramCont_ st i o m r
+waitInputSecC_ sec cont = WaitInputTimeout (TimeoutRelative (fromIntegral sec)) $ \_ -> cont
+{-# INLINE waitInputSecC_ #-}
+
+waitInputDefC_ :: ProgramCont_ st i o m r
+waitInputDefC_ = waitInputSecC_ Const.defaultProgramTimeoutSec
+{-# INLINE waitInputDefC_ #-}
+
+waitInputInfC_ :: ProgramCont_ st i o m r
+waitInputInfC_ cont = WaitInput $ \_ -> cont
+{-# INLINE waitInputInfC_ #-}
 
 adaptUnitStP :: Program () i o m r -> Program st i o m r
 adaptUnitStP = AdapterSt united

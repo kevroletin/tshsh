@@ -42,7 +42,7 @@ defShellCfg =
       _pc_cleanPromptP =
         ( \pp ->
             liftP_ (signalProcess keyboardSignal (pp ^. pp_pid)) $
-              waitInputC_
+              waitInputInfC_
                 finishP_
         ),
       _pc_initMode = PuppetModeRepl,
@@ -69,7 +69,7 @@ pythonCfg =
                   BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
                   BS.hPut (_pp_inputH pp) "\n"
               )
-              $ waitInputC_
+              $ waitInputInfC_
                 finishP_
         )
     }

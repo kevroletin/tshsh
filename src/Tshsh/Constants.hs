@@ -7,3 +7,6 @@ bufSize = 64 * 1024
 
 minBufSize :: Int
 minBufSize = 64
+
+defaultProgramTimeoutSec :: Int
+defaultProgramTimeoutSec = 5
