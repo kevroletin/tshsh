@@ -40,6 +40,7 @@ dependencies:
 - strict
 - string-conversions
 - strip-ansi-escape
+- template-haskell
 - temporary
 - terminal-size
 - text

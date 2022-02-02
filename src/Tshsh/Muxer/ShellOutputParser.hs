@@ -1,4 +1,5 @@
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Tshsh.Muxer.ShellOutputParser where
@@ -134,14 +135,14 @@ raceMatchersP =
                                      & BufferSlice.sliceDrop (BS.length prevFst)) $
                           Output (onSndEv resSnd) $
                           go (BufferSlice.sliceDrop (BS.length prevSnd) bs0)
-   in WaitInput go
+   in $waitInputInfC go
 {-# SPECIALIZE raceMatchersP :: Program OutputParserSt BufferSlice ShellModeAndOutput IO () #-}
 {- ORMOLU_ENABLE -}
 
 {- ORMOLU_DISABLE -}
 accumCmdOutP :: Program OutputParserSt ShellModeAndOutput RawCmdResult IO ()
 accumCmdOutP =
-  WaitInput $ \i ->
+  $waitInputInfC $ \i ->
   GetState $ \st@OutputParserSt{..} ->
     case i of
       Data bs ->
@@ -185,5 +186,5 @@ stripCmdOut (RawCmdResult sl) =
 
 stripCmdOutP :: Program OutputParserSt RawCmdResult StrippedCmdResult IO ()
 stripCmdOutP =
-  WaitInput $ \i ->
+  $waitInputInfC $ \i ->
     Output (stripCmdOut i) stripCmdOutP

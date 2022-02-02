@@ -66,6 +66,7 @@ where
 import Control.Lens
 import Data.Coerce
 import Data.Strict.Tuple
+import qualified Data.Text as T
 import Data.Time.Clock
 import Protolude hiding (pi)
 import Prelude (Show (..))
@@ -94,9 +95,9 @@ data Program st i o m r where
   GetState :: (st -> Program st i o m r) -> Program st i o m r
   PutState :: st -> ~(Program st i o m r) -> Program st i o m r
   ModifyState :: (st -> st) -> ~(Program st i o m r) -> Program st i o m r
-  WaitInput :: (i -> Program st i o m r) -> Program st i o m r
-  WaitInputTimeout :: ProgramTimeout -> (i -> Program st i o m r) -> Program st i o m r
-  WaitTime :: ProgramTimeout -> Program st i o m r -> Program st i o m r
+  WaitInput :: Text -> (i -> Program st i o m r) -> Program st i o m r
+  WaitInputTimeout :: Text -> ProgramTimeout -> (i -> Program st i o m r) -> Program st i o m r
+  WaitTime :: Text -> ProgramTimeout -> Program st i o m r -> Program st i o m r
   Output :: o -> ~(Program st i o m r) -> Program st i o m r
   Finish :: Either Error r -> Program st i o m r
   -- (Pipe prev mo next) is a zipper where
@@ -129,9 +130,9 @@ instance Show (Program st i o m r) where
   show (GetState _) = "GetState"
   show (PutState _ _) = "PutState"
   show (ModifyState _ _) = "ModifyState"
-  show (WaitInput _) = "WaitInput"
-  show (WaitInputTimeout time _) = "WaitInputTimeout " <> (Prelude.show time)
-  show (WaitTime time _) = "WaitTime " <> (Prelude.show time)
+  show (WaitInput loc _) = "WaitInput (" <> T.unpack loc <> ")"
+  show (WaitInputTimeout loc time _) = "WaitInputTimeout (" <> T.unpack loc <> ") " <> (Prelude.show time)
+  show (WaitTime loc time _) = "WaitTime (" <> T.unpack loc <> ") " <> Prelude.show time
   show (Output _ _) = "Output"
   show (Finish _) = "Finish"
   show Pipe {} = "Pipe"
@@ -184,26 +185,25 @@ stepUnsafe env i (st :!: Lift ma cont) = do
 stepUnsafe env i (st :!: GetState cont) = stepUnsafe env i (st :!: cont st)
 stepUnsafe env i (_ :!: PutState st cont) = stepUnsafe env i (st :!: cont)
 stepUnsafe env i (st :!: ModifyState f cont) = stepUnsafe env i (f st :!: cont)
-stepUnsafe env (Just i) (st :!: WaitInput cont) = stepUnsafe env Nothing (st :!: cont i)
-stepUnsafe _env Nothing x@(_ :!: WaitInput _) = pure $ ContNoOut (coerce x)
-stepUnsafe env@(StepEnv currTime) mi x@(st :!: WaitInputTimeout timeout next) =
+stepUnsafe env (Just i) (st :!: WaitInput _loc cont) = stepUnsafe env Nothing (st :!: cont i)
+stepUnsafe _env Nothing x@(_ :!: WaitInput loc _) = pure $ ContNoOut (coerce x)
+stepUnsafe env@(StepEnv currTime) mi x@(st :!: WaitInputTimeout loc timeout next) =
   case timeout of
     TimeoutRelative diffTime ->
-      stepUnsafe env mi (st :!: WaitInputTimeout (TimeoutAbsolute (addUTCTime diffTime currTime)) next)
+      stepUnsafe env mi (st :!: WaitInputTimeout loc (TimeoutAbsolute (addUTCTime diffTime currTime)) next)
     TimeoutAbsolute timeoutTime ->
       if currTime <= timeoutTime
         then case mi of
           Nothing -> pure $ ContNoOut (coerce x)
           Just inp -> stepUnsafe env Nothing (st :!: next inp)
-        else -- TODO: better error message
-          pure $ ResOut (st :!: Left "WaitInputTimeout timeout")
-stepUnsafe env@(StepEnv currTime) mi (st :!: WaitTime timeout next) =
+        else pure $ ResOut (st :!: Left ("WaitInputTimeout timeout " <> loc))
+stepUnsafe env@(StepEnv currTime) mi (st :!: WaitTime loc timeout next) =
   case timeout of
     TimeoutRelative diffTime ->
-      stepUnsafe env mi (st :!: WaitTime (TimeoutAbsolute (addUTCTime diffTime currTime)) next)
+      stepUnsafe env mi (st :!: WaitTime loc (TimeoutAbsolute (addUTCTime diffTime currTime)) next)
     TimeoutAbsolute timeoutTime ->
       if currTime <= timeoutTime
-        then pure $ ContNoOut (st :!: coerce (WaitTime timeout next))
+        then pure $ ContNoOut (st :!: coerce (WaitTime loc timeout next))
         else stepUnsafe env Nothing (st :!: BuffInput mi (next))
 stepUnsafe _env Nothing (st :!: Output x next) = pure $ ContOut x (st :!: coerce next)
 stepUnsafe _env (Just _) (_st :!: Output _ _) = panic "Consume all the outputs first"
@@ -309,10 +309,10 @@ canProgressAfterTime GetState {} = Nothing
 canProgressAfterTime PutState {} = Nothing
 canProgressAfterTime ModifyState {} = Nothing
 canProgressAfterTime WaitInput {} = Nothing
-canProgressAfterTime (WaitInputTimeout (TimeoutAbsolute utc) _) = Just utc
-canProgressAfterTime (WaitInputTimeout _ _) = Nothing
-canProgressAfterTime (WaitTime (TimeoutAbsolute utc) _) = Just utc
-canProgressAfterTime (WaitTime _ _) = Nothing
+canProgressAfterTime (WaitInputTimeout _ (TimeoutAbsolute utc) _) = Just utc
+canProgressAfterTime (WaitInputTimeout _ _ _) = Nothing
+canProgressAfterTime (WaitTime _ (TimeoutAbsolute utc) _) = Just utc
+canProgressAfterTime (WaitTime _ _ _) = Nothing
 canProgressAfterTime Output {} = Nothing
 canProgressAfterTime Finish {} = Nothing
 canProgressAfterTime (Pipe PipeRevNil Nothing (PipeCons p _)) = canProgressAfterTime p

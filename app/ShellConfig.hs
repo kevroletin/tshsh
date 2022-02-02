@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module ShellConfig
   ( defShellCfg,
     shCfg,
@@ -15,7 +17,6 @@ import Control.Lens
 import qualified Data.ByteString as BS
 import Data.Map as Map
 import qualified Data.Text as T
-import Data.Time.Clock
 import Protolude
 import System.Posix.Signals
 import Tshsh.Lang.Coroutine.CPS
@@ -25,7 +26,7 @@ import Tshsh.Puppet
 shGetEnvP :: PuppetProcess -> Program () StrippedCmdResult ByteString IO [(Text, Text)]
 shGetEnvP _ =
   Output "env\n" $
-    WaitInput $ \(StrippedCmdResult str) ->
+    $waitInputDefC $ \(StrippedCmdResult str) ->
       finishP (fmap (bimap (\x -> x) (T.strip . T.drop 1) . T.breakOn "=") . T.lines . decodeUtf8 $ str)
 
 defShellCfg :: PuppetCfg
@@ -42,8 +43,7 @@ defShellCfg =
       _pc_cleanPromptP =
         ( \pp ->
             liftP_ (signalProcess keyboardSignal (pp ^. pp_pid)) $
-              waitInputInfC_
-                finishP_
+              finishP_
         ),
       _pc_initMode = PuppetModeRepl,
       _pc_refreshTui = RefreshTuiJiggleTty
@@ -69,7 +69,7 @@ pythonCfg =
                   BS.hPut (_pp_inputH pp) "\NAK" -- Ctrl-U
                   BS.hPut (_pp_inputH pp) "\n"
               )
-              $ waitInputInfC_
+              $ $waitInputInfC_
                 finishP_
         )
     }
@@ -104,7 +104,7 @@ rangerCfg =
         CdProgram
           ( \cwd _pp ->
               let slowOutC msg cont =
-                    WaitTime (TimeoutRelative (0.001 :: NominalDiffTime)) $
+                    $waitSecC_ 0.001 $
                       Output msg cont
                in slowOutC "\ESC\ACK" $
                     slowOutC ":" $

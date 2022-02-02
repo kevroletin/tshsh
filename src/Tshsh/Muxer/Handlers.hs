@@ -201,7 +201,7 @@ switchPuppetsTo env st0 toIdx prevMode
                 else clearPromptHookC toSt cont
             PuppetModeRepl ->
               if startNewProc
-                then WaitInput (const cont)
+                then $waitInputInfC (const cont)
                 else clearPromptHookC toSt cont
         program =
           liftP_ (hPutStrLn stderr ("~ Switch puppets program started" :: Text)) $

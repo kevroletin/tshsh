@@ -37,7 +37,7 @@ finishOnErr (Right a) c = c a
 
 inputFromShell :: Shell -> ProgramCont st (Shell, i) o m i r
 inputFromShell shell cont =
-  WaitInput $ \(s, i) ->
+  $waitInputDefC $ \(s, i) ->
     if s == shell
       then cont i
       else inputFromShell shell cont

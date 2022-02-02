@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Tshsh.Muxer.SyncCwd where
 
 import Control.Lens
@@ -35,7 +37,7 @@ stripUnquote (T.strip -> str) =
 runCmd :: PuppetIdx -> Text -> ProgramCont st In Out IO ByteString r
 runCmd idx cmd cont =
   Output (idx, encodeUtf8 (cmd <> "\n")) $
-    let loop = WaitInput $ \(inIdx, str) ->
+    let loop = $waitInputDefC $ \(inIdx, str) ->
           if inIdx == idx
             then cont (unStrippedCmdResult str)
             else loop
