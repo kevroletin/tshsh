@@ -186,7 +186,7 @@ stepUnsafe env i (st :!: GetState cont) = stepUnsafe env i (st :!: cont st)
 stepUnsafe env i (_ :!: PutState st cont) = stepUnsafe env i (st :!: cont)
 stepUnsafe env i (st :!: ModifyState f cont) = stepUnsafe env i (f st :!: cont)
 stepUnsafe env (Just i) (st :!: WaitInput _loc cont) = stepUnsafe env Nothing (st :!: cont i)
-stepUnsafe _env Nothing x@(_ :!: WaitInput loc _) = pure $ ContNoOut (coerce x)
+stepUnsafe _env Nothing x@(_ :!: WaitInput _loc _) = pure $ ContNoOut (coerce x)
 stepUnsafe env@(StepEnv currTime) mi x@(st :!: WaitInputTimeout loc timeout next) =
   case timeout of
     TimeoutRelative diffTime ->

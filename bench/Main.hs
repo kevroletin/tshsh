@@ -1,5 +1,6 @@
 import Data.ByteString as BS
 import Data.Strict.Tuple
+import Data.Time
 import Gauge.Main
 import Protolude
 import qualified Spec.Simulator as S
@@ -9,7 +10,6 @@ import qualified Tshsh.Matcher as M
 import qualified Tshsh.Matcher.Bracket as BrM
 import qualified Tshsh.Matcher.Seq as SeqM
 import qualified Tshsh.Stream as S
-import Data.Time
 
 -- BS.breakSubstring uses either robin-karp with a rolling hash, or an
 -- optimization for small patterns with a byte shift and comparison of

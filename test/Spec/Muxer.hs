@@ -5,9 +5,9 @@
 
 module Spec.Muxer where
 
-import Data.Time
 import Control.Lens
 import Data.Strict.Tuple
+import Data.Time
 import Protolude
 import Spec.CPS.Folds
 import Test.Hspec
