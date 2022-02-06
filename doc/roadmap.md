@@ -16,8 +16,8 @@
 * limit amount of buffered command output
 * config file, default configuration for popular shells
 * fix TODOs:
-  * WaitInput should have timeouts
-  * implement Sleep to replace threadDelay
+  * [Done] WaitInput should have timeouts
+  * [Done] implement Sleep to replace threadDelay
 
 ### Following releases
 * e2e tests for TUI apps
