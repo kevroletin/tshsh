@@ -33,17 +33,23 @@ module Tshsh.Lang.Coroutine.CPS
     waitInputInfC_,
     waitInputSecC_,
     waitInputDefC_,
+    waitInputTimeC_,
     waitInputInfC,
     waitInputSecC,
     waitInputDefC,
+    waitInputTimeC,
     waitSecC_,
+    waitTimeC_,
     loc_waitInputInfC,
     loc_waitInputSecC,
     loc_waitInputDefC,
+    loc_waitInputTimeC,
     loc_waitInputInfC_,
     loc_waitInputSecC_,
     loc_waitInputDefC_,
+    loc_waitInputTimeC_,
     loc_waitSecC_,
+    loc_waitTimeC_,
     adaptUnitStP,
     andThenP_,
   )
@@ -104,6 +110,14 @@ loc_waitInputDefC_ :: Text -> ProgramCont_ st i o m r
 loc_waitInputDefC_ loc cont = loc_waitInputSecC loc Const.defaultProgramTimeoutSec (\_ -> cont)
 {-# INLINE loc_waitInputDefC_ #-}
 
+loc_waitInputTimeC_ :: Text -> ProgramTimeout -> ProgramCont_ st i o m r
+loc_waitInputTimeC_ loc time cont = WaitInputTimeout loc time $ \_ -> cont
+{-# INLINE loc_waitInputTimeC_ #-}
+
+loc_waitInputTimeC :: Text -> ProgramTimeout -> ProgramCont st i o m i r
+loc_waitInputTimeC loc time cont = WaitInputTimeout loc time cont
+{-# INLINE loc_waitInputTimeC #-}
+
 loc_waitInputDefC :: Text -> ProgramCont st i o m i r
 loc_waitInputDefC loc cont = loc_waitInputSecC loc Const.defaultProgramTimeoutSec cont
 {-# INLINE loc_waitInputDefC #-}
@@ -119,6 +133,10 @@ loc_waitInputInfC loc cont = WaitInput loc cont
 loc_waitSecC_ :: Text -> NominalDiffTime -> ProgramCont_ st i o m r
 loc_waitSecC_ loc sec cont = WaitTime loc (TimeoutRelative sec) cont
 {-# INLINE loc_waitSecC_ #-}
+
+loc_waitTimeC_ :: Text -> ProgramTimeout -> ProgramCont_ st i o m r
+loc_waitTimeC_ loc time cont = WaitTime loc time cont
+{-# INLINE loc_waitTimeC_ #-}
 
 adaptUnitStP :: Program () i o m r -> Program st i o m r
 adaptUnitStP = AdapterSt united

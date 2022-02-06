@@ -4,10 +4,13 @@ module Tshsh.Lang.Coroutine.CPS.TH
   ( waitInputSecC,
     waitInputDefC,
     waitInputInfC,
+    waitInputTimeC,
     waitInputSecC_,
     waitInputDefC_,
     waitInputInfC_,
+    waitInputTimeC_,
     waitSecC_,
+    waitTimeC_,
   )
 where
 
@@ -40,8 +43,17 @@ waitInputDefC_ = callWithLoc "loc_waitInputDefC_"
 waitInputInfC :: TH.ExpQ
 waitInputInfC = callWithLoc "loc_waitInputInfC"
 
+waitInputTimeC :: TH.ExpQ
+waitInputTimeC = callWithLoc "loc_waitInputTimeC"
+
 waitInputInfC_ :: TH.ExpQ
 waitInputInfC_ = callWithLoc "loc_waitInputInfC_"
 
+waitInputTimeC_ :: TH.ExpQ
+waitInputTimeC_ = callWithLoc "loc_waitInputTimeC_"
+
 waitSecC_ :: TH.ExpQ
 waitSecC_ = callWithLoc "loc_waitSecC_"
+
+waitTimeC_ :: TH.ExpQ
+waitTimeC_ = callWithLoc "loc_waitTimeC_"

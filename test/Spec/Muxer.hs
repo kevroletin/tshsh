@@ -5,6 +5,7 @@
 
 module Spec.Muxer where
 
+import Data.Time
 import Control.Lens
 import Data.Strict.Tuple
 import Protolude
@@ -16,7 +17,6 @@ import qualified Tshsh.Data.BufferSlice as BufferSlice
 import Tshsh.Lang.Coroutine.CPS
 import Tshsh.Matcher
 import Tshsh.Muxer.ShellOutputParser
-import qualified Prelude as P
 
 data TestSeq a
   = LeftBracket Int
@@ -53,8 +53,11 @@ runProgram env inp = loop inp []
                 p
        in loop xs (res ++ out) (st :!: unProgramEv p')
 
+defTime :: UTCTime
+defTime = UTCTime (fromGregorian 2019 9 1) (timeOfDayToTime (TimeOfDay 15 13 0))
+
 defEnv :: StepEnv
-defEnv = StepEnv (P.read "2021 - 11 - 17 04 : 39 : 47.169815158 UTC")
+defEnv = StepEnv defTime
 
 spec :: SpecM () ()
 spec = do

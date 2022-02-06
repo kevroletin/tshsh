@@ -9,7 +9,7 @@ import qualified Tshsh.Matcher as M
 import qualified Tshsh.Matcher.Bracket as BrM
 import qualified Tshsh.Matcher.Seq as SeqM
 import qualified Tshsh.Stream as S
-import qualified Prelude as P
+import Data.Time
 
 -- BS.breakSubstring uses either robin-karp with a rolling hash, or an
 -- optimization for small patterns with a byte shift and comparison of
@@ -69,8 +69,11 @@ zeros = 0 : zeros
 zeros100k :: ByteString
 zeros100k = BS.pack $ Protolude.take (100 * 1024) zeros
 
+defTime :: UTCTime
+defTime = UTCTime (fromGregorian 2019 9 1) (timeOfDayToTime (TimeOfDay 15 13 0))
+
 time :: StepEnv
-time = StepEnv (P.read "2021 - 11 - 17 04 : 39 : 47.169815158 UTC")
+time = StepEnv defTime
 
 main :: IO ()
 main = do

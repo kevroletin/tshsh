@@ -5,6 +5,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Spec.CPS where
 
@@ -64,7 +65,7 @@ spec = do
           rid $
             accumOutputs @() @Int @Int
               defEnv
-              (() :!: (WaitInput $ \i -> Output i (Finish (Right ()))))
+              (() :!: ($waitInputInfC $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` []
     res `shouldHave` _Cont
 
@@ -74,7 +75,7 @@ spec = do
           rid $
             accumOutputs @() @Int @Int
               defEnv
-              (() :!: (WaitTime tm $ Finish (Right ())))
+              (() :!: ($waitTimeC_ tm $ Finish (Right ())))
     out1 `shouldBe` []
     res1 `shouldHave` _Cont
     let (Cont (_ :!: cont)) = res1
@@ -89,21 +90,21 @@ spec = do
     out2 `shouldBe` []
     res2 `shouldHave` _Res
 
-  it "waitInputTimeout fails" $ do
+  it "waitInputTimeC_ fails" $ do
     let (out1, res1) =
           rid $
             accumOutputs @() @Int @Int
               (StepEnv (addUTCTime 2 defTime))
-              (() :!: (WaitInputTimeout (TimeoutAbsolute defTime) $ \_ -> Finish (Right ())))
+              (() :!: ($waitInputTimeC (TimeoutAbsolute defTime) $ \_ -> Finish (Right ())))
     out1 `shouldBe` []
     res1 `shouldHave` _Res
 
-  it "waitInputTimeout waits" $ do
+  it "waitInputTimeC_ waits" $ do
     let (out1, res1) =
           rid $
             accumOutputs @() @Int @Int
               defEnv
-              (() :!: (WaitInputTimeout (TimeoutAbsolute (addUTCTime 1 defTime)) $ \_ -> Finish (Right ())))
+              (() :!: ($waitInputTimeC (TimeoutAbsolute (addUTCTime 1 defTime)) $ \_ -> Finish (Right ())))
     out1 `shouldBe` []
     res1 `shouldHave` _Cont
     let (Cont (_ :!: cont)) = res1
@@ -114,7 +115,7 @@ spec = do
           rid $
             accumOutputs @() @Int @Int
               defEnv
-              (() :!: (Output 1 $ WaitInput $ \i -> Output i (Finish (Right ()))))
+              (() :!: (Output 1 $ $waitInputInfC $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` [1]
     res `shouldHave` _Cont
 
@@ -124,26 +125,26 @@ spec = do
             feedInputAccumOutputs @() @Int @Int
               defEnv
               10
-              (() :!: (Output 1 $ WaitInput $ \i -> Output i (Finish (Right ()))))
+              (() :!: (Output 1 $ $waitInputInfC $ \i -> Output i (Finish (Right ()))))
     out `shouldBe` [1, 10]
     res `shouldHave` _Res . _2 . _Right . only ()
 
   it "program can have recursion" $ do
-    let loop = WaitInput $ \i -> Output i loop
+    let loop = $waitInputInfC $ \i -> Output i loop
         (out, cont) = rid $ accumProgram @() @Int @Int @_ @() defEnv [1, 2, 3 :: Int] (() :!: loop)
     out `shouldBe` [1, 2, 3]
     cont `shouldHave` _Cont
 
   it "consumes all input" $ do
     let loop 0 = Finish (Right ())
-        loop n = WaitInput $ \i -> Output i (loop (n -1))
+        loop n = $waitInputInfC $ \i -> Output i (loop (n -1))
 
         (out, res) = rid $ accumProgram @() @Int @Int @_ @() defEnv [1 ..] (() :!: loop (10 :: Int))
     out `shouldBe` [1 .. 10]
     res `shouldHave` _Res
 
   it "can access the state before program terminates" $ do
-    let sumLoop = WaitInput $ \i ->
+    let sumLoop = $waitInputInfC $ \i ->
           GetState $ \st ->
             PutState (i + st) $
               sumLoop
@@ -153,7 +154,7 @@ spec = do
     res `shouldHave` _Cont . _1 . only (55 :: Int)
 
   it "can access the state after program terminates" $ do
-    let sumLoop = WaitInput $ \i ->
+    let sumLoop = $waitInputInfC $ \i ->
           GetState $ \st ->
             PutState (i + st) $
               if (i + st) < 100
@@ -164,7 +165,7 @@ spec = do
     out `shouldBe` [14]
     res `shouldHave` _Res . only (105 :!: Right ()) -- sum [1..14] == 105
   it "lift" $ do
-    let sumLoop = WaitInput $ \i ->
+    let sumLoop = $waitInputInfC $ \i ->
           Lift (modify (+ i)) $ \() ->
             Output
               i
@@ -183,17 +184,17 @@ spec = do
   it "pipe" $ do
     let groupInp n = GetState $ \(acc, _) ->
           if length acc < n
-            then WaitInput $ \i ->
+            then $waitInputInfC $ \i ->
               ModifyState
                 (_1 %~ (++ [i]))
                 (groupInp n)
             else
               ModifyState (_1 .~ []) $
                 Output acc (groupInp n)
-    let sumInp = WaitInput $ \i -> Output (sum i) sumInp
+    let sumInp = $waitInputInfC $ \i -> Output (sum i) sumInp
     let takeNInp n = GetState $ \(_, t) ->
           if t < n
-            then WaitInput $ \i ->
+            then $waitInputInfC $ \i ->
               ModifyState (_2 %~ (+ 1)) $
                 Output i (takeNInp n)
             else Finish (Right ())
@@ -209,11 +210,11 @@ spec = do
   it "Long pipe" $ do
     let addPrefix :: Text -> Program () Text Text Identity ()
         addPrefix msg =
-          WaitInput $ \i ->
+          $waitInputInfC $ \i ->
             Output (msg <> i) (addPrefix msg)
 
     let dup =
-          WaitInput $ \i ->
+          $waitInputInfC $ \i ->
             Output i $
               Output i dup
 
@@ -235,7 +236,7 @@ spec = do
                    "<>2"
                  ]
 
-  let echo = WaitInput $ \i -> Output i finishP_
+  let echo = $waitInputInfC $ \i -> Output i finishP_
 
   it "(andThen a b) terminates" $ do
     let p = andThenP_ echo echo
@@ -274,7 +275,7 @@ spec = do
 
   it "Pipe passes result (no input)" $ do
     let producer n = Output n (producer (n + 1))
-        consumer = WaitInput finishP
+        consumer = $waitInputInfC finishP
         p = producer 0 `pipe` consumer
 
     let (out, res) = rid (accumProgram @() @() @() @_ @Int defEnv [] (() :!: p))
@@ -283,11 +284,11 @@ spec = do
 
   it "Pipe passes result (with input)" $ do
     let consumer n =
-          WaitInput $ \i ->
+          $waitInputInfC $ \i ->
             if i < n
               then Output i (consumer n)
               else finishP n
-        echoLoop = WaitInput $ \i -> Output i echoLoop
+        echoLoop = $waitInputInfC $ \i -> Output i echoLoop
         p = echoLoop `pipe` consumer 5
 
     let (out, res) = rid (accumProgram @() @Int @Int @_ @Int defEnv [1 .. 100] (() :!: p))
