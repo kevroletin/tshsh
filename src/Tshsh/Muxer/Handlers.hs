@@ -5,7 +5,7 @@
 
 module Tshsh.Muxer.Handlers
   ( onTermInput,
-    onProgTimeout,
+    onProgCanProgress,
     onKeyBinding,
     onPuppetOutput,
     onSwitchPuppets,
@@ -238,9 +238,9 @@ onTermInput st str = do
     Just p -> BS.hPut (_pp_inputH p) str
   pure (Just st)
 
-onProgTimeout :: MuxState -> IO (Maybe MuxState)
-onProgTimeout st = do
-  muxLog ("onProgTimeout" :: Text)
+onProgCanProgress :: MuxState -> IO (Maybe MuxState)
+onProgCanProgress st = do
+  muxLog ("onProgCanProgress" :: Text)
   case _mst_switchPupP st of
     Nothing -> pure (Just st)
     Just switchPupP -> do
