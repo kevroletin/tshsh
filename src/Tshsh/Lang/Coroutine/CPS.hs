@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Tshsh.Lang.Coroutine.CPS
   ( Program (..),
     ProgramEv,
@@ -12,8 +14,8 @@ module Tshsh.Lang.Coroutine.CPS
     _ResOut,
     stepUnsafe,
     stepInput,
-    isStuckUntillTime,
-    isStuckUntillTimeEv,
+    canProgressAfterTime,
+    canProgressAfterTimeEv,
     EvWitness (..),
     matchEv,
     toEv,
@@ -28,7 +30,26 @@ module Tshsh.Lang.Coroutine.CPS
     liftP_,
     finishP,
     finishP_,
-    waitInputC_,
+    waitInputInfC_,
+    waitInputSecC_,
+    waitInputDefC_,
+    waitInputTimeC_,
+    waitInputInfC,
+    waitInputSecC,
+    waitInputDefC,
+    waitInputTimeC,
+    waitSecC_,
+    waitTimeC_,
+    loc_waitInputInfC,
+    loc_waitInputSecC,
+    loc_waitInputDefC,
+    loc_waitInputTimeC,
+    loc_waitInputInfC_,
+    loc_waitInputSecC_,
+    loc_waitInputDefC_,
+    loc_waitInputTimeC_,
+    loc_waitSecC_,
+    loc_waitTimeC_,
     adaptUnitStP,
     andThenP_,
   )
@@ -36,9 +57,12 @@ where
 
 import Control.Lens
 import Data.Strict.Tuple
+import Data.Time
 import Protolude
+import qualified Tshsh.Constants as Const
 import Tshsh.Lang.Coroutine.CPS.Folds
 import Tshsh.Lang.Coroutine.CPS.Internal
+import Tshsh.Lang.Coroutine.CPS.TH
 
 type ProgramSt st i o m r = Pair st (Program st i o m r)
 
@@ -74,9 +98,45 @@ finishP_ :: Program st i o m ()
 finishP_ = Finish (Right ())
 {-# INLINE finishP_ #-}
 
-waitInputC_ :: ProgramCont_ st i o m r
-waitInputC_ cont = WaitInput $ \_ -> cont
-{-# INLINE waitInputC_ #-}
+loc_waitInputSecC_ :: Text -> Int -> ProgramCont_ st i o m r
+loc_waitInputSecC_ loc sec cont = WaitInputTimeout loc (TimeoutRelative (fromIntegral sec)) $ \_ -> cont
+{-# INLINE loc_waitInputSecC_ #-}
+
+loc_waitInputSecC :: Text -> NominalDiffTime -> ProgramCont st i o m i r
+loc_waitInputSecC loc sec cont = WaitInputTimeout loc (TimeoutRelative sec) cont
+{-# INLINE loc_waitInputSecC #-}
+
+loc_waitInputDefC_ :: Text -> ProgramCont_ st i o m r
+loc_waitInputDefC_ loc cont = loc_waitInputSecC loc Const.defaultProgramTimeoutSec (\_ -> cont)
+{-# INLINE loc_waitInputDefC_ #-}
+
+loc_waitInputTimeC_ :: Text -> ProgramTimeout -> ProgramCont_ st i o m r
+loc_waitInputTimeC_ loc time cont = WaitInputTimeout loc time $ \_ -> cont
+{-# INLINE loc_waitInputTimeC_ #-}
+
+loc_waitInputTimeC :: Text -> ProgramTimeout -> ProgramCont st i o m i r
+loc_waitInputTimeC loc time cont = WaitInputTimeout loc time cont
+{-# INLINE loc_waitInputTimeC #-}
+
+loc_waitInputDefC :: Text -> ProgramCont st i o m i r
+loc_waitInputDefC loc cont = loc_waitInputSecC loc Const.defaultProgramTimeoutSec cont
+{-# INLINE loc_waitInputDefC #-}
+
+loc_waitInputInfC_ :: Text -> ProgramCont_ st i o m r
+loc_waitInputInfC_ loc cont = WaitInput loc $ \_ -> cont
+{-# INLINE loc_waitInputInfC_ #-}
+
+loc_waitInputInfC :: Text -> ProgramCont st i o m i r
+loc_waitInputInfC loc cont = WaitInput loc cont
+{-# INLINE loc_waitInputInfC #-}
+
+loc_waitSecC_ :: Text -> NominalDiffTime -> ProgramCont_ st i o m r
+loc_waitSecC_ loc sec cont = WaitTime loc (TimeoutRelative sec) cont
+{-# INLINE loc_waitSecC_ #-}
+
+loc_waitTimeC_ :: Text -> ProgramTimeout -> ProgramCont_ st i o m r
+loc_waitTimeC_ loc time cont = WaitTime loc time cont
+{-# INLINE loc_waitTimeC_ #-}
 
 adaptUnitStP :: Program () i o m r -> Program st i o m r
 adaptUnitStP = AdapterSt united

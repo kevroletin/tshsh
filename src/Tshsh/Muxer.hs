@@ -23,7 +23,7 @@ import Tshsh.Commands
 import Tshsh.Data.BufferSlice (BufferSlice (..))
 import qualified Tshsh.Data.BufferSlice as BufferSlice
 import Tshsh.KeyParser
-import Tshsh.Lang.Coroutine.CPS (isStuckUntillTimeEv)
+import Tshsh.Lang.Coroutine.CPS (canProgressAfterTimeEv)
 import qualified Tshsh.Muxer.Handlers as Handlers
 import Tshsh.Muxer.Log
 import Tshsh.Muxer.PuppetProcess
@@ -36,36 +36,37 @@ newtype Microseconds = Microseconds {unMicro :: Int} deriving (Eq, Show)
 
 muxLoop :: MuxEnv -> MuxState -> IO ()
 muxLoop !env !st0 = do
-  timeout <- getProgTimeout st0
+  progWakeupTime <- getProgCanProgress st0
 
-  (sigMsg, termInpAv, progTimeout, readyPup) <- waitInput timeout
-  let handlAllOut [] st = pure st
-      handlAllOut (x : xs) st = do
-        handlePuppetOutput x st >>= handlAllOut xs
+  (sigMsg, termInpAv, progCanProgress, readyPup) <- waitInput progWakeupTime
 
   handleSigMsg sigMsg (Just st0)
     >>= handlAllOut (Set.toList readyPup)
     >>= whenAv termInpAv handleTermInput
-    >>= whenAv progTimeout handleProgTimeout
+    >>= whenAv progCanProgress handleProgCanProgress
     >>= \case
       Nothing -> pure ()
       Just newSt -> muxLoop env newSt
   where
+    handlAllOut [] st = pure st
+    handlAllOut (x : xs) st = do
+      handlePuppetOutput x st >>= handlAllOut xs
+
     whenAv False _ st = pure st
     whenAv True act st = act st
 
     waitInput :: Maybe Microseconds -> IO ([MuxSignal], Bool, Bool, Set PuppetIdx)
-    waitInput timeout = do
+    waitInput progWakeupTime = do
       -- Note: negative delays aren't documented but seem to work in practice
-      timeoutT <- maybe (pure Nothing) ((Just <$>) . registerDelay . unMicro) timeout
+      timeoutT <- maybe (pure Nothing) ((Just <$>) . registerDelay . unMicro) progWakeupTime
       atomically $ do
         sigMsg <- flushTQueue (_menv_sigQueue env)
         termInp <- swapTVar (_menv_inputAvailable env) False
-        progTimeout <- maybe (pure False) readTVar timeoutT
+        progCanProgress <- maybe (pure False) readTVar timeoutT
         readyPup <- swapTVar (_menv_outputAvailable env) Set.empty
-        if null sigMsg && not termInp && not progTimeout && Set.null readyPup
+        if null sigMsg && not termInp && not progCanProgress && Set.null readyPup
           then retry
-          else pure (sigMsg, termInp, progTimeout, readyPup)
+          else pure (sigMsg, termInp, progCanProgress, readyPup)
 
     handleSigMsg [] st = pure st
     handleSigMsg _ Nothing = pure Nothing
@@ -104,14 +105,14 @@ muxLoop !env !st0 = do
             Just (newKeyParser, newSt2) ->
               pure $ Just (newSt2 {_mst_inputParser = newKeyParser})
 
-    handleProgTimeout :: Maybe MuxState -> IO (Maybe MuxState)
-    handleProgTimeout Nothing = pure Nothing
-    handleProgTimeout (Just st) =
-      Handlers.onProgTimeout st
+    handleProgCanProgress :: Maybe MuxState -> IO (Maybe MuxState)
+    handleProgCanProgress Nothing = pure Nothing
+    handleProgCanProgress (Just st) =
+      Handlers.onProgCanProgress st
 
-    getProgTimeout :: MuxState -> IO (Maybe Microseconds)
-    getProgTimeout st =
-      case (_mst_switchPupP >=> isStuckUntillTimeEv) st of
+    getProgCanProgress :: MuxState -> IO (Maybe Microseconds)
+    getProgCanProgress st =
+      case (_mst_switchPupP >=> canProgressAfterTimeEv) st of
         Nothing -> pure Nothing
         Just progTimeoutTime -> do
           currTime <- getCurrentTime
@@ -159,7 +160,7 @@ tshshMain TshshCfg {..} = do
     restoreStdinTty
     $ \_ -> do
       inAvailable <- newTVarIO False
-      progTimeout <- newTVarIO False
+      progCanProgress <- newTVarIO False
       readInputSt <- readLoopInit stdin
       watchFileInput stdin inAvailable (const True)
       outAvailable <- newTVarIO Set.empty
@@ -176,7 +177,7 @@ tshshMain TshshCfg {..} = do
                 _menv_outputAvailable = outAvailable,
                 _menv_inputAvailable = inAvailable,
                 _menv_sigQueue = sigQueue,
-                _menv_progTimeout = progTimeout
+                _menv_progTimeout = progCanProgress
               }
       let st =
             MuxState

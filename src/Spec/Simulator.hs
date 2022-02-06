@@ -8,10 +8,10 @@ import Control.Monad
 import qualified Data.Map as M
 import Data.Strict.Tuple
 import qualified Data.Text as T
+import Data.Time
 import Protolude hiding (exp, log, (>>), (>>=))
 import Spec.CPS.Folds (evalProgramM)
 import Tshsh.Lang.Coroutine.CPS
-import qualified Prelude as P
 
 data Shell = Shell_1 | Shell_2
   deriving (Eq, Ord, Show)
@@ -37,7 +37,7 @@ finishOnErr (Right a) c = c a
 
 inputFromShell :: Shell -> ProgramCont st (Shell, i) o m i r
 inputFromShell shell cont =
-  WaitInput $ \(s, i) ->
+  $waitInputDefC $ \(s, i) ->
     if s == shell
       then cont i
       else inputFromShell shell cont
@@ -128,10 +128,13 @@ $(makeLenses 'EvalState)
 main :: IO ()
 main = either print putStrLn simulateEnvSync
 
+defTime :: UTCTime
+defTime = UTCTime (fromGregorian 2019 9 1) (timeOfDayToTime (TimeOfDay 15 13 0))
+
 simulateEnvSync :: Either Text Text
 simulateEnvSync =
   simulate
-    (StepEnv (P.read "2021 - 11 - 17 04 : 39 : 47.169815158 UTC"))
+    (StepEnv defTime)
     (() :!: syncEnv)
     [ (Shell_1, "env\n", "a=1\nb=2\n"),
       (Shell_1, "pwd\n", "/root\n"),
